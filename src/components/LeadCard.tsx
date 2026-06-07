@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import type { LeadStatus } from "@prisma/client";
 import { ChevronDown, UserCircle2, Clock, Loader2, ArrowRight } from "lucide-react";
-import { STATUS_GROUPS, STATUS_LABEL } from "@/lib/leadStatus";
+import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { changeStatusAction, assignLeadAction } from "@/app/dashboard/actions";
