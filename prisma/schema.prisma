@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MASTER
+  USER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACT_ABLE
+  CONTACT_NOT_ABLE
+  DOCUMENTS_ABLE
+  DOCUMENTS_NOT_ABLE
+  APPOINTMENT_ABLE
+  APPOINTMENT_NOT_ABLE
+  SPAM_OR_MISSING
+  REJECTED
+  APPROVED
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  displayName  String
+  role         Role     @default(USER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  createdLeads   Lead[]                 @relation("CreatedBy")
+  assignedLeads  Lead[]                 @relation("AssignedTo")
+  changes        LeadStatusChange[]
+  resetRequests  PasswordResetRequest[] @relation("ResetSubject")
+  resolvedResets PasswordResetRequest[] @relation("ResetResolver")
+}
+
+model Lead {
+  id           Int        @id @default(autoincrement())
+  content      String
+  status       LeadStatus @default(NEW)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  createdById  Int
+  assignedToId Int?
+
+  createdBy  User               @relation("CreatedBy", fields: [createdById], references: [id])
+  assignedTo User?              @relation("AssignedTo", fields: [assignedToId], references: [id])
+  history    LeadStatusChange[]
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdById])
+}
+
+model LeadStatusChange {
+  id          Int         @id @default(autoincrement())
+  leadId      Int
+  fromStatus  LeadStatus?
+  toStatus    LeadStatus
+  note        String?
+  changedById Int
+  changedAt   DateTime    @default(now())
+
+  lead      Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  changedBy User @relation(fields: [changedById], references: [id])
+
+  @@index([leadId, changedAt])
+}
+
+model PasswordResetRequest {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation("ResetSubject", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById Int?
+  resolvedBy   User?     @relation("ResetResolver", fields: [resolvedById], references: [id])
+
+  @@index([resolvedAt])
+}

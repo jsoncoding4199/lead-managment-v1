@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-50 text-ink-800 antialiased font-sans;
+  background-image:
+    radial-gradient(at 8% -10%, rgba(94, 135, 255, 0.16) 0px, transparent 50%),
+    radial-gradient(at 90% 10%, rgba(180, 120, 255, 0.14) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(94, 235, 200, 0.10) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium
+           transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-ink-900 text-white hover:bg-ink-800;
+  }
+  .btn-accent {
+    @apply bg-brand-600 text-white hover:bg-brand-700;
+  }
+  .btn-ghost {
+    @apply text-ink-700 hover:bg-ink-100;
+  }
+  .btn-outline {
+    @apply border border-ink-200 bg-white text-ink-800 hover:bg-ink-50;
+  }
+
+  .input {
+    @apply block w-full rounded-lg border border-ink-200 bg-white px-3.5 py-2.5 text-sm
+           placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500;
+  }
+  .card {
+    @apply rounded-2xl border border-ink-200/70 bg-white/80 backdrop-blur shadow-soft;
+  }
+}
