@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import type { LeadStatus } from "@prisma/client";
-import { ChevronDown, UserCircle2, Clock, Loader2, ArrowRight, Calendar, X } from "lucide-react";
+import { ChevronDown, UserCircle2, Clock, Loader2, ArrowRight, Calendar, X, StickyNote } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
@@ -13,6 +13,7 @@ import Link from "next/link";
 type Lead = {
   id: number;
   content: string;
+  remark?: string | null;
   status: LeadStatus;
   createdAt: string;
   updatedAt: string;
@@ -67,48 +68,61 @@ export function LeadCard({ lead, viewerRole, teamUsers }: Props) {
   const aging = daysAgo(lead.createdAt);
 
   return (
-    <article className="card p-5 hover:shadow-lift transition-shadow group">
-      <header className="flex items-start justify-between gap-3">
+    <article className="card p-4 lg:p-4 hover:shadow-lift transition-shadow group flex flex-col">
+      <header className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <StatusBadge status={lead.status} />
           <span className="text-[11px] text-ink-400">#{lead.id}</span>
         </div>
 
-        <div className="relative">
-          <button
-            onClick={() => setMenuOpen(true)}
-            disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50"
-          >
-            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Change status"}
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <button
+          onClick={() => setMenuOpen(true)}
+          disabled={pending}
+          className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50 shrink-0"
+        >
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Status"}
+          <ChevronDown className="h-3 w-3" />
+        </button>
       </header>
 
-      <Link href={`/dashboard/leads/${lead.id}`} className="block mt-4">
-        <pre className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-[13px] leading-relaxed text-ink-800 font-mono line-clamp-6">
+      <Link href={`/dashboard/leads/${lead.id}`} className="block mt-3">
+        <pre className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-[12px] leading-relaxed text-ink-800 font-mono line-clamp-4 lg:line-clamp-5">
 {lead.content}
         </pre>
       </Link>
 
-      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-500">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {lead.remark && (
+        <Link
+          href={`/dashboard/leads/${lead.id}`}
+          className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
+        >
+          <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+          <p className="line-clamp-2 text-[12px] leading-relaxed text-amber-900">
+            {lead.remark}
+          </p>
+        </Link>
+      )}
+
+      <footer className="mt-3 space-y-2 text-[11px] text-ink-500 lg:space-y-1.5">
+        <div className="grid grid-cols-1 gap-1.5 lg:gap-1">
           <span className="inline-flex items-center gap-1.5">
-            <UserCircle2 className="h-3.5 w-3.5" />
-            From <strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong>
+            <UserCircle2 className="h-3 w-3 shrink-0" />
+            <span className="truncate">From <strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong></span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <ArrowRight className="h-3.5 w-3.5" />
-            Assigned <strong className="text-ink-700">{lead.assignedTo?.displayName ?? "Unassigned"}</strong>
+            <ArrowRight className="h-3 w-3 shrink-0" />
+            <span className="truncate">→ <strong className="text-ink-700">{lead.assignedTo?.displayName ?? "Unassigned"}</strong></span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Calendar className="h-3.5 w-3.5" />
-            {formatDateTime(lead.createdAt)}
+            <Calendar className="h-3 w-3 shrink-0" />
+            <span className="truncate">{formatDateTime(lead.createdAt)}</span>
           </span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <span
             className={
-              "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ring-1 " +
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 " +
               (aging >= 7
                 ? "bg-rose-50 text-rose-700 ring-rose-200"
                 : aging >= 3
@@ -117,12 +131,10 @@ export function LeadCard({ lead, viewerRole, teamUsers }: Props) {
             }
             title={`Lead created ${formatDateTime(lead.createdAt)}`}
           >
-            <Clock className="h-3 w-3" />
-            {aging === 0 ? "today" : `${aging}d aging`}
+            <Clock className="h-2.5 w-2.5" />
+            {aging === 0 ? "today" : `${aging}d`}
           </span>
-          <span className="inline-flex items-center gap-1.5 text-ink-400">
-            Updated {timeAgo(lead.updatedAt)}
-          </span>
+          <span className="text-ink-400">Updated {timeAgo(lead.updatedAt)}</span>
         </div>
 
         {viewerRole === "MASTER" && (
@@ -130,7 +142,7 @@ export function LeadCard({ lead, viewerRole, teamUsers }: Props) {
             disabled={pending}
             value={lead.assignedTo?.id ? String(lead.assignedTo.id) : ""}
             onChange={(e) => updateAssignee(e.target.value)}
-            className="rounded-md border border-ink-200 bg-white px-2 py-1 text-xs text-ink-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-md border border-ink-200 bg-white px-2 py-1 text-[11px] text-ink-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 mt-1"
             aria-label="Assign to"
           >
             <option value="">Unassigned</option>

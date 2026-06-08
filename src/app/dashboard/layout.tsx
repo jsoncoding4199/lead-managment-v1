@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { requireUser } from "@/lib/auth";
 import { logoutAction } from "@/app/login/actions";
 import { Sidebar } from "@/components/Sidebar";
+import { Notifier } from "@/components/Notifier";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
               {user.role}
             </span>
           </div>
-          <form action={logoutAction}>
-            <button className="btn btn-ghost h-9 text-sm">Sign out</button>
-          </form>
+          <div className="flex items-center gap-2">
+            <Notifier />
+            <form action={logoutAction}>
+              <button className="btn btn-ghost h-9 text-sm">Sign out</button>
+            </form>
+          </div>
         </header>
         <main className="flex-1 p-6 lg:p-10">{children}</main>
       </div>

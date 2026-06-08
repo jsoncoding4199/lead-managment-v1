@@ -107,3 +107,25 @@ export async function assignLeadAction(formData: FormData): Promise<{ error?: st
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
+
+const RemarkSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  remark: z.string().trim().max(2000),
+});
+
+export async function updateRemarkAction(formData: FormData): Promise<{ error?: string } | void> {
+  await requireUser();
+  const parsed = RemarkSchema.safeParse({
+    leadId: formData.get("leadId"),
+    remark: formData.get("remark"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid remark." };
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { remark: parsed.data.remark.length === 0 ? null : parsed.data.remark },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}

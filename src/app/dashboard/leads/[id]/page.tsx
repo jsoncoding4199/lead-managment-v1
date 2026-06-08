@@ -7,6 +7,7 @@ import { STATUS_LABEL } from "@/lib/leadStatus";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
 import { LeadComments } from "@/components/LeadComments";
+import { LeadRemarkEditor } from "@/components/LeadRemarkEditor";
 
 export default async function LeadDetailPage({
   params,
@@ -58,6 +59,7 @@ export default async function LeadDetailPage({
         lead={{
           id: lead.id,
           content: lead.content,
+          remark: lead.remark,
           status: lead.status,
           createdAt: lead.createdAt.toISOString(),
           updatedAt: lead.updatedAt.toISOString(),
@@ -67,6 +69,8 @@ export default async function LeadDetailPage({
         viewerRole={user.role}
         teamUsers={teamUsers}
       />
+
+      <LeadRemarkEditor leadId={lead.id} initial={lead.remark} />
 
       <section className="card p-6">
         <h3 className="text-sm font-semibold text-ink-900">Status history</h3>

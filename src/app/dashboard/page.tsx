@@ -7,6 +7,7 @@ import { ARCHIVED_STATUSES, ARCHIVE_SECTIONS, OPEN_STATUSES } from "@/lib/leadSt
 import { LeadComposer } from "@/components/LeadComposer";
 import { LeadCard } from "@/components/LeadCard";
 import { TabBar } from "@/components/TabBar";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 /**
  * The page itself does the minimum work needed to render the chrome
@@ -57,6 +58,7 @@ export default async function DashboardPage({
 type LeadView = {
   id: number;
   content: string;
+  remark: string | null;
   status: LeadStatus;
   createdAt: string;
   updatedAt: string;
@@ -96,6 +98,7 @@ async function LeadsSection({
       select: {
         id: true,
         content: true,
+        remark: true,
         status: true,
         createdAt: true,
         updatedAt: true,
@@ -115,6 +118,7 @@ async function LeadsSection({
   const leads: LeadView[] = rawLeads.map((l) => ({
     id: l.id,
     content: l.content,
+    remark: l.remark,
     status: l.status,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
@@ -181,7 +185,7 @@ function LeadsSkeleton() {
               <div className="h-3 w-20 rounded bg-ink-100 animate-pulse" />
             </div>
           </div>
-          <ul className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {[0, 1].map((i) => (
               <li key={i} className="card p-5 space-y-3">
                 <div className="flex justify-between">
@@ -224,28 +228,34 @@ function OpenGrouped({
   const entries = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       {entries.map(([agent, items]) => (
-        <section key={agent} className="space-y-4">
-          <header className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-              {initials(agent)}
+        <CollapsibleSection
+          key={agent}
+          storageKey={`open:${agent}`}
+          count={items.length}
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                {initials(agent)}
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">{agent}</h3>
+                <p className="text-xs text-ink-500">
+                  {items.length} lead{items.length === 1 ? "" : "s"} in pipeline
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-base font-semibold text-ink-900">{agent}</h3>
-              <p className="text-xs text-ink-500">
-                {items.length} lead{items.length === 1 ? "" : "s"} in pipeline
-              </p>
-            </div>
-          </header>
-          <ul className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+          }
+        >
+          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {items.map((lead) => (
               <li key={lead.id}>
                 <LeadCard lead={lead} viewerRole={viewerRole} teamUsers={teamUsers} />
               </li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       ))}
     </div>
   );
@@ -273,13 +283,17 @@ function ArchiveGrouped({
   });
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       {visibleSections.map((sec) => {
         const items = byStatus.get(sec.status) ?? [];
         return (
-          <section key={sec.status} className="space-y-4">
-            <header className="flex items-center justify-between gap-3 border-b border-ink-200/70 pb-3">
-              <div className="flex items-center gap-3">
+          <CollapsibleSection
+            key={sec.status}
+            storageKey={`archive:${sec.status}`}
+            defaultOpen={sec.status !== "APPROVED"}
+            count={items.length}
+            header={
+              <div className="flex items-center gap-3 border-b border-ink-200/70 pb-2">
                 <span
                   className={
                     "h-2.5 w-2.5 rounded-full " +
@@ -291,19 +305,17 @@ function ArchiveGrouped({
                   }
                 />
                 <h3 className="text-base font-semibold text-ink-900">{sec.label}</h3>
-                <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[10px] font-semibold text-ink-600">
-                  {items.length}
-                </span>
               </div>
-            </header>
-            <ul className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+            }
+          >
+            <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {items.map((lead) => (
                 <li key={lead.id}>
                   <LeadCard lead={lead} viewerRole={viewerRole} teamUsers={teamUsers} />
                 </li>
               ))}
             </ul>
-          </section>
+          </CollapsibleSection>
         );
       })}
     </div>

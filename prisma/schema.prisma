@@ -45,6 +45,7 @@ model User {
 model Lead {
   id           Int        @id @default(autoincrement())
   content      String
+  remark       String?
   status       LeadStatus @default(NEW)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
