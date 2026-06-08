@@ -12,7 +12,6 @@
  * whichever DB you point it at. The password is hashed with bcrypt before
  * being written — the plaintext is never stored.
  */
-import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 
