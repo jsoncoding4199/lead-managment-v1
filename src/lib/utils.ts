@@ -27,3 +27,9 @@ export function formatDateTime(date: Date | string): string {
     minute: "2-digit",
   });
 }
+
+export function daysAgo(date: Date | string): number {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const ms = Date.now() - d.getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+}

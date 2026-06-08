@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
+import { LeadComments } from "@/components/LeadComments";
 
 export default async function LeadDetailPage({
   params,
@@ -26,9 +27,16 @@ export default async function LeadDetailPage({
         orderBy: { changedAt: "desc" },
         include: { changedBy: { select: { displayName: true } } },
       },
+      comments: {
+        orderBy: { createdAt: "desc" },
+        include: { author: { select: { id: true, displayName: true } } },
+      },
     },
   });
   if (!lead) notFound();
+
+  // Approved leads are master-only per spec.
+  if (lead.status === "APPROVED" && user.role !== "MASTER") notFound();
 
   const teamUsers =
     user.role === "MASTER"
@@ -89,6 +97,18 @@ export default async function LeadDetailPage({
           </ol>
         )}
       </section>
+
+      <LeadComments
+        leadId={lead.id}
+        viewerId={user.id}
+        viewerRole={user.role}
+        comments={lead.comments.map((c) => ({
+          id: c.id,
+          body: c.body,
+          createdAt: c.createdAt.toISOString(),
+          author: c.author,
+        }))}
+      />
     </div>
   );
 }

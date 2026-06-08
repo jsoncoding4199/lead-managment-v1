@@ -47,6 +47,22 @@ export function isArchived(status: LeadStatus): boolean {
   return ARCHIVED_STATUSES.includes(status);
 }
 
+/**
+ * Archive sections — in display order. The dashboard groups archived leads
+ * by these buckets so users can scan "what didn't work" at a glance.
+ *
+ * Note: APPROVED is master-only; the dashboard filters it out for regular
+ * users before grouping, so it's last in this list (only seen by masters).
+ */
+export const ARCHIVE_SECTIONS: { status: LeadStatus; label: string; tone: "bad" | "terminal" | "good" }[] = [
+  { status: "CONTACT_NOT_ABLE", label: "Not Able to Contact", tone: "bad" },
+  { status: "DOCUMENTS_NOT_ABLE", label: "Not Able to Get Documents", tone: "bad" },
+  { status: "APPOINTMENT_NOT_ABLE", label: "Not Able to Make Appointment", tone: "bad" },
+  { status: "SPAM_OR_MISSING", label: "Spam or Missing", tone: "terminal" },
+  { status: "REJECTED", label: "Rejected", tone: "terminal" },
+  { status: "APPROVED", label: "Approved (master only)", tone: "good" },
+];
+
 export type StatusGroup = {
   key: string;
   title: string;

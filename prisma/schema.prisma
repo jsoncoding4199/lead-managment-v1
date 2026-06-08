@@ -37,6 +37,7 @@ model User {
   createdLeads   Lead[]                 @relation("CreatedBy")
   assignedLeads  Lead[]                 @relation("AssignedTo")
   changes        LeadStatusChange[]
+  comments       LeadComment[]
   resetRequests  PasswordResetRequest[] @relation("ResetSubject")
   resolvedResets PasswordResetRequest[] @relation("ResetResolver")
 }
@@ -53,10 +54,24 @@ model Lead {
   createdBy  User               @relation("CreatedBy", fields: [createdById], references: [id])
   assignedTo User?              @relation("AssignedTo", fields: [assignedToId], references: [id])
   history    LeadStatusChange[]
+  comments   LeadComment[]
 
   @@index([status])
   @@index([assignedToId])
   @@index([createdById])
+}
+
+model LeadComment {
+  id        Int      @id @default(autoincrement())
+  leadId    Int
+  authorId  Int
+  body      String
+  createdAt DateTime @default(now())
+
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([leadId, createdAt])
 }
 
 model LeadStatusChange {
