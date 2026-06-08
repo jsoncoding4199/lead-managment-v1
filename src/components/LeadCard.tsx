@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import type { LeadStatus } from "@prisma/client";
 import { ChevronDown, UserCircle2, Clock, Loader2, ArrowRight, Calendar, X } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
@@ -175,7 +176,13 @@ function StatusMenu({
   onChoose: (s: LeadStatus) => void;
   onClose: () => void;
 }) {
+  // Portal to <body> so the modal escapes the LeadCard's stacking context
+  // (the card's `backdrop-blur` creates a new context that would otherwise
+  // trap a fixed-positioned child beneath sibling cards).
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+
   useEffect(() => {
+    setPortalNode(document.body);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -183,8 +190,10 @@ function StatusMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+  if (!portalNode) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
       {/* Backdrop */}
       <button
         aria-label="Close status menu"
@@ -268,6 +277,7 @@ function StatusMenu({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    portalNode
   );
 }
