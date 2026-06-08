@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  */
 type Event = {
   id: string;
-  kind: "status" | "comment" | "lead";
+  kind: "status" | "lead";
   text: string;
   at: string;
   leadId: number;
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "bad_since" }, { status: 400 });
   }
 
-  const [statusChanges, comments, newLeads] = await Promise.all([
+  const [statusChanges, newLeads] = await Promise.all([
     prisma.leadStatusChange.findMany({
       where: { changedAt: { gt: since }, changedById: { not: me.id } },
       orderBy: { changedAt: "desc" },
@@ -49,18 +49,6 @@ export async function GET(req: NextRequest) {
         toStatus: true,
         changedAt: true,
         changedBy: { select: { displayName: true } },
-      },
-    }),
-    prisma.leadComment.findMany({
-      where: { createdAt: { gt: since }, authorId: { not: me.id } },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        leadId: true,
-        body: true,
-        createdAt: true,
-        author: { select: { displayName: true } },
       },
     }),
     prisma.lead.findMany({
@@ -84,16 +72,6 @@ export async function GET(req: NextRequest) {
       leadId: c.leadId,
       text: `${c.changedBy.displayName} moved lead #${c.leadId} to ${STATUS_LABEL[c.toStatus]}`,
       at: c.changedAt.toISOString(),
-    });
-  }
-  for (const c of comments) {
-    const preview = c.body.length > 80 ? c.body.slice(0, 80) + "…" : c.body;
-    events.push({
-      id: `c${c.id}`,
-      kind: "comment",
-      leadId: c.leadId,
-      text: `${c.author.displayName} commented on #${c.leadId}: "${preview}"`,
-      at: c.createdAt.toISOString(),
     });
   }
   for (const l of newLeads) {

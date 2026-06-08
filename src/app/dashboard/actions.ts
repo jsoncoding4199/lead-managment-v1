@@ -129,3 +129,41 @@ export async function updateRemarkAction(formData: FormData): Promise<{ error?: 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
+
+const EditContentSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  content: z.string().trim().min(1, "Lead content can't be empty.").max(8000),
+});
+
+export async function editLeadContentAction(formData: FormData): Promise<{ error?: string } | void> {
+  await requireUser();
+  const parsed = EditContentSchema.safeParse({
+    leadId: formData.get("leadId"),
+    content: formData.get("content"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid content." };
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { content: parsed.data.content },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
+const DeleteLeadSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+});
+
+export async function deleteLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+  await requireUser();
+  const parsed = DeleteLeadSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  // Cascade handles status history & assignments via Prisma's onDelete: Cascade.
+  await prisma.lead.delete({ where: { id: parsed.data.leadId } });
+
+  revalidatePath("/dashboard");
+  // After delete the detail page won't exist anymore; the client redirects.
+}

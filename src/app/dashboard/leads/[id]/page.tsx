@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
-import { LeadComments } from "@/components/LeadComments";
+import { LeadContentEditor } from "@/components/LeadContentEditor";
 import { LeadRemarkEditor } from "@/components/LeadRemarkEditor";
+import { DeleteLeadCard } from "@/components/DeleteLeadCard";
 
 export default async function LeadDetailPage({
   params,
@@ -27,10 +28,6 @@ export default async function LeadDetailPage({
       history: {
         orderBy: { changedAt: "desc" },
         include: { changedBy: { select: { displayName: true } } },
-      },
-      comments: {
-        orderBy: { createdAt: "desc" },
-        include: { author: { select: { id: true, displayName: true } } },
       },
     },
   });
@@ -70,6 +67,8 @@ export default async function LeadDetailPage({
         teamUsers={teamUsers}
       />
 
+      <LeadContentEditor leadId={lead.id} initial={lead.content} />
+
       <LeadRemarkEditor leadId={lead.id} initial={lead.remark} />
 
       <section className="card p-6">
@@ -102,17 +101,7 @@ export default async function LeadDetailPage({
         )}
       </section>
 
-      <LeadComments
-        leadId={lead.id}
-        viewerId={user.id}
-        viewerRole={user.role}
-        comments={lead.comments.map((c) => ({
-          id: c.id,
-          body: c.body,
-          createdAt: c.createdAt.toISOString(),
-          author: c.author,
-        }))}
-      />
+      <DeleteLeadCard leadId={lead.id} />
     </div>
   );
 }
