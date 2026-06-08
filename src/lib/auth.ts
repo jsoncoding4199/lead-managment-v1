@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "./prisma";
 import { getSession } from "./session";
@@ -9,7 +10,12 @@ export type CurrentUser = {
   role: "MASTER" | "USER";
 };
 
-export async function currentUser(): Promise<CurrentUser | null> {
+/**
+ * Memoize per request: a page that calls requireUser() from the layout AND
+ * inside a child component would otherwise hit the DB twice. React's cache()
+ * dedupes the call within one server-rendered request lifecycle.
+ */
+export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   const session = await getSession();
   if (!session.userId) return null;
 
@@ -25,7 +31,7 @@ export async function currentUser(): Promise<CurrentUser | null> {
     displayName: user.displayName,
     role: user.role,
   };
-}
+});
 
 export async function requireUser(): Promise<CurrentUser> {
   const user = await currentUser();

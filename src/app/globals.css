@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+/* Inter is loaded via next/font/google in src/app/layout.tsx — self-hosted,
+   zero render-blocking requests, no FOUT. */
 
 :root {
   color-scheme: light;
