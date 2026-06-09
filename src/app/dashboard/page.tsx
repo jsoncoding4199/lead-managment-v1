@@ -77,29 +77,27 @@ type LeadView = {
   assignees: { id: number; displayName: string }[];
 };
 
-/** Build the WHERE clause for non-master users — the visibility rule. */
-function visibilityWhere(user: CurrentUser, maxPickup: number): Prisma.LeadWhereInput {
+/**
+ * Build the WHERE clause for non-master users — the visibility rule.
+ *
+ * Open tab: NEW leads where I'm already on it, OR NEW leads with free
+ *   slots (Prisma can't aggregate in WHERE; final cap check is at the
+ *   application layer below).
+ * Archive tab: only leads I am personally assigned to.
+ *
+ * Master sees everything in both tabs.
+ */
+function visibilityWhere(
+  user: CurrentUser,
+  tab: "open" | "archive"
+): Prisma.LeadWhereInput {
   if (user.role === "MASTER") return {};
-  return {
-    OR: [
-      // Leads I'm already assigned to
-      { assignments: { some: { userId: user.id } } },
-      // Leads still pickable: status not APPROVED, slots available, I'm not already on it
-      {
-        AND: [
-          { status: { not: "APPROVED" } },
-          { assignments: { none: { userId: user.id } } },
-          // Slot availability check — use raw count via the relation filter.
-          // Prisma doesn't support "count < N" directly in a where clause, so
-          // we approximate by NOT having `maxPickup` distinct assignees:
-          // any lead with fewer than maxPickup assignees passes this filter.
-          //   NOT exists assignment where the row's count is >= maxPickup
-          // Implemented at the application layer via a post-filter below
-          // because Prisma can't aggregate in a single relation filter.
-        ],
-      },
-    ],
-  };
+  if (tab === "archive") {
+    return { assignments: { some: { userId: user.id } } };
+  }
+  // Open tab: every NEW lead is candidate; the post-filter below enforces
+  // the slot-capacity rule (Prisma can't compare a relation count in WHERE).
+  return {};
 }
 
 async function LeadsSection({
@@ -127,7 +125,7 @@ async function LeadsSection({
     statusFilter = OPEN_STATUSES;
   }
 
-  const visibilityFilter = visibilityWhere(user, settings.maxPickup);
+  const visibilityFilter = visibilityWhere(user, tab);
 
   const [rawLeads, teamUsers] = await Promise.all([
     prisma.lead.findMany({
@@ -163,12 +161,13 @@ async function LeadsSection({
       : Promise.resolve([] as { id: number; displayName: string }[]),
   ]);
 
-  // Post-filter for the slot-capacity rule (Prisma can't aggregate in WHERE).
+  // Post-filter for the slot-capacity rule (only relevant on Open tab for
+  // non-master viewers; Prisma can't aggregate in WHERE).
   const visibleLeads = rawLeads.filter((l) => {
     if (user.role === "MASTER") return true;
+    if (tab === "archive") return true; // SQL already filtered to assigned-only
     const iAmAssigned = l.assignments.some((a) => a.user.id === user.id);
     if (iAmAssigned) return true;
-    // Otherwise lead must still have free slots.
     return l.assignments.length < settings.maxPickup;
   });
 
@@ -205,19 +204,29 @@ async function TabBarWithCounts({
   q: string;
   user: CurrentUser;
 }) {
-  // For non-master, archiveCount is always 0.
+  // Non-master sees their own counts: Open considers pickup cap, Archive
+  // considers only assignments-to-me.
   if (user.role !== "MASTER") {
     const settings = await getAppSettings();
-    const openVisibility = visibilityWhere(user, settings.maxPickup);
-    const openRaw = await prisma.lead.findMany({
-      where: { AND: [{ status: { in: OPEN_STATUSES } }, openVisibility] },
-      select: { id: true, assignments: { select: { userId: true } } },
-    });
+    const [openRaw, archiveCount] = await Promise.all([
+      prisma.lead.findMany({
+        where: { AND: [{ status: { in: OPEN_STATUSES } }, visibilityWhere(user, "open")] },
+        select: { id: true, assignments: { select: { userId: true } } },
+      }),
+      prisma.lead.count({
+        where: {
+          AND: [
+            { status: { in: ARCHIVED_STATUSES.filter((s) => s !== "APPROVED") } },
+            { assignments: { some: { userId: user.id } } },
+          ],
+        },
+      }),
+    ]);
     const openCount = openRaw.filter((l) => {
       const mine = l.assignments.some((a) => a.userId === user.id);
       return mine || l.assignments.length < settings.maxPickup;
     }).length;
-    return <TabBar tab={tab} openCount={openCount} archiveCount={0} q={q} />;
+    return <TabBar tab={tab} openCount={openCount} archiveCount={archiveCount} q={q} />;
   }
 
   const [openCount, archiveCount] = await Promise.all([

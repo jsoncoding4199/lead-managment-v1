@@ -43,11 +43,17 @@ export default async function LeadDetailPage({
   // APPROVED is master-only.
   if (lead.status === "APPROVED" && user.role !== "MASTER") notFound();
 
-  // Non-master users can only see leads they are on, OR leads with free slots.
+  // Non-master visibility:
+  //   - If they are assigned, they can always view.
+  //   - Otherwise, only NEW leads with a free pickup slot are viewable
+  //     (so users can land on the detail page to pick it up).
+  //   - All archived statuses are off-limits to anyone who isn't on them.
   if (user.role !== "MASTER") {
     const iAmAssigned = lead.assignments.some((a) => a.user.id === user.id);
-    const hasFreeSlot = lead.assignments.length < settings.maxPickup;
-    if (!iAmAssigned && !hasFreeSlot) notFound();
+    if (!iAmAssigned) {
+      if (lead.status !== "NEW") notFound();
+      if (lead.assignments.length >= settings.maxPickup) notFound();
+    }
   }
 
   const teamUsers =

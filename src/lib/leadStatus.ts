@@ -26,13 +26,13 @@ export const STATUS_SHORT: Record<LeadStatus, string> = {
   APPROVED: "Approved",
 };
 
-// Only APPROVED is archived — everything else stays in Open so the team can
-// keep iterating on it (a "not able to contact" might become a "contact able"
-// the next day; rejected leads might get reopened).
-export const ARCHIVED_STATUSES: LeadStatus[] = ["APPROVED"];
+// Only NEW leads sit in Open. The moment a lead leaves NEW (Contact / Docs /
+// Appointment / Spam / Reject / Approve) it moves into Archive, where it
+// becomes the assignee's "work in progress" view. Master sees everything,
+// non-master sees only what they picked up.
+export const OPEN_STATUSES: LeadStatus[] = ["NEW"];
 
-export const OPEN_STATUSES: LeadStatus[] = [
-  "NEW",
+export const ARCHIVED_STATUSES: LeadStatus[] = [
   "CONTACT_ABLE",
   "CONTACT_NOT_ABLE",
   "DOCUMENTS_ABLE",
@@ -41,6 +41,7 @@ export const OPEN_STATUSES: LeadStatus[] = [
   "APPOINTMENT_NOT_ABLE",
   "SPAM_OR_MISSING",
   "REJECTED",
+  "APPROVED",
 ];
 
 export function isArchived(status: LeadStatus): boolean {
@@ -54,9 +55,18 @@ export function isArchived(status: LeadStatus): boolean {
  * Note: APPROVED is master-only; the dashboard filters it out for regular
  * users before grouping, so it's last in this list (only seen by masters).
  */
-// Archive only contains APPROVED leads, and only the master sees them.
+// Archive sections in display order. APPROVED is filtered out for non-master
+// viewers at render time, so it sits at the end of this list.
 export const ARCHIVE_SECTIONS: { status: LeadStatus; label: string; tone: "bad" | "terminal" | "good" }[] = [
-  { status: "APPROVED", label: "Approved", tone: "good" },
+  { status: "CONTACT_ABLE", label: "Contact · Able", tone: "good" },
+  { status: "CONTACT_NOT_ABLE", label: "Contact · Not Able", tone: "bad" },
+  { status: "DOCUMENTS_ABLE", label: "Documents · Able to Get", tone: "good" },
+  { status: "DOCUMENTS_NOT_ABLE", label: "Documents · Not Able to Get", tone: "bad" },
+  { status: "APPOINTMENT_ABLE", label: "Appointment · Able", tone: "good" },
+  { status: "APPOINTMENT_NOT_ABLE", label: "Appointment · Not Able", tone: "bad" },
+  { status: "SPAM_OR_MISSING", label: "Spam or Missing", tone: "terminal" },
+  { status: "REJECTED", label: "Rejected", tone: "terminal" },
+  { status: "APPROVED", label: "Approved (master only)", tone: "good" },
 ];
 
 export type StatusGroup = {
