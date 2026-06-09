@@ -43,11 +43,11 @@ export default async function DashboardPage({
         <p className="text-ink-500 mt-1 text-sm">
           {tab === "open"
             ? user.role === "MASTER"
-              ? "All active leads in the pipeline, grouped by the agent who picked them up."
+              ? "Fresh leads waiting to be picked up."
               : "Your picked-up leads, plus leads still available to pick up."
             : user.role === "MASTER"
-              ? "Approved leads — only you can see this list."
-              : "No archive — closed leads appear here only for the master."}
+              ? "Every lead that's moved out of New, grouped by status."
+              : "Every lead the team has moved out of New. Approved leads are master-only."}
         </p>
       </div>
 
@@ -93,7 +93,9 @@ function visibilityWhere(
 ): Prisma.LeadWhereInput {
   if (user.role === "MASTER") return {};
   if (tab === "archive") {
-    return { assignments: { some: { userId: user.id } } };
+    // Archive is open to all users — they can scan the team's history. The
+    // statusFilter further up already excludes APPROVED for non-master.
+    return {};
   }
   // Open tab: every NEW lead is candidate; the post-filter below enforces
   // the slot-capacity rule (Prisma can't compare a relation count in WHERE).
@@ -114,14 +116,13 @@ async function LeadsSection({
   // Base status filter by tab.
   let statusFilter: LeadStatus[];
   if (tab === "archive") {
-    // Archive is master-only (APPROVED). Non-masters see nothing here.
-    if (user.role !== "MASTER") {
-      return <EmptyState tab="archive" hasQuery={false} />;
-    }
-    statusFilter = ARCHIVED_STATUSES;
+    // Archive is open to all users. APPROVED is master-only — drop it for
+    // anyone else.
+    statusFilter =
+      user.role === "MASTER"
+        ? ARCHIVED_STATUSES
+        : ARCHIVED_STATUSES.filter((s) => s !== "APPROVED");
   } else {
-    // Open: master sees all non-APPROVED. Non-master starts from same set;
-    // visibility narrows further below.
     statusFilter = OPEN_STATUSES;
   }
 
@@ -204,8 +205,8 @@ async function TabBarWithCounts({
   q: string;
   user: CurrentUser;
 }) {
-  // Non-master sees their own counts: Open considers pickup cap, Archive
-  // considers only assignments-to-me.
+  // Non-master sees: Open count respects pickup cap; Archive count is all
+  // archived leads except APPROVED.
   if (user.role !== "MASTER") {
     const settings = await getAppSettings();
     const [openRaw, archiveCount] = await Promise.all([
@@ -214,12 +215,7 @@ async function TabBarWithCounts({
         select: { id: true, assignments: { select: { userId: true } } },
       }),
       prisma.lead.count({
-        where: {
-          AND: [
-            { status: { in: ARCHIVED_STATUSES.filter((s) => s !== "APPROVED") } },
-            { assignments: { some: { userId: user.id } } },
-          ],
-        },
+        where: { status: { in: ARCHIVED_STATUSES.filter((s) => s !== "APPROVED") } },
       }),
     ]);
     const openCount = openRaw.filter((l) => {
