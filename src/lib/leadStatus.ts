@@ -54,6 +54,22 @@ export const ACTIVE_STATUSES: LeadStatus[] = [
   "APPOINTMENT_ABLE",
 ];
 
+// When a lead in one of these statuses hits max pickup, it migrates from
+// Fresh/Open Market into the master-only Archive tab.
+export const ARCHIVABLE_NOT_ABLE_STATUSES: LeadStatus[] = [
+  "CONTACT_NOT_ABLE",
+  "DOCUMENTS_NOT_ABLE",
+  "APPOINTMENT_NOT_ABLE",
+  "SPAM_OR_MISSING",
+  "REJECTED",
+];
+
+/**
+ * How many days a lead can sit before it auto-migrates from Fresh to
+ * Open Market. Two days per current product spec.
+ */
+export const AGE_BOUNDARY_DAYS = 2;
+
 export function isArchived(status: LeadStatus): boolean {
   return ARCHIVED_STATUSES.includes(status);
 }
