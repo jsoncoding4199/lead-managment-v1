@@ -1,27 +1,32 @@
 import { requireMaster } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getAppSettings } from "@/lib/settings";
 import { CreateUserForm } from "@/components/CreateUserForm";
 import { UserRow } from "@/components/UserRow";
+import { MaxPickupCard } from "@/components/MaxPickupCard";
 
 export default async function AdminPage() {
   await requireMaster();
 
-  const users = await prisma.user.findMany({
-    where: { role: "USER" },
-    orderBy: [{ active: "desc" }, { displayName: "asc" }],
-    include: {
-      _count: { select: { createdLeads: true, assignedLeads: true } },
-    },
-  });
-
-  const pendingResets = await prisma.passwordResetRequest.count({ where: { resolvedAt: null } });
+  const [users, pendingResets, settings] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: "USER" },
+      orderBy: [{ active: "desc" }, { displayName: "asc" }],
+      include: {
+        _count: { select: { createdLeads: true, assignments: true } },
+      },
+    }),
+    prisma.passwordResetRequest.count({ where: { resolvedAt: null } }),
+    getAppSettings(),
+  ]);
 
   return (
     <div className="space-y-8 max-w-5xl">
       <div>
         <h2 className="text-3xl font-semibold text-ink-900 tracking-tight">Team</h2>
         <p className="text-ink-500 mt-1 text-sm">
-          Create user accounts, disable people who shouldn&apos;t have access, and reset passwords on demand.
+          Create user accounts, disable people who shouldn&apos;t have access, reset
+          passwords on demand, and configure team-wide pickup rules.
         </p>
       </div>
 
@@ -36,6 +41,8 @@ export default async function AdminPage() {
           </a>
         </div>
       )}
+
+      <MaxPickupCard current={settings.maxPickup} />
 
       <section className="card p-6">
         <h3 className="text-sm font-semibold text-ink-900">Add a new user</h3>
@@ -58,7 +65,7 @@ export default async function AdminPage() {
                 <th className="text-left font-semibold px-6 py-3">User</th>
                 <th className="text-left font-semibold px-6 py-3">Status</th>
                 <th className="text-left font-semibold px-6 py-3">Created</th>
-                <th className="text-left font-semibold px-6 py-3">Assigned</th>
+                <th className="text-left font-semibold px-6 py-3">Picked up</th>
                 <th className="text-right font-semibold px-6 py-3">Actions</th>
               </tr>
             </thead>
@@ -72,7 +79,7 @@ export default async function AdminPage() {
                     displayName: u.displayName,
                     active: u.active,
                     createdLeads: u._count.createdLeads,
-                    assignedLeads: u._count.assignedLeads,
+                    assignedLeads: u._count.assignments,
                   }}
                 />
               ))}

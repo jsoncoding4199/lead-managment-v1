@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import type { LeadStatus } from "@prisma/client";
-import { requireUser } from "@/lib/auth";
+import type { LeadStatus, Prisma } from "@prisma/client";
+import { requireUser, type CurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getAppSettings } from "@/lib/settings";
 import { ARCHIVED_STATUSES, ARCHIVE_SECTIONS, OPEN_STATUSES } from "@/lib/leadStatus";
 import { LeadComposer } from "@/components/LeadComposer";
 import { LeadCard } from "@/components/LeadCard";
@@ -11,9 +12,16 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 /**
  * The page itself does the minimum work needed to render the chrome
- * (header, tabs, composer) and streams the leads + counts inside a
- * Suspense boundary so the shell appears instantly while the DB query
- * is still in flight.
+ * (header, tabs, composer) and streams the leads + counts inside Suspense.
+ *
+ * VISIBILITY MODEL
+ *   non-master users see leads where:
+ *     - they are in the assignment list, OR
+ *     - the lead has free slots (assignments.count < maxPickup) AND they are
+ *       not already assigned (they could still pick it up).
+ *   master sees all leads.
+ *
+ *   APPROVED leads are master-only in both Open and Archive.
  */
 
 type Search = { tab?: string; q?: string };
@@ -23,7 +31,6 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<Search>;
 }) {
-  // Only the gate runs here — fast, cached via React's cache() in auth.ts.
   const user = await requireUser();
   const sp = await searchParams;
   const tab: "open" | "archive" = sp.tab === "archive" ? "archive" : "open";
@@ -35,19 +42,23 @@ export default async function DashboardPage({
         <h2 className="text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
         <p className="text-ink-500 mt-1 text-sm">
           {tab === "open"
-            ? "Active pipeline — anyone on the team can drop new leads here, grouped by who added them."
-            : "Closed leads, grouped by the reason they closed."}
+            ? user.role === "MASTER"
+              ? "All active leads in the pipeline, grouped by the agent who picked them up."
+              : "Your picked-up leads, plus leads still available to pick up."
+            : user.role === "MASTER"
+              ? "Approved leads — only you can see this list."
+              : "No archive — closed leads appear here only for the master."}
         </p>
       </div>
 
       <Suspense fallback={<TabBarSkeleton />}>
-        <TabBarWithCounts tab={tab} q={q} viewerRole={user.role} />
+        <TabBarWithCounts tab={tab} q={q} user={user} />
       </Suspense>
 
       {tab === "open" && <LeadComposer />}
 
       <Suspense fallback={<LeadsSkeleton />} key={`${tab}:${q}`}>
-        <LeadsSection tab={tab} q={q} viewerRole={user.role} />
+        <LeadsSection tab={tab} q={q} user={user} />
       </Suspense>
     </div>
   );
@@ -63,38 +74,72 @@ type LeadView = {
   createdAt: string;
   updatedAt: string;
   createdBy: { id: number; displayName: string };
-  assignedTo: { id: number; displayName: string } | null;
+  assignees: { id: number; displayName: string }[];
 };
+
+/** Build the WHERE clause for non-master users — the visibility rule. */
+function visibilityWhere(user: CurrentUser, maxPickup: number): Prisma.LeadWhereInput {
+  if (user.role === "MASTER") return {};
+  return {
+    OR: [
+      // Leads I'm already assigned to
+      { assignments: { some: { userId: user.id } } },
+      // Leads still pickable: status not APPROVED, slots available, I'm not already on it
+      {
+        AND: [
+          { status: { not: "APPROVED" } },
+          { assignments: { none: { userId: user.id } } },
+          // Slot availability check — use raw count via the relation filter.
+          // Prisma doesn't support "count < N" directly in a where clause, so
+          // we approximate by NOT having `maxPickup` distinct assignees:
+          // any lead with fewer than maxPickup assignees passes this filter.
+          //   NOT exists assignment where the row's count is >= maxPickup
+          // Implemented at the application layer via a post-filter below
+          // because Prisma can't aggregate in a single relation filter.
+        ],
+      },
+    ],
+  };
+}
 
 async function LeadsSection({
   tab,
   q,
-  viewerRole,
+  user,
 }: {
   tab: "open" | "archive";
   q: string;
-  viewerRole: "MASTER" | "USER";
+  user: CurrentUser;
 }) {
-  // Approved leads are master-only — drop them out of the filter for regular users.
-  const statusFilter: LeadStatus[] =
-    tab === "archive"
-      ? viewerRole === "MASTER"
-        ? ARCHIVED_STATUSES
-        : ARCHIVED_STATUSES.filter((s) => s !== "APPROVED")
-      : OPEN_STATUSES;
+  const settings = await getAppSettings();
 
-  // Run leads + team users in parallel. teamUsers is only needed by MASTER for
-  // the inline assignment dropdown; skip the query otherwise.
+  // Base status filter by tab.
+  let statusFilter: LeadStatus[];
+  if (tab === "archive") {
+    // Archive is master-only (APPROVED). Non-masters see nothing here.
+    if (user.role !== "MASTER") {
+      return <EmptyState tab="archive" hasQuery={false} />;
+    }
+    statusFilter = ARCHIVED_STATUSES;
+  } else {
+    // Open: master sees all non-APPROVED. Non-master starts from same set;
+    // visibility narrows further below.
+    statusFilter = OPEN_STATUSES;
+  }
+
+  const visibilityFilter = visibilityWhere(user, settings.maxPickup);
+
   const [rawLeads, teamUsers] = await Promise.all([
     prisma.lead.findMany({
       where: {
-        status: { in: statusFilter },
-        ...(q
-          ? { content: { contains: q, mode: "insensitive" as const } }
-          : {}),
+        AND: [
+          { status: { in: statusFilter } },
+          visibilityFilter,
+          q ? { content: { contains: q, mode: "insensitive" as const } } : {},
+        ],
       },
       orderBy: [{ updatedAt: "desc" }],
-      take: 100,
+      take: 200,
       select: {
         id: true,
         content: true,
@@ -103,10 +148,13 @@ async function LeadsSection({
         createdAt: true,
         updatedAt: true,
         createdBy: { select: { id: true, displayName: true } },
-        assignedTo: { select: { id: true, displayName: true } },
+        assignments: {
+          select: { user: { select: { id: true, displayName: true } } },
+          orderBy: { assignedAt: "asc" },
+        },
       },
     }),
-    viewerRole === "MASTER"
+    user.role === "MASTER"
       ? prisma.user.findMany({
           where: { active: true, role: "USER" },
           select: { id: true, displayName: true },
@@ -115,7 +163,16 @@ async function LeadsSection({
       : Promise.resolve([] as { id: number; displayName: string }[]),
   ]);
 
-  const leads: LeadView[] = rawLeads.map((l) => ({
+  // Post-filter for the slot-capacity rule (Prisma can't aggregate in WHERE).
+  const visibleLeads = rawLeads.filter((l) => {
+    if (user.role === "MASTER") return true;
+    const iAmAssigned = l.assignments.some((a) => a.user.id === user.id);
+    if (iAmAssigned) return true;
+    // Otherwise lead must still have free slots.
+    return l.assignments.length < settings.maxPickup;
+  });
+
+  const leads: LeadView[] = visibleLeads.map((l) => ({
     id: l.id,
     content: l.content,
     remark: l.remark,
@@ -123,7 +180,7 @@ async function LeadsSection({
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     createdBy: l.createdBy,
-    assignedTo: l.assignedTo,
+    assignees: l.assignments.map((a) => a.user),
   }));
 
   if (leads.length === 0) {
@@ -131,9 +188,9 @@ async function LeadsSection({
   }
 
   return tab === "open" ? (
-    <OpenGrouped leads={leads} viewerRole={viewerRole} teamUsers={teamUsers} />
+    <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
   ) : (
-    <ArchiveGrouped leads={leads} viewerRole={viewerRole} teamUsers={teamUsers} />
+    <ArchiveGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
   );
 }
 
@@ -142,23 +199,31 @@ async function LeadsSection({
 async function TabBarWithCounts({
   tab,
   q,
-  viewerRole,
+  user,
 }: {
   tab: "open" | "archive";
   q: string;
-  viewerRole: "MASTER" | "USER";
+  user: CurrentUser;
 }) {
-  const archiveStatuses =
-    viewerRole === "MASTER"
-      ? ARCHIVED_STATUSES
-      : ARCHIVED_STATUSES.filter((s) => s !== "APPROVED");
+  // For non-master, archiveCount is always 0.
+  if (user.role !== "MASTER") {
+    const settings = await getAppSettings();
+    const openVisibility = visibilityWhere(user, settings.maxPickup);
+    const openRaw = await prisma.lead.findMany({
+      where: { AND: [{ status: { in: OPEN_STATUSES } }, openVisibility] },
+      select: { id: true, assignments: { select: { userId: true } } },
+    });
+    const openCount = openRaw.filter((l) => {
+      const mine = l.assignments.some((a) => a.userId === user.id);
+      return mine || l.assignments.length < settings.maxPickup;
+    }).length;
+    return <TabBar tab={tab} openCount={openCount} archiveCount={0} q={q} />;
+  }
 
-  // Both counts run in parallel.
   const [openCount, archiveCount] = await Promise.all([
     prisma.lead.count({ where: { status: { in: OPEN_STATUSES } } }),
-    prisma.lead.count({ where: { status: { in: archiveStatuses } } }),
+    prisma.lead.count({ where: { status: { in: ARCHIVED_STATUSES } } }),
   ]);
-
   return <TabBar tab={tab} openCount={openCount} archiveCount={archiveCount} q={q} />;
 }
 
@@ -209,49 +274,150 @@ function LeadsSkeleton() {
 
 /* ---------- Grouped renderers ---------- */
 
+/**
+ * Open tab grouping rules:
+ *  - Non-master: two buckets — "My picked-up" and "Available to pick up"
+ *  - Master: grouped by each assignee user. A lead with multiple assignees
+ *    appears under each of them; unassigned ones go in their own bucket.
+ */
 function OpenGrouped({
   leads,
-  viewerRole,
+  viewer,
   teamUsers,
+  maxPickup,
 }: {
   leads: LeadView[];
-  viewerRole: "MASTER" | "USER";
+  viewer: CurrentUser;
   teamUsers: { id: number; displayName: string }[];
+  maxPickup: number;
 }) {
-  const groups = new Map<string, LeadView[]>();
-  for (const lead of leads) {
-    const key = lead.createdBy?.displayName ?? "Unknown";
-    const arr = groups.get(key) ?? [];
-    arr.push(lead);
-    groups.set(key, arr);
+  if (viewer.role !== "MASTER") {
+    const mine = leads.filter((l) => l.assignees.some((a) => a.id === viewer.id));
+    const available = leads.filter((l) => !l.assignees.some((a) => a.id === viewer.id));
+    return (
+      <div className="space-y-6">
+        {mine.length > 0 && (
+          <CollapsibleSection
+            storageKey="open:mine"
+            count={mine.length}
+            header={
+              <div className="flex items-center gap-3">
+                <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                  ME
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-ink-900">My picked-up leads</h3>
+                  <p className="text-xs text-ink-500">{mine.length} active</p>
+                </div>
+              </div>
+            }
+          >
+            <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {mine.map((lead) => (
+                <li key={lead.id}>
+                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                </li>
+              ))}
+            </ul>
+          </CollapsibleSection>
+        )}
+        {available.length > 0 && (
+          <CollapsibleSection
+            storageKey="open:available"
+            count={available.length}
+            header={
+              <div className="flex items-center gap-3">
+                <div className="grid h-9 w-9 place-items-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
+                  ⬆
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-ink-900">Available to pick up</h3>
+                  <p className="text-xs text-ink-500">{available.length} open · up to {maxPickup} pickers per lead</p>
+                </div>
+              </div>
+            }
+          >
+            <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {available.map((lead) => (
+                <li key={lead.id}>
+                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                </li>
+              ))}
+            </ul>
+          </CollapsibleSection>
+        )}
+      </div>
+    );
   }
-  const entries = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+
+  // Master view: group by each assignee. Leads with no assignees go in "Unassigned".
+  const buckets = new Map<string, { label: string; items: LeadView[] }>();
+  const unassigned: LeadView[] = [];
+  for (const lead of leads) {
+    if (lead.assignees.length === 0) {
+      unassigned.push(lead);
+      continue;
+    }
+    for (const a of lead.assignees) {
+      const key = `user:${a.id}`;
+      const bucket = buckets.get(key) ?? { label: a.displayName, items: [] };
+      bucket.items.push(lead);
+      buckets.set(key, bucket);
+    }
+  }
+
+  const entries = Array.from(buckets.entries()).sort((a, b) => a[1].label.localeCompare(b[1].label));
 
   return (
     <div className="space-y-6">
-      {entries.map(([agent, items]) => (
+      {unassigned.length > 0 && (
         <CollapsibleSection
-          key={agent}
-          storageKey={`open:${agent}`}
-          count={items.length}
+          storageKey="open:unassigned"
+          count={unassigned.length}
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-amber-100 text-sm font-semibold text-amber-700">
+                ?
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">Unassigned</h3>
+                <p className="text-xs text-ink-500">Not picked up by anyone yet.</p>
+              </div>
+            </div>
+          }
+        >
+          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {unassigned.map((lead) => (
+              <li key={lead.id}>
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+              </li>
+            ))}
+          </ul>
+        </CollapsibleSection>
+      )}
+      {entries.map(([key, bucket]) => (
+        <CollapsibleSection
+          key={key}
+          storageKey={`open:${key}`}
+          count={bucket.items.length}
           header={
             <div className="flex items-center gap-3">
               <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-                {initials(agent)}
+                {initials(bucket.label)}
               </div>
               <div>
-                <h3 className="text-base font-semibold text-ink-900">{agent}</h3>
+                <h3 className="text-base font-semibold text-ink-900">{bucket.label}</h3>
                 <p className="text-xs text-ink-500">
-                  {items.length} lead{items.length === 1 ? "" : "s"} in pipeline
+                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} picked up
                 </p>
               </div>
             </div>
           }
         >
           <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {items.map((lead) => (
+            {bucket.items.map((lead) => (
               <li key={lead.id}>
-                <LeadCard lead={lead} viewerRole={viewerRole} teamUsers={teamUsers} />
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
               </li>
             ))}
           </ul>
@@ -263,12 +429,14 @@ function OpenGrouped({
 
 function ArchiveGrouped({
   leads,
-  viewerRole,
+  viewer,
   teamUsers,
+  maxPickup,
 }: {
   leads: LeadView[];
-  viewerRole: "MASTER" | "USER";
+  viewer: CurrentUser;
   teamUsers: { id: number; displayName: string }[];
+  maxPickup: number;
 }) {
   const byStatus = new Map<LeadStatus, LeadView[]>();
   for (const lead of leads) {
@@ -278,7 +446,7 @@ function ArchiveGrouped({
   }
 
   const visibleSections = ARCHIVE_SECTIONS.filter((sec) => {
-    if (sec.status === "APPROVED" && viewerRole !== "MASTER") return false;
+    if (sec.status === "APPROVED" && viewer.role !== "MASTER") return false;
     return (byStatus.get(sec.status)?.length ?? 0) > 0;
   });
 
@@ -290,7 +458,6 @@ function ArchiveGrouped({
           <CollapsibleSection
             key={sec.status}
             storageKey={`archive:${sec.status}`}
-            defaultOpen={sec.status !== "APPROVED"}
             count={items.length}
             header={
               <div className="flex items-center gap-3 border-b border-ink-200/70 pb-2">
@@ -311,7 +478,7 @@ function ArchiveGrouped({
             <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {items.map((lead) => (
                 <li key={lead.id}>
-                  <LeadCard lead={lead} viewerRole={viewerRole} teamUsers={teamUsers} />
+                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
                 </li>
               ))}
             </ul>
@@ -332,15 +499,15 @@ function EmptyState({ tab, hasQuery }: { tab: "open" | "archive"; hasQuery: bool
         {hasQuery
           ? "No leads match your search"
           : tab === "open"
-            ? "No open leads yet"
+            ? "No leads to show"
             : "Archive is empty"}
       </h3>
       <p className="mt-1 text-sm text-ink-500">
         {hasQuery
           ? "Try a different search term."
           : tab === "open"
-            ? "Paste a new lead above to start the pipeline."
-            : "Closed and rejected leads will appear here."}
+            ? "Paste a new lead above, or wait for a teammate to drop one in."
+            : "Closed leads appear here only for the master."}
       </p>
       {tab === "archive" && !hasQuery && (
         <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">

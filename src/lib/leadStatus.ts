@@ -26,21 +26,21 @@ export const STATUS_SHORT: Record<LeadStatus, string> = {
   APPROVED: "Approved",
 };
 
-// Statuses that move the lead into the Archive tab.
-export const ARCHIVED_STATUSES: LeadStatus[] = [
-  "CONTACT_NOT_ABLE",
-  "DOCUMENTS_NOT_ABLE",
-  "APPOINTMENT_NOT_ABLE",
-  "SPAM_OR_MISSING",
-  "REJECTED",
-  "APPROVED",
-];
+// Only APPROVED is archived — everything else stays in Open so the team can
+// keep iterating on it (a "not able to contact" might become a "contact able"
+// the next day; rejected leads might get reopened).
+export const ARCHIVED_STATUSES: LeadStatus[] = ["APPROVED"];
 
 export const OPEN_STATUSES: LeadStatus[] = [
   "NEW",
   "CONTACT_ABLE",
+  "CONTACT_NOT_ABLE",
   "DOCUMENTS_ABLE",
+  "DOCUMENTS_NOT_ABLE",
   "APPOINTMENT_ABLE",
+  "APPOINTMENT_NOT_ABLE",
+  "SPAM_OR_MISSING",
+  "REJECTED",
 ];
 
 export function isArchived(status: LeadStatus): boolean {
@@ -54,13 +54,9 @@ export function isArchived(status: LeadStatus): boolean {
  * Note: APPROVED is master-only; the dashboard filters it out for regular
  * users before grouping, so it's last in this list (only seen by masters).
  */
+// Archive only contains APPROVED leads, and only the master sees them.
 export const ARCHIVE_SECTIONS: { status: LeadStatus; label: string; tone: "bad" | "terminal" | "good" }[] = [
-  { status: "CONTACT_NOT_ABLE", label: "Not Able to Contact", tone: "bad" },
-  { status: "DOCUMENTS_NOT_ABLE", label: "Not Able to Get Documents", tone: "bad" },
-  { status: "APPOINTMENT_NOT_ABLE", label: "Not Able to Make Appointment", tone: "bad" },
-  { status: "SPAM_OR_MISSING", label: "Spam or Missing", tone: "terminal" },
-  { status: "REJECTED", label: "Rejected", tone: "terminal" },
-  { status: "APPROVED", label: "Approved (master only)", tone: "good" },
+  { status: "APPROVED", label: "Approved", tone: "good" },
 ];
 
 export type StatusGroup = {

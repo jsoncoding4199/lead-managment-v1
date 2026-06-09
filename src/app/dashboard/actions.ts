@@ -83,29 +83,136 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   revalidatePath(`/dashboard/leads/${lead.id}`);
 }
 
-const AssignSchema = z.object({
+/**
+ * MASTER ONLY — replace the lead's full assignee set with `userIds`.
+ * Empty array means "unassigned". Bypasses the maxPickup cap (master override).
+ */
+const SetAssignmentsSchema = z.object({
   leadId: z.coerce.number().int().positive(),
-  assigneeId: z.string(),
+  userIds: z.array(z.coerce.number().int().positive()),
 });
 
-export async function assignLeadAction(formData: FormData): Promise<{ error?: string } | void> {
-  await requireMaster();
-  const parsed = AssignSchema.safeParse({
-    leadId: formData.get("leadId"),
-    assigneeId: formData.get("assigneeId"),
-  });
+export async function setLeadAssignmentsAction(input: {
+  leadId: number;
+  userIds: number[];
+}): Promise<{ error?: string } | void> {
+  const master = await requireMaster();
+  const parsed = SetAssignmentsSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid assignment." };
 
-  const id = parsed.data.assigneeId === "" ? null : Number(parsed.data.assigneeId);
-  if (id !== null && !Number.isFinite(id)) return { error: "Invalid assignee." };
+  // Validate every userId is an active USER (not master, not disabled).
+  const valid = await prisma.user.count({
+    where: { id: { in: parsed.data.userIds }, active: true, role: "USER" },
+  });
+  if (valid !== parsed.data.userIds.length) {
+    return { error: "One or more users are invalid or inactive." };
+  }
 
-  await prisma.lead.update({
-    where: { id: parsed.data.leadId },
-    data: { assignedToId: id },
+  await prisma.$transaction([
+    prisma.leadAssignment.deleteMany({ where: { leadId: parsed.data.leadId } }),
+    ...(parsed.data.userIds.length === 0
+      ? []
+      : [
+          prisma.leadAssignment.createMany({
+            data: parsed.data.userIds.map((userId) => ({
+              leadId: parsed.data.leadId,
+              userId,
+              assignedById: master.id,
+            })),
+            skipDuplicates: true,
+          }),
+        ]),
+  ]);
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
+/**
+ * Self-assign (pick up) a lead. Any signed-in user can call this for themselves.
+ * Enforces AppSettings.maxPickup — won't add the user if the lead is already
+ * at capacity.
+ */
+const PickUpSchema = z.object({ leadId: z.coerce.number().int().positive() });
+
+export async function pickUpLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+  const me = await requireUser();
+  const parsed = PickUpSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  const [lead, settings, existing] = await Promise.all([
+    prisma.lead.findUnique({ where: { id: parsed.data.leadId } }),
+    prisma.appSettings.upsert({
+      where: { id: 1 },
+      update: {},
+      create: { id: 1, maxPickup: 2 },
+    }),
+    prisma.leadAssignment.findUnique({
+      where: { leadId_userId: { leadId: parsed.data.leadId, userId: me.id } },
+    }),
+  ]);
+
+  if (!lead) return { error: "Lead not found." };
+  if (lead.status === "APPROVED" && me.role !== "MASTER") {
+    return { error: "This lead is already closed." };
+  }
+  if (existing) return; // already picked up — no-op
+
+  const count = await prisma.leadAssignment.count({ where: { leadId: lead.id } });
+  if (count >= settings.maxPickup) {
+    return { error: `This lead is already at capacity (${settings.maxPickup}).` };
+  }
+
+  await prisma.leadAssignment.create({
+    data: {
+      leadId: lead.id,
+      userId: me.id,
+      assignedById: me.id, // self-assigned
+    },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${lead.id}`);
+}
+
+/** Self-drop (un-assign) a lead. Any signed-in user can drop themselves. */
+const DropSchema = z.object({ leadId: z.coerce.number().int().positive() });
+
+export async function dropLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+  const me = await requireUser();
+  const parsed = DropSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  await prisma.leadAssignment.deleteMany({
+    where: { leadId: parsed.data.leadId, userId: me.id },
   });
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
+/** Master-only — update the global max-pickup setting. */
+const MaxPickupSchema = z.object({
+  maxPickup: z.coerce.number().int().min(1).max(10),
+});
+
+export async function updateMaxPickupAction(
+  _prev: { error?: string; ok?: boolean } | null,
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  await requireMaster();
+  const parsed = MaxPickupSchema.safeParse({ maxPickup: formData.get("maxPickup") });
+  if (!parsed.success) return { error: "Pick a number between 1 and 10." };
+
+  await prisma.appSettings.upsert({
+    where: { id: 1 },
+    update: { maxPickup: parsed.data.maxPickup },
+    create: { id: 1, maxPickup: parsed.data.maxPickup },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/admin");
+  return { ok: true };
 }
 
 const RemarkSchema = z.object({

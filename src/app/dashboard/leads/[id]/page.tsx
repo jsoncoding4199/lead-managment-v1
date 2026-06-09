@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getAppSettings } from "@/lib/settings";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
@@ -20,21 +21,34 @@ export default async function LeadDetailPage({
   const id = Number(idParam);
   if (!Number.isFinite(id)) notFound();
 
-  const lead = await prisma.lead.findUnique({
-    where: { id },
-    include: {
-      createdBy: { select: { id: true, displayName: true } },
-      assignedTo: { select: { id: true, displayName: true } },
-      history: {
-        orderBy: { changedAt: "desc" },
-        include: { changedBy: { select: { displayName: true } } },
+  const [lead, settings] = await Promise.all([
+    prisma.lead.findUnique({
+      where: { id },
+      include: {
+        createdBy: { select: { id: true, displayName: true } },
+        assignments: {
+          select: { user: { select: { id: true, displayName: true } } },
+          orderBy: { assignedAt: "asc" },
+        },
+        history: {
+          orderBy: { changedAt: "desc" },
+          include: { changedBy: { select: { displayName: true } } },
+        },
       },
-    },
-  });
+    }),
+    getAppSettings(),
+  ]);
   if (!lead) notFound();
 
-  // Approved leads are master-only per spec.
+  // APPROVED is master-only.
   if (lead.status === "APPROVED" && user.role !== "MASTER") notFound();
+
+  // Non-master users can only see leads they are on, OR leads with free slots.
+  if (user.role !== "MASTER") {
+    const iAmAssigned = lead.assignments.some((a) => a.user.id === user.id);
+    const hasFreeSlot = lead.assignments.length < settings.maxPickup;
+    if (!iAmAssigned && !hasFreeSlot) notFound();
+  }
 
   const teamUsers =
     user.role === "MASTER"
@@ -61,10 +75,11 @@ export default async function LeadDetailPage({
           createdAt: lead.createdAt.toISOString(),
           updatedAt: lead.updatedAt.toISOString(),
           createdBy: lead.createdBy,
-          assignedTo: lead.assignedTo,
+          assignees: lead.assignments.map((a) => a.user),
         }}
-        viewerRole={user.role}
+        viewer={{ id: user.id, role: user.role }}
         teamUsers={teamUsers}
+        maxPickup={settings.maxPickup}
       />
 
       <LeadContentEditor leadId={lead.id} initial={lead.content} />

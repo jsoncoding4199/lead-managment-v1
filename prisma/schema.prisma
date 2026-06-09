@@ -34,11 +34,12 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  createdLeads   Lead[]                 @relation("CreatedBy")
-  assignedLeads  Lead[]                 @relation("AssignedTo")
-  changes        LeadStatusChange[]
-  resetRequests  PasswordResetRequest[] @relation("ResetSubject")
-  resolvedResets PasswordResetRequest[] @relation("ResetResolver")
+  createdLeads      Lead[]                 @relation("CreatedBy")
+  assignments       LeadAssignment[]       @relation("Assignee")
+  assignmentsMade   LeadAssignment[]       @relation("AssignedBy")
+  changes           LeadStatusChange[]
+  resetRequests     PasswordResetRequest[] @relation("ResetSubject")
+  resolvedResets    PasswordResetRequest[] @relation("ResetResolver")
 }
 
 model Lead {
@@ -49,15 +50,33 @@ model Lead {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   createdById  Int
-  assignedToId Int?
 
-  createdBy  User               @relation("CreatedBy", fields: [createdById], references: [id])
-  assignedTo User?              @relation("AssignedTo", fields: [assignedToId], references: [id])
-  history    LeadStatusChange[]
+  createdBy   User               @relation("CreatedBy", fields: [createdById], references: [id])
+  history     LeadStatusChange[]
+  assignments LeadAssignment[]
 
   @@index([status])
-  @@index([assignedToId])
   @@index([createdById])
+}
+
+model LeadAssignment {
+  leadId       Int
+  userId       Int
+  assignedAt   DateTime @default(now())
+  assignedById Int
+
+  lead       Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user       User @relation("Assignee", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User @relation("AssignedBy", fields: [assignedById], references: [id])
+
+  @@id([leadId, userId])
+  @@index([userId])
+}
+
+// Singleton row (id = 1) that holds team-wide settings the master controls.
+model AppSettings {
+  id        Int @id @default(1)
+  maxPickup Int @default(2)
 }
 
 model LeadStatusChange {
