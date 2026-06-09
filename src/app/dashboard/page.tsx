@@ -33,7 +33,8 @@ export default async function DashboardPage({
 }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const tab: "open" | "archive" = sp.tab === "archive" ? "archive" : "open";
+  const tab: "fresh" | "market" | "archive" =
+    sp.tab === "market" ? "market" : sp.tab === "archive" ? "archive" : "fresh";
   const q = (sp.q ?? "").trim();
 
   return (
@@ -41,13 +42,15 @@ export default async function DashboardPage({
       <div>
         <h2 className="text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
         <p className="text-ink-500 mt-1 text-sm">
-          {tab === "open"
+          {tab === "fresh"
             ? user.role === "MASTER"
-              ? "Fresh leads waiting to be picked up."
+              ? "Fresh leads in the active pipeline."
               : "Your picked-up leads, plus leads still available to pick up."
-            : user.role === "MASTER"
-              ? "Every lead that's moved out of New, grouped by status."
-              : "Every lead the team has moved out of New. Approved leads are master-only."}
+            : tab === "market"
+              ? user.role === "MASTER"
+                ? "Leads that have moved out of New, grouped by status."
+                : "Leads the team has moved out of New. Approved leads are master-only."
+              : "Long-term archive — empty for now."}
         </p>
       </div>
 
@@ -55,7 +58,7 @@ export default async function DashboardPage({
         <TabBarWithCounts tab={tab} q={q} user={user} />
       </Suspense>
 
-      {tab === "open" && <LeadComposer />}
+      {tab === "fresh" && <LeadComposer />}
 
       <Suspense fallback={<LeadsSkeleton />} key={`${tab}:${q}`}>
         <LeadsSection tab={tab} q={q} user={user} />
@@ -90,10 +93,10 @@ type LeadView = {
  */
 function visibilityWhere(
   user: CurrentUser,
-  tab: "open" | "archive"
+  tab: "fresh" | "market" | "archive"
 ): Prisma.LeadWhereInput {
   if (user.role === "MASTER") return {};
-  if (tab === "archive") {
+  if (tab === "market") {
     // Archive: visible to everyone. APPROVED already stripped by statusFilter.
     return {};
   }
@@ -119,17 +122,23 @@ async function LeadsSection({
   q,
   user,
 }: {
-  tab: "open" | "archive";
+  tab: "fresh" | "market" | "archive";
   q: string;
   user: CurrentUser;
 }) {
+  // The third tab is a placeholder for future use — render an empty state
+  // without hitting the DB.
+  if (tab === "archive") {
+    return <EmptyState tab="archive" hasQuery={false} />;
+  }
+
   const settings = await getAppSettings();
 
   // Base status filter by tab.
   let statusFilter: LeadStatus[];
-  if (tab === "archive") {
-    // Archive is open to all users. APPROVED is master-only — drop it for
-    // anyone else.
+  if (tab === "market") {
+    // Open Market is visible to everyone. APPROVED is master-only — drop it
+    // for non-master viewers.
     statusFilter =
       user.role === "MASTER"
         ? ARCHIVED_STATUSES
@@ -179,7 +188,7 @@ async function LeadsSection({
   // non-master viewers; Prisma can't aggregate in WHERE).
   const visibleLeads = rawLeads.filter((l) => {
     if (user.role === "MASTER") return true;
-    if (tab === "archive") return true;
+    if (tab === "market") return true;
     const iAmAssigned = l.assignments.some((a) => a.user.id === user.id);
     if (iAmAssigned) return true;
     // For non-assigned, only NEW leads with free slots pass through.
@@ -203,7 +212,7 @@ async function LeadsSection({
     return <EmptyState tab={tab} hasQuery={!!q} />;
   }
 
-  return tab === "open" ? (
+  return tab === "fresh" ? (
     <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
   ) : (
     <ArchiveGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
@@ -217,35 +226,38 @@ async function TabBarWithCounts({
   q,
   user,
 }: {
-  tab: "open" | "archive";
+  tab: "fresh" | "market" | "archive";
   q: string;
   user: CurrentUser;
 }) {
-  // Non-master sees: Open count respects pickup cap; Archive count is all
-  // archived leads except APPROVED.
+  // The third "Archive" tab is a placeholder for now — its count is always 0.
   if (user.role !== "MASTER") {
     const settings = await getAppSettings();
-    const [openRaw, archiveCount] = await Promise.all([
+    const [freshRaw, marketCount] = await Promise.all([
       prisma.lead.findMany({
-        where: { AND: [{ status: { in: OPEN_STATUSES } }, visibilityWhere(user, "open")] },
+        where: { AND: [{ status: { in: OPEN_STATUSES } }, visibilityWhere(user, "fresh")] },
         select: { id: true, assignments: { select: { userId: true } } },
       }),
       prisma.lead.count({
         where: { status: { in: ARCHIVED_STATUSES.filter((s) => s !== "APPROVED") } },
       }),
     ]);
-    const openCount = openRaw.filter((l) => {
+    const freshCount = freshRaw.filter((l) => {
       const mine = l.assignments.some((a) => a.userId === user.id);
       return mine || l.assignments.length < settings.maxPickup;
     }).length;
-    return <TabBar tab={tab} openCount={openCount} archiveCount={archiveCount} q={q} />;
+    return (
+      <TabBar tab={tab} freshCount={freshCount} marketCount={marketCount} archiveCount={0} q={q} />
+    );
   }
 
-  const [openCount, archiveCount] = await Promise.all([
+  const [freshCount, marketCount] = await Promise.all([
     prisma.lead.count({ where: { status: { in: OPEN_STATUSES } } }),
     prisma.lead.count({ where: { status: { in: ARCHIVED_STATUSES } } }),
   ]);
-  return <TabBar tab={tab} openCount={openCount} archiveCount={archiveCount} q={q} />;
+  return (
+    <TabBar tab={tab} freshCount={freshCount} marketCount={marketCount} archiveCount={0} q={q} />
+  );
 }
 
 /* ---------- Skeletons ---------- */
@@ -510,29 +522,31 @@ function ArchiveGrouped({
   );
 }
 
-function EmptyState({ tab, hasQuery }: { tab: "open" | "archive"; hasQuery: boolean }) {
+function EmptyState({ tab, hasQuery }: { tab: "fresh" | "market" | "archive"; hasQuery: boolean }) {
+  const title = hasQuery
+    ? "No leads match your search"
+    : tab === "fresh"
+      ? "No leads to show"
+      : tab === "market"
+        ? "Open Market is empty"
+        : "Archive is empty";
+  const body = hasQuery
+    ? "Try a different search term."
+    : tab === "fresh"
+      ? "Paste a new lead above, or wait for a teammate to drop one in."
+      : tab === "market"
+        ? "Closed leads will appear here once the team starts moving them out of New."
+        : "Nothing has been moved to the long-term archive yet.";
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
         ✦
       </div>
-      <h3 className="mt-4 text-base font-semibold text-ink-900">
-        {hasQuery
-          ? "No leads match your search"
-          : tab === "open"
-            ? "No leads to show"
-            : "Archive is empty"}
-      </h3>
-      <p className="mt-1 text-sm text-ink-500">
-        {hasQuery
-          ? "Try a different search term."
-          : tab === "open"
-            ? "Paste a new lead above, or wait for a teammate to drop one in."
-            : "Closed leads appear here only for the master."}
-      </p>
-      {tab === "archive" && !hasQuery && (
+      <h3 className="mt-4 text-base font-semibold text-ink-900">{title}</h3>
+      <p className="mt-1 text-sm text-ink-500">{body}</p>
+      {tab !== "fresh" && !hasQuery && (
         <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">
-          Go to Open
+          Go to Fresh
         </Link>
       )}
     </div>

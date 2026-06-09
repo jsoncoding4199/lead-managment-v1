@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutGrid, Archive, Users, KeyRound, Sparkles } from "lucide-react";
+import { LayoutGrid, Archive, Store, Users, KeyRound, Sparkles } from "lucide-react";
 
 type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
 
 export function Sidebar({ user }: Props) {
   const pathname = usePathname() ?? "";
   const params = useSearchParams();
-  const tab = params.get("tab") ?? "open";
+  const tab = params.get("tab") ?? "fresh";
 
   const onDashboardRoot = pathname === "/dashboard";
 
@@ -24,8 +24,11 @@ export function Sidebar({ user }: Props) {
       </div>
 
       <nav className="px-3 mt-2 space-y-1 flex-1">
-        <NavLink href="/dashboard" icon={LayoutGrid} active={onDashboardRoot && tab !== "archive"}>
-          Open leads
+        <NavLink href="/dashboard" icon={LayoutGrid} active={onDashboardRoot && tab !== "market" && tab !== "archive"}>
+          Fresh
+        </NavLink>
+        <NavLink href="/dashboard?tab=market" icon={Store} active={onDashboardRoot && tab === "market"}>
+          Open Market
         </NavLink>
         <NavLink href="/dashboard?tab=archive" icon={Archive} active={onDashboardRoot && tab === "archive"}>
           Archive

@@ -3,22 +3,24 @@ import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 
 type Props = {
-  tab: "open" | "archive";
-  openCount: number;
+  tab: "fresh" | "market" | "archive";
+  freshCount: number;
+  marketCount: number;
   archiveCount: number;
   q: string;
 };
 
-export function TabBar({ tab, openCount, archiveCount, q }: Props) {
+export function TabBar({ tab, freshCount, marketCount, archiveCount, q }: Props) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div className="inline-flex rounded-xl bg-white p-1 ring-1 ring-ink-200 shadow-soft self-start">
-        <TabLink href="/dashboard" active={tab === "open"} label="Open" count={openCount} />
+      <div className="inline-flex rounded-xl bg-white p-1 ring-1 ring-ink-200 shadow-soft self-start overflow-x-auto">
+        <TabLink href="/dashboard" active={tab === "fresh"} label="Fresh" count={freshCount} />
+        <TabLink href="/dashboard?tab=market" active={tab === "market"} label="Open Market" count={marketCount} />
         <TabLink href="/dashboard?tab=archive" active={tab === "archive"} label="Archive" count={archiveCount} />
       </div>
 
       <form className="relative" action="/dashboard">
-        {tab === "archive" && <input type="hidden" name="tab" value="archive" />}
+        {tab !== "fresh" && <input type="hidden" name="tab" value={tab} />}
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
         <input
           type="search"
@@ -37,10 +39,8 @@ function TabLink({ href, active, label, count }: { href: string; active: boolean
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-        active
-          ? "bg-ink-900 text-white shadow-sm"
-          : "text-ink-600 hover:bg-ink-50"
+        "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors",
+        active ? "bg-ink-900 text-white shadow-sm" : "text-ink-600 hover:bg-ink-50"
       )}
     >
       {label}
