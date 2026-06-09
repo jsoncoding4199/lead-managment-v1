@@ -282,15 +282,13 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
   // Market side of the boundary, even accounting for small clock drift.
   const boundary = new Date(Date.now() - (2 * 86_400_000 + 3_600_000));
 
-  const ops: Parameters<typeof prisma.$transaction>[0] = [
-    prisma.lead.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.lead.update({
       where: { id: lead.id },
       data: { status: "NEW", createdAt: boundary },
-    }),
-  ];
-  if (lead.status !== "NEW") {
-    ops.push(
-      prisma.leadStatusChange.create({
+    });
+    if (lead.status !== "NEW") {
+      await tx.leadStatusChange.create({
         data: {
           leadId: lead.id,
           fromStatus: lead.status,
@@ -298,10 +296,9 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
           note: "Reset to Open Market",
           changedById: user.id,
         },
-      })
-    );
-  }
-  await prisma.$transaction(ops);
+      });
+    }
+  });
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
