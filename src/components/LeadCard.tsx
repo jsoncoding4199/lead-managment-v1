@@ -395,7 +395,7 @@ function StatusMenu({
               onClick={() => onChoose("NEW")}
               className="w-full rounded-xl border border-ink-100 px-3 py-3 text-left text-sm text-ink-600 hover:bg-ink-50"
             >
-              Reset to New
+              Reset to Open Market
             </button>
           </div>
         </div>
