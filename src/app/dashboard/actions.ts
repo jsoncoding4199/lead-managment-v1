@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import type { LeadStatus } from "@prisma/client";
+import type { LeadStatus, LeadQuality } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, requireMaster } from "@/lib/auth";
 
@@ -253,6 +253,32 @@ export async function editLeadContentAction(formData: FormData): Promise<{ error
   await prisma.lead.update({
     where: { id: parsed.data.leadId },
     data: { content: parsed.data.content },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
+/** Any signed-in user can rate a lead's quality. Pass quality="" to clear it. */
+const QualityValues = ["GOOD", "MEDIUM", "LOW", ""] as const;
+const QualitySchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  quality: z.enum(QualityValues),
+});
+
+export async function updateLeadQualityAction(formData: FormData): Promise<{ error?: string } | void> {
+  await requireUser();
+  const parsed = QualitySchema.safeParse({
+    leadId: formData.get("leadId"),
+    quality: formData.get("quality") ?? "",
+  });
+  if (!parsed.success) return { error: "Invalid quality." };
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: {
+      quality: parsed.data.quality === "" ? null : (parsed.data.quality as LeadQuality),
+    },
   });
 
   revalidatePath("/dashboard");

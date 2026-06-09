@@ -1,10 +1,10 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import type { LeadStatus, Prisma } from "@prisma/client";
+import type { LeadStatus, LeadQuality, Prisma } from "@prisma/client";
 import { requireUser, type CurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
-import { ARCHIVED_STATUSES, ARCHIVE_SECTIONS, OPEN_STATUSES } from "@/lib/leadStatus";
+import { ACTIVE_STATUSES, ARCHIVED_STATUSES, ARCHIVE_SECTIONS, OPEN_STATUSES } from "@/lib/leadStatus";
 import { LeadComposer } from "@/components/LeadComposer";
 import { LeadCard } from "@/components/LeadCard";
 import { TabBar } from "@/components/TabBar";
@@ -71,6 +71,7 @@ type LeadView = {
   content: string;
   remark: string | null;
   status: LeadStatus;
+  quality: LeadQuality | null;
   createdAt: string;
   updatedAt: string;
   createdBy: { id: number; displayName: string };
@@ -93,13 +94,24 @@ function visibilityWhere(
 ): Prisma.LeadWhereInput {
   if (user.role === "MASTER") return {};
   if (tab === "archive") {
-    // Archive is open to all users — they can scan the team's history. The
-    // statusFilter further up already excludes APPROVED for non-master.
+    // Archive: visible to everyone. APPROVED already stripped by statusFilter.
     return {};
   }
-  // Open tab: every NEW lead is candidate; the post-filter below enforces
-  // the slot-capacity rule (Prisma can't compare a relation count in WHERE).
-  return {};
+  // Open tab — split by status:
+  //   - NEW: visible if I'm on it OR there's a free slot (capacity check
+  //          happens at the application layer below).
+  //   - ABLE statuses: visible only if I'm assigned to it.
+  return {
+    OR: [
+      { status: "NEW" },
+      {
+        AND: [
+          { status: { in: ACTIVE_STATUSES } },
+          { assignments: { some: { userId: user.id } } },
+        ],
+      },
+    ],
+  };
 }
 
 async function LeadsSection({
@@ -144,6 +156,7 @@ async function LeadsSection({
         content: true,
         remark: true,
         status: true,
+        quality: true,
         createdAt: true,
         updatedAt: true,
         createdBy: { select: { id: true, displayName: true } },
@@ -166,9 +179,11 @@ async function LeadsSection({
   // non-master viewers; Prisma can't aggregate in WHERE).
   const visibleLeads = rawLeads.filter((l) => {
     if (user.role === "MASTER") return true;
-    if (tab === "archive") return true; // SQL already filtered to assigned-only
+    if (tab === "archive") return true;
     const iAmAssigned = l.assignments.some((a) => a.user.id === user.id);
     if (iAmAssigned) return true;
+    // For non-assigned, only NEW leads with free slots pass through.
+    if (l.status !== "NEW") return false;
     return l.assignments.length < settings.maxPickup;
   });
 
@@ -177,6 +192,7 @@ async function LeadsSection({
     content: l.content,
     remark: l.remark,
     status: l.status,
+    quality: l.quality,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     createdBy: l.createdBy,

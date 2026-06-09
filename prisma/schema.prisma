@@ -25,6 +25,12 @@ enum LeadStatus {
   APPROVED
 }
 
+enum LeadQuality {
+  GOOD
+  MEDIUM
+  LOW
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -43,12 +49,13 @@ model User {
 }
 
 model Lead {
-  id           Int        @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   content      String
   remark       String?
-  status       LeadStatus @default(NEW)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  status       LeadStatus   @default(NEW)
+  quality      LeadQuality?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
   createdById  Int
 
   createdBy   User               @relation("CreatedBy", fields: [createdById], references: [id])

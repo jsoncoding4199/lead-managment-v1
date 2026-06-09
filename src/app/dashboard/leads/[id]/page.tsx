@@ -75,6 +75,7 @@ export default async function LeadDetailPage({
           content: lead.content,
           remark: lead.remark,
           status: lead.status,
+          quality: lead.quality,
           createdAt: lead.createdAt.toISOString(),
           updatedAt: lead.updatedAt.toISOString(),
           createdBy: lead.createdBy,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import type { LeadStatus } from "@prisma/client";
+import type { LeadStatus, LeadQuality } from "@prisma/client";
 import {
   ChevronDown,
   UserCircle2,
@@ -19,11 +19,13 @@ import {
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
+import { QualityBadge, QualityPicker } from "./QualityPicker";
 import {
   changeStatusAction,
   pickUpLeadAction,
   dropLeadAction,
   setLeadAssignmentsAction,
+  updateLeadQualityAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -32,6 +34,7 @@ type Lead = {
   content: string;
   remark?: string | null;
   status: LeadStatus;
+  quality: LeadQuality | null;
   createdAt: string;
   updatedAt: string;
   createdBy: { id: number; displayName: string } | null;
@@ -50,18 +53,19 @@ type Props = {
 export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   // Lock body scroll while any portal modal is open.
   useEffect(() => {
-    if (!menuOpen && !assignOpen) return;
+    if (!menuOpen && !assignOpen && !qualityOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [menuOpen, assignOpen]);
+  }, [menuOpen, assignOpen, qualityOpen]);
 
   const updateStatus = (status: LeadStatus) => {
     setError(null);
@@ -104,6 +108,18 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
     });
   };
 
+  const setQuality = (quality: LeadQuality | null) => {
+    setError(null);
+    setQualityOpen(false);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    fd.set("quality", quality ?? "");
+    startTransition(async () => {
+      const res = await updateLeadQualityAction(fd);
+      if (res?.error) setError(res.error);
+    });
+  };
+
   const aging = daysAgo(lead.createdAt);
   const iAmAssigned = lead.assignees.some((a) => a.id === viewer.id);
   const atCapacity = lead.assignees.length >= maxPickup;
@@ -113,6 +129,14 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
       <header className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <StatusBadge status={lead.status} />
+          <button
+            onClick={() => setQualityOpen(true)}
+            disabled={pending}
+            className="cursor-pointer hover:opacity-80"
+            aria-label="Rate quality"
+          >
+            <QualityBadge quality={lead.quality} />
+          </button>
           <span className="text-[11px] text-ink-400">#{lead.id}</span>
         </div>
 
@@ -257,6 +281,14 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
           onSave={setAssignments}
           onClose={() => setAssignOpen(false)}
           pending={pending}
+        />
+      )}
+
+      {qualityOpen && (
+        <QualityPicker
+          current={lead.quality}
+          onChoose={setQuality}
+          onClose={() => setQualityOpen(false)}
         />
       )}
     </article>
