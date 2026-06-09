@@ -259,6 +259,54 @@ export async function editLeadContentAction(formData: FormData): Promise<{ error
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
 
+/**
+ * Reset a lead to status=NEW and backdate its createdAt to just past the
+ * Fresh / Open Market age boundary. The recirculated lead lands in Open
+ * Market regardless of how old (or new) it was before the reset.
+ *
+ * Logs a NEW status change in history so the audit trail is preserved.
+ */
+const ResetSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+});
+
+export async function resetToOpenMarketAction(formData: FormData): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = ResetSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
+  if (!lead) return { error: "Lead not found." };
+
+  // Two days + 1 hour gives the lead a clean "aged" timestamp on the Open
+  // Market side of the boundary, even accounting for small clock drift.
+  const boundary = new Date(Date.now() - (2 * 86_400_000 + 3_600_000));
+
+  const ops: Parameters<typeof prisma.$transaction>[0] = [
+    prisma.lead.update({
+      where: { id: lead.id },
+      data: { status: "NEW", createdAt: boundary },
+    }),
+  ];
+  if (lead.status !== "NEW") {
+    ops.push(
+      prisma.leadStatusChange.create({
+        data: {
+          leadId: lead.id,
+          fromStatus: lead.status,
+          toStatus: "NEW",
+          note: "Reset to Open Market",
+          changedById: user.id,
+        },
+      })
+    );
+  }
+  await prisma.$transaction(ops);
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${lead.id}`);
+}
+
 /** Any signed-in user can rate a lead's quality. Pass quality="" to clear it. */
 const QualityValues = ["GOOD", "MEDIUM", "LOW", ""] as const;
 const QualitySchema = z.object({

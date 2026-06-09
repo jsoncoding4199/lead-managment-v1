@@ -26,6 +26,7 @@ import {
   dropLeadAction,
   setLeadAssignmentsAction,
   updateLeadQualityAction,
+  resetToOpenMarketAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -75,6 +76,17 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
     fd.set("status", status);
     startTransition(async () => {
       const res = await changeStatusAction(fd);
+      if (res?.error) setError(res.error);
+    });
+  };
+
+  const resetToOpenMarket = () => {
+    setError(null);
+    setMenuOpen(false);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    startTransition(async () => {
+      const res = await resetToOpenMarketAction(fd);
       if (res?.error) setError(res.error);
     });
   };
@@ -269,6 +281,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
         <StatusMenu
           currentStatus={lead.status}
           onChoose={updateStatus}
+          onReset={resetToOpenMarket}
           onClose={() => setMenuOpen(false)}
         />
       )}
@@ -300,10 +313,12 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
 function StatusMenu({
   currentStatus,
   onChoose,
+  onReset,
   onClose,
 }: {
   currentStatus: LeadStatus;
   onChoose: (s: LeadStatus) => void;
+  onReset: () => void;
   onClose: () => void;
 }) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
@@ -392,7 +407,7 @@ function StatusMenu({
 
           <div className="border-t border-ink-100 mt-4 pt-3 px-1">
             <button
-              onClick={() => onChoose("NEW")}
+              onClick={onReset}
               className="w-full rounded-xl border border-ink-100 px-3 py-3 text-left text-sm text-ink-600 hover:bg-ink-50"
             >
               Reset to Open Market
