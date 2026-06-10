@@ -260,11 +260,17 @@ export async function editLeadContentAction(formData: FormData): Promise<{ error
 }
 
 /**
- * Reset a lead to status=NEW and backdate its createdAt to just past the
- * Fresh / Open Market age boundary. The recirculated lead lands in Open
- * Market regardless of how old (or new) it was before the reset.
+ * Reset a lead to status=NEW and backdate createdAt past the Fresh / Open
+ * Market boundary so the lead immediately lands in Open Market.
  *
- * Logs a NEW status change in history so the audit trail is preserved.
+ *   - When the MASTER resets: also clears the entire assignment list so the
+ *     lead becomes pickup-able again. Other users can now grab it. This is
+ *     the only way to "unfill" a max-picked lead.
+ *   - When a non-master resets: keeps existing assignments untouched.
+ *     Use the "Drop" button to remove yourself first if you want out.
+ *
+ * Logs a NEW status change in history (note: "Reset to Open Market") so the
+ * audit trail is preserved.
  */
 const ResetSchema = z.object({
   leadId: z.coerce.number().int().positive(),
@@ -281,19 +287,23 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
   // Two days + 1 hour gives the lead a clean "aged" timestamp on the Open
   // Market side of the boundary, even accounting for small clock drift.
   const boundary = new Date(Date.now() - (2 * 86_400_000 + 3_600_000));
+  const noteSuffix = user.role === "MASTER" ? " (master cleared assignments)" : "";
 
   await prisma.$transaction(async (tx) => {
     await tx.lead.update({
       where: { id: lead.id },
       data: { status: "NEW", createdAt: boundary },
     });
+    if (user.role === "MASTER") {
+      await tx.leadAssignment.deleteMany({ where: { leadId: lead.id } });
+    }
     if (lead.status !== "NEW") {
       await tx.leadStatusChange.create({
         data: {
           leadId: lead.id,
           fromStatus: lead.status,
           toStatus: "NEW",
-          note: "Reset to Open Market",
+          note: "Reset to Open Market" + noteSuffix,
           changedById: user.id,
         },
       });
