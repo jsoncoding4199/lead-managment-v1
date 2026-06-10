@@ -107,6 +107,46 @@ export async function resetUserPasswordAction(_prev: { error?: string; ok?: bool
  * The master cannot delete themselves. Other MASTER accounts also can't be
  * deleted through this UI (we hide the button), but we double-check here too.
  */
+/** Master can rename users — change display name and/or username. */
+const EditUserSchema = z.object({
+  userId: z.coerce.number().int().positive(),
+  username: z.string().trim().toLowerCase().min(2).max(40).regex(/^[a-z0-9._-]+$/, "lowercase letters, digits, . _ - only"),
+  displayName: z.string().trim().min(1).max(60),
+});
+
+export async function editUserAction(formData: FormData): Promise<{ error?: string; ok?: boolean } | void> {
+  const master = await requireMaster();
+  const parsed = EditUserSchema.safeParse({
+    userId: formData.get("userId"),
+    username: formData.get("username"),
+    displayName: formData.get("displayName"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  const target = await prisma.user.findUnique({ where: { id: parsed.data.userId } });
+  if (!target) return { error: "User not found." };
+  if (target.role === "MASTER" && target.id !== master.id) {
+    return { error: "Other master accounts can't be edited from here." };
+  }
+
+  // If username changed, make sure the new one isn't taken by someone else.
+  if (parsed.data.username !== target.username) {
+    const clash = await prisma.user.findUnique({ where: { username: parsed.data.username } });
+    if (clash && clash.id !== target.id) {
+      return { error: "That username is already taken." };
+    }
+  }
+
+  await prisma.user.update({
+    where: { id: target.id },
+    data: { username: parsed.data.username, displayName: parsed.data.displayName },
+  });
+
+  revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 const DeleteUserSchema = z.object({
   userId: z.coerce.number().int().positive(),
 });
