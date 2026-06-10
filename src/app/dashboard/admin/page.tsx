@@ -1,14 +1,31 @@
+import type { LeadStatus } from "@prisma/client";
 import { requireMaster } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
 import { CreateUserForm } from "@/components/CreateUserForm";
 import { UserRow } from "@/components/UserRow";
 import { MaxPickupCard } from "@/components/MaxPickupCard";
+import { TeamStatsTable, type UserStatsRow } from "@/components/TeamStatsTable";
+
+function emptyStatusCounts(): Record<LeadStatus, number> {
+  return {
+    NEW: 0,
+    CONTACT_ABLE: 0,
+    CONTACT_NOT_ABLE: 0,
+    DOCUMENTS_ABLE: 0,
+    DOCUMENTS_NOT_ABLE: 0,
+    APPOINTMENT_ABLE: 0,
+    APPOINTMENT_NOT_ABLE: 0,
+    SPAM_OR_MISSING: 0,
+    REJECTED: 0,
+    APPROVED: 0,
+  };
+}
 
 export default async function AdminPage() {
   await requireMaster();
 
-  const [users, pendingResets, settings] = await Promise.all([
+  const [users, pendingResets, settings, assignmentRows] = await Promise.all([
     prisma.user.findMany({
       where: { role: "USER" },
       orderBy: [{ active: "desc" }, { displayName: "asc" }],
@@ -18,7 +35,35 @@ export default async function AdminPage() {
     }),
     prisma.passwordResetRequest.count({ where: { resolvedAt: null } }),
     getAppSettings(),
+    prisma.leadAssignment.findMany({
+      where: { user: { role: "USER" } },
+      select: {
+        userId: true,
+        lead: { select: { status: true } },
+      },
+    }),
   ]);
+
+  // Aggregate assignments per user by status.
+  const statsByUser = new Map<number, Record<LeadStatus, number>>();
+  for (const a of assignmentRows) {
+    const bucket = statsByUser.get(a.userId) ?? emptyStatusCounts();
+    bucket[a.lead.status] += 1;
+    statsByUser.set(a.userId, bucket);
+  }
+
+  const statsRows: UserStatsRow[] = users.map((u) => {
+    const counts = statsByUser.get(u.id) ?? emptyStatusCounts();
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return {
+      userId: u.id,
+      displayName: u.displayName,
+      username: u.username,
+      active: u.active,
+      counts,
+      total,
+    };
+  });
 
   return (
     <div className="space-y-8 max-w-5xl">
@@ -43,6 +88,8 @@ export default async function AdminPage() {
       )}
 
       <MaxPickupCard current={settings.maxPickup} />
+
+      <TeamStatsTable rows={statsRows} />
 
       <section className="card p-6">
         <h3 className="text-sm font-semibold text-ink-900">Add a new user</h3>

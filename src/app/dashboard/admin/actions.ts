@@ -98,3 +98,57 @@ export async function resetUserPasswordAction(_prev: { error?: string; ok?: bool
   revalidatePath("/dashboard/admin/resets");
   return { ok: true };
 }
+
+/**
+ * Hard-delete a user. Reassigns ownership of their leads + audit-trail rows
+ * to the master so foreign-key constraints don't block the delete. Their
+ * pickup-assignments and pending password-reset requests cascade away.
+ *
+ * The master cannot delete themselves. Other MASTER accounts also can't be
+ * deleted through this UI (we hide the button), but we double-check here too.
+ */
+const DeleteUserSchema = z.object({
+  userId: z.coerce.number().int().positive(),
+});
+
+export async function deleteUserAction(formData: FormData): Promise<{ error?: string } | void> {
+  const master = await requireMaster();
+  const parsed = DeleteUserSchema.safeParse({ userId: formData.get("userId") });
+  if (!parsed.success) return { error: "Invalid user." };
+
+  if (parsed.data.userId === master.id) {
+    return { error: "You can't delete your own account." };
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: parsed.data.userId } });
+  if (!target) return { error: "User not found." };
+  if (target.role === "MASTER") {
+    return { error: "Master accounts can't be deleted through the UI." };
+  }
+
+  // Transfer FK references to master, then delete. Cascade handles
+  // LeadAssignment (where target was an assignee) and PasswordResetRequest
+  // (where target is the subject).
+  await prisma.$transaction(async (tx) => {
+    await tx.lead.updateMany({
+      where: { createdById: target.id },
+      data: { createdById: master.id },
+    });
+    await tx.leadStatusChange.updateMany({
+      where: { changedById: target.id },
+      data: { changedById: master.id },
+    });
+    await tx.leadAssignment.updateMany({
+      where: { assignedById: target.id },
+      data: { assignedById: master.id },
+    });
+    await tx.passwordResetRequest.updateMany({
+      where: { resolvedById: target.id },
+      data: { resolvedById: master.id },
+    });
+    await tx.user.delete({ where: { id: target.id } });
+  });
+
+  revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard");
+}
