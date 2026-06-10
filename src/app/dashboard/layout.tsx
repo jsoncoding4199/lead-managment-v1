@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { logoutAction } from "@/app/login/actions";
 import { Sidebar } from "@/components/Sidebar";
 import { Notifier } from "@/components/Notifier";
+import { PushEnableButton } from "@/components/PushEnableButton";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </span>
           </div>
           <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+            <PushEnableButton />
             <Notifier />
             <form action={logoutAction}>
               <button className="btn btn-ghost h-9 px-2 md:px-4 text-xs md:text-sm">

@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { LeadStatus, LeadQuality } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, requireMaster } from "@/lib/auth";
+import { STATUS_LABEL } from "@/lib/leadStatus";
+import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
 
 const CreateSchema = z.object({
   content: z.string().trim().min(1, "Paste something into the lead.").max(8000),
@@ -17,7 +19,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  await prisma.lead.create({
+  const lead = await prisma.lead.create({
     data: {
       content: parsed.data.content,
       status: "NEW",
@@ -26,6 +28,19 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   });
 
   revalidatePath("/dashboard");
+
+  // Fire-and-forget push to everyone except the creator.
+  void sendPushToUsers({
+    userIds: await getAllUserIds(),
+    excludeUserId: user.id,
+    payload: {
+      title: "New lead",
+      body: `${user.displayName} added lead #${lead.id} in Fresh`,
+      url: `/dashboard/leads/${lead.id}`,
+      kind: "lead",
+      tag: `lead-${lead.id}`,
+    },
+  });
 }
 
 const StatusValues = [
@@ -81,6 +96,34 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
+
+  // Push: master-only for APPROVED, everyone else for normal transitions.
+  const toStatus = parsed.data.status as LeadStatus;
+  if (toStatus === "APPROVED") {
+    void sendPushToUsers({
+      userIds: await getMasterIds(),
+      excludeUserId: user.id,
+      payload: {
+        title: "Lead approved 🎉",
+        body: `${user.displayName} approved lead #${lead.id}`,
+        url: `/dashboard/leads/${lead.id}`,
+        kind: "approved",
+        tag: `lead-${lead.id}`,
+      },
+    });
+  } else {
+    void sendPushToUsers({
+      userIds: await getAllUserIds(),
+      excludeUserId: user.id,
+      payload: {
+        title: "Lead status changed",
+        body: `${user.displayName} moved #${lead.id} → ${STATUS_LABEL[toStatus]}`,
+        url: `/dashboard/leads/${lead.id}`,
+        kind: "status",
+        tag: `lead-${lead.id}`,
+      },
+    });
+  }
 }
 
 /**
@@ -312,6 +355,20 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
+
+  // Recirculation event — broadcast to everyone so they know the lead is
+  // back in the pool.
+  void sendPushToUsers({
+    userIds: await getAllUserIds(),
+    excludeUserId: user.id,
+    payload: {
+      title: "Lead back in Open Market",
+      body: `${user.displayName} reset lead #${lead.id} for pickup`,
+      url: `/dashboard/leads/${lead.id}`,
+      kind: "lead",
+      tag: `lead-${lead.id}`,
+    },
+  });
 }
 
 /** Any signed-in user can rate a lead's quality. Pass quality="" to clear it. */

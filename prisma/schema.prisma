@@ -46,6 +46,24 @@ model User {
   changes           LeadStatusChange[]
   resetRequests     PasswordResetRequest[] @relation("ResetSubject")
   resolvedResets    PasswordResetRequest[] @relation("ResetResolver")
+  pushSubscriptions PushSubscription[]
+}
+
+// Browser-issued Web Push subscription. One row per (user, browser).
+// A user who enables push on phone AND laptop gets two rows.
+// endpoint is globally unique (issued by FCM / Mozilla / Apple push services).
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Lead {
