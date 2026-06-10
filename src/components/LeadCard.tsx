@@ -162,11 +162,20 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
         </button>
       </header>
 
-      <Link href={`/dashboard/leads/${lead.id}`} className="block mt-3">
-        <pre className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-[12px] leading-relaxed text-ink-800 font-mono line-clamp-4 lg:line-clamp-5">
+      <div className="mt-3 relative group/content">
+        <pre
+          onClick={(e) => e.stopPropagation()}
+          className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-[12px] leading-relaxed text-ink-800 font-mono max-h-32 lg:max-h-40 overflow-y-auto overscroll-contain"
+        >
 {lead.content}
         </pre>
-      </Link>
+        <Link
+          href={`/dashboard/leads/${lead.id}`}
+          className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:underline"
+        >
+          Open details →
+        </Link>
+      </div>
 
       {lead.remark && (
         <Link
