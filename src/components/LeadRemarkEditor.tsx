@@ -92,7 +92,7 @@ export function LeadRemarkEditor({ leadId, initial }: Props) {
       ) : (
         <div className="mt-4">
           {initial ? (
-            <p className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 px-4 py-3 text-sm text-ink-800">
+            <p className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 px-4 py-3 text-sm text-ink-800 max-h-64 overflow-y-auto overscroll-contain">
               {initial}
             </p>
           ) : (

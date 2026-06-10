@@ -91,7 +91,7 @@ export function LeadContentEditor({ leadId, initial }: Props) {
           </div>
         </form>
       ) : (
-        <pre className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-ink-50 px-4 py-3 text-[13px] leading-relaxed text-ink-800 font-mono">
+        <pre className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-ink-50 px-4 py-3 text-[13px] leading-relaxed text-ink-800 font-mono max-h-80 overflow-y-auto overscroll-contain">
 {initial}
         </pre>
       )}
