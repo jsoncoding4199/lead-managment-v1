@@ -423,12 +423,18 @@ async function TabBarWithCounts({
     // Per-user enforcement for Fresh / Market views.
     if (user.role !== "MASTER") {
       const mine = l.assignments.some((a) => a.userId === user.id);
-      if (l.status === "NEW") {
-        if (!mine && l.assignments.length >= settings.maxPickup) continue;
-      } else if (ACTIVE_STATUSES.includes(l.status)) {
-        if (!mine) continue;
+      if (mine) {
+        // My picks belong to the My Pick Up tab; never count toward Fresh /
+        // Open Market for non-master viewers.
+        picksCount++;
+        continue;
       }
-      if (mine) picksCount++;
+      if (l.status === "NEW") {
+        if (l.assignments.length >= settings.maxPickup) continue;
+      } else if (ACTIVE_STATUSES.includes(l.status)) {
+        // ABLE leads are private to assignees — invisible to non-assignees.
+        continue;
+      }
     } else {
       // Master counts any lead with at least one assignee.
       if (l.assignments.length > 0) picksCount++;
@@ -515,60 +521,51 @@ function OpenGrouped({
   maxPickup: number;
 }) {
   if (viewer.role !== "MASTER") {
-    const mine = leads.filter((l) => l.assignees.some((a) => a.id === viewer.id));
+    // Non-master in Fresh / Open Market sees only leads they haven't picked
+    // up. Their own picks live exclusively in the My Pick Up tab so the
+    // pool view stays focused on what's grabbable.
     const available = leads.filter((l) => !l.assignees.some((a) => a.id === viewer.id));
+    if (available.length === 0) {
+      return (
+        <div className="card p-10 text-center">
+          <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">✦</div>
+          <h3 className="mt-4 text-base font-semibold text-ink-900">Nothing to pick up right now</h3>
+          <p className="mt-1 text-sm text-ink-500">
+            Your own picks are in the <Link href="/dashboard?tab=picks" className="text-brand-700 font-medium hover:underline">My Pick Up</Link> tab.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="space-y-6">
-        {mine.length > 0 && (
-          <CollapsibleSection
-            storageKey="open:mine"
-            count={mine.length}
-            header={
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-                  ME
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-ink-900">My picked-up leads</h3>
-                  <p className="text-xs text-ink-500">{mine.length} active</p>
-                </div>
+        <CollapsibleSection
+          storageKey="open:available"
+          count={available.length}
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
+                ⬆
               </div>
-            }
-          >
-            <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {mine.map((lead) => (
-                <li key={lead.id}>
-                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
-                </li>
-              ))}
-            </ul>
-          </CollapsibleSection>
-        )}
-        {available.length > 0 && (
-          <CollapsibleSection
-            storageKey="open:available"
-            count={available.length}
-            header={
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
-                  ⬆
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-ink-900">Available to pick up</h3>
-                  <p className="text-xs text-ink-500">{available.length} open · up to {maxPickup} pickers per lead</p>
-                </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">Available to pick up</h3>
+                <p className="text-xs text-ink-500">
+                  {available.length} open · up to {maxPickup} pickers per lead · your picks live in{" "}
+                  <Link href="/dashboard?tab=picks" className="text-brand-700 font-medium hover:underline">
+                    My Pick Up
+                  </Link>
+                </p>
               </div>
-            }
-          >
-            <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {available.map((lead) => (
-                <li key={lead.id}>
-                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
-                </li>
-              ))}
-            </ul>
-          </CollapsibleSection>
-        )}
+            </div>
+          }
+        >
+          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {available.map((lead) => (
+              <li key={lead.id}>
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+              </li>
+            ))}
+          </ul>
+        </CollapsibleSection>
       </div>
     );
   }
