@@ -10,7 +10,18 @@ type Event = { id: string; kind: EventKind; text: string; at: string; leadId: nu
 
 type Toast = { id: number; kind: EventKind; text: string; href: string };
 
-const POLL_MS = 4_000; // 4 seconds — tight enough to feel real-time, light on the API
+/**
+ * Polling cadence:
+ *   - Without push: 5s. Tight enough to feel "live" without hammering the API.
+ *   - With push:    30s. Push handles the realtime path; this is just a
+ *                   fallback for catching missed events / stale data.
+ *
+ * The push service worker also `postMessage`s the page on every push event,
+ * so the UI refreshes instantly — polling is purely belt-and-braces when
+ * push is on.
+ */
+const POLL_MS_NO_PUSH = 5_000;
+const POLL_MS_WITH_PUSH = 30_000;
 const TOAST_TTL = 7_000;
 
 /**
@@ -37,9 +48,44 @@ export function Notifier() {
     }, TOAST_TTL);
   }, []);
 
+  // Track whether push is active so we can ease off the polling interval.
+  const [pushActive, setPushActive] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = await reg?.pushManager.getSubscription();
+        if (!cancelled) setPushActive(!!sub);
+      } catch {
+        /* push API unavailable */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Service worker pushes a `lb:refresh` message after every push event so
+  // the UI rehydrates the instant the push lands — no polling delay.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "lb:refresh") {
+        router.refresh();
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [router]);
+
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
+    const intervalMs = pushActive ? POLL_MS_WITH_PUSH : POLL_MS_NO_PUSH;
 
     const tick = async () => {
       if (cancelled) return;
@@ -72,7 +118,7 @@ export function Notifier() {
 
     const schedule = () => {
       if (cancelled) return;
-      timer = window.setTimeout(tick, POLL_MS);
+      timer = window.setTimeout(tick, intervalMs);
     };
 
     // Kick off a beat after mount so we don't race hydration.
@@ -82,7 +128,7 @@ export function Notifier() {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [router, pushToast]);
+  }, [router, pushToast, pushActive]);
 
   return (
     <>

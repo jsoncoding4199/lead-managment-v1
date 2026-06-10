@@ -390,14 +390,26 @@ async function TabBarWithCounts({
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
 
-  const visibility = freshOrMarketVisibility(user);
+  // Light SELECT — no large nested arrays. Each lead carries:
+  //   - assignmentCount (single int from a SQL COUNT)
+  //   - mineFlag         (boolean from a take:1 + where mine WHERE)
+  // Cuts the payload from O(leads * assignees) to O(leads).
   const allLeads = await prisma.lead.findMany({
-    where: user.role === "MASTER" ? {} : visibility,
+    where: user.role === "MASTER" ? {} : freshOrMarketVisibility(user),
     select: {
       id: true,
       status: true,
       createdAt: true,
-      assignments: { select: { userId: true } },
+      _count: { select: { assignments: true } },
+      ...(user.role === "MASTER"
+        ? {}
+        : {
+            assignments: {
+              where: { userId: user.id },
+              select: { userId: true },
+              take: 1,
+            },
+          }),
     },
   });
 
@@ -407,37 +419,33 @@ async function TabBarWithCounts({
   let archiveCount = 0;
 
   for (const l of allLeads) {
+    const count = l._count.assignments;
     const archiveBound =
       l.status === "APPROVED" ||
-      (ARCHIVABLE_NOT_ABLE_STATUSES.includes(l.status) && l.assignments.length >= settings.maxPickup);
+      (ARCHIVABLE_NOT_ABLE_STATUSES.includes(l.status) && count >= settings.maxPickup);
 
     if (archiveBound) {
       if (user.role === "MASTER") {
         archiveCount++;
-        // Master's My Pick Up also counts archived leads with assignees.
-        if (l.assignments.length > 0) picksCount++;
+        if (count > 0) picksCount++;
       }
       continue;
     }
 
-    // Per-user enforcement for Fresh / Market views.
     if (user.role !== "MASTER") {
-      const mine = l.assignments.some((a) => a.userId === user.id);
+      // mineFlag inferred from the targeted take:1 select.
+      const mine = (l.assignments as { userId: number }[] | undefined)?.length ?? 0;
       if (mine) {
-        // My picks belong to the My Pick Up tab; never count toward Fresh /
-        // Open Market for non-master viewers.
         picksCount++;
         continue;
       }
       if (l.status === "NEW") {
-        if (l.assignments.length >= settings.maxPickup) continue;
+        if (count >= settings.maxPickup) continue;
       } else if (ACTIVE_STATUSES.includes(l.status)) {
-        // ABLE leads are private to assignees — invisible to non-assignees.
         continue;
       }
-    } else {
-      // Master counts any lead with at least one assignee.
-      if (l.assignments.length > 0) picksCount++;
+    } else if (count > 0) {
+      picksCount++;
     }
 
     if (l.createdAt > cutoff) freshCount++;

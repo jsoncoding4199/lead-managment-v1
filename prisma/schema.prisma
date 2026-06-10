@@ -82,6 +82,8 @@ model Lead {
 
   @@index([status])
   @@index([createdById])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model LeadAssignment {

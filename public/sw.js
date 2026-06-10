@@ -42,7 +42,17 @@ self.addEventListener("push", (event) => {
     vibrate: data.kind === "approved" ? [200, 50, 200, 50, 400] : [120, 60, 120],
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      await self.registration.showNotification(title, options);
+      // Push happened — tell every open tab to re-fetch fresh server data,
+      // so the UI updates instantly without waiting for the next poll.
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of clients) {
+        client.postMessage({ type: "lb:refresh", at: Date.now(), kind: data.kind || "status" });
+      }
+    })()
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {

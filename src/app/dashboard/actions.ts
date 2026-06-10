@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import type { LeadStatus, LeadQuality } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -29,17 +30,19 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
 
   revalidatePath("/dashboard");
 
-  // Fire-and-forget push to everyone except the creator.
-  void sendPushToUsers({
-    userIds: await getAllUserIds(),
-    excludeUserId: user.id,
-    payload: {
-      title: "New lead",
-      body: `${user.displayName} added lead #${lead.id} in Fresh`,
-      url: `/dashboard/leads/${lead.id}`,
-      kind: "lead",
-      tag: `lead-${lead.id}`,
-    },
+  // Push runs AFTER the action response is sent — never blocks the click.
+  after(async () => {
+    await sendPushToUsers({
+      userIds: await getAllUserIds(),
+      excludeUserId: user.id,
+      payload: {
+        title: "New lead",
+        body: `${user.displayName} added lead #${lead.id} in Fresh`,
+        url: `/dashboard/leads/${lead.id}`,
+        kind: "lead",
+        tag: `lead-${lead.id}`,
+      },
+    });
   });
 }
 
@@ -97,33 +100,36 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
 
-  // Push: master-only for APPROVED, everyone else for normal transitions.
+  // Push runs after the response is sent — master gets approved events,
+  // everyone else gets non-APPROVED transitions.
   const toStatus = parsed.data.status as LeadStatus;
-  if (toStatus === "APPROVED") {
-    void sendPushToUsers({
-      userIds: await getMasterIds(),
-      excludeUserId: user.id,
-      payload: {
-        title: "Lead approved 🎉",
-        body: `${user.displayName} approved lead #${lead.id}`,
-        url: `/dashboard/leads/${lead.id}`,
-        kind: "approved",
-        tag: `lead-${lead.id}`,
-      },
-    });
-  } else {
-    void sendPushToUsers({
-      userIds: await getAllUserIds(),
-      excludeUserId: user.id,
-      payload: {
-        title: "Lead status changed",
-        body: `${user.displayName} moved #${lead.id} → ${STATUS_LABEL[toStatus]}`,
-        url: `/dashboard/leads/${lead.id}`,
-        kind: "status",
-        tag: `lead-${lead.id}`,
-      },
-    });
-  }
+  after(async () => {
+    if (toStatus === "APPROVED") {
+      await sendPushToUsers({
+        userIds: await getMasterIds(),
+        excludeUserId: user.id,
+        payload: {
+          title: "Lead approved 🎉",
+          body: `${user.displayName} approved lead #${lead.id}`,
+          url: `/dashboard/leads/${lead.id}`,
+          kind: "approved",
+          tag: `lead-${lead.id}`,
+        },
+      });
+    } else {
+      await sendPushToUsers({
+        userIds: await getAllUserIds(),
+        excludeUserId: user.id,
+        payload: {
+          title: "Lead status changed",
+          body: `${user.displayName} moved #${lead.id} → ${STATUS_LABEL[toStatus]}`,
+          url: `/dashboard/leads/${lead.id}`,
+          kind: "status",
+          tag: `lead-${lead.id}`,
+        },
+      });
+    }
+  });
 }
 
 /**
@@ -356,18 +362,19 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
 
-  // Recirculation event — broadcast to everyone so they know the lead is
-  // back in the pool.
-  void sendPushToUsers({
-    userIds: await getAllUserIds(),
-    excludeUserId: user.id,
-    payload: {
-      title: "Lead back in Open Market",
-      body: `${user.displayName} reset lead #${lead.id} for pickup`,
-      url: `/dashboard/leads/${lead.id}`,
-      kind: "lead",
-      tag: `lead-${lead.id}`,
-    },
+  // Recirculation event — push after the response, broadcast to everyone.
+  after(async () => {
+    await sendPushToUsers({
+      userIds: await getAllUserIds(),
+      excludeUserId: user.id,
+      payload: {
+        title: "Lead back in Open Market",
+        body: `${user.displayName} reset lead #${lead.id} for pickup`,
+        url: `/dashboard/leads/${lead.id}`,
+        kind: "lead",
+        tag: `lead-${lead.id}`,
+      },
+    });
   });
 }
 
