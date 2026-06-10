@@ -2,20 +2,24 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 
+export type DashboardTab = "fresh" | "market" | "picks" | "archive";
+
 type Props = {
-  tab: "fresh" | "market" | "archive";
+  tab: DashboardTab;
   freshCount: number;
   marketCount: number;
+  picksCount: number;
   archiveCount: number;
   q: string;
 };
 
-export function TabBar({ tab, freshCount, marketCount, archiveCount, q }: Props) {
+export function TabBar({ tab, freshCount, marketCount, picksCount, archiveCount, q }: Props) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div className="inline-flex rounded-xl bg-white p-1 ring-1 ring-ink-200 shadow-soft self-start overflow-x-auto">
         <TabLink href="/dashboard" active={tab === "fresh"} label="Fresh" count={freshCount} />
         <TabLink href="/dashboard?tab=market" active={tab === "market"} label="Open Market" count={marketCount} />
+        <TabLink href="/dashboard?tab=picks" active={tab === "picks"} label="My Pick Up" count={picksCount} />
         <TabLink href="/dashboard?tab=archive" active={tab === "archive"} label="Archive" count={archiveCount} />
       </div>
 

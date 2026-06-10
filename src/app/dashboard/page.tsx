@@ -37,8 +37,14 @@ export default async function DashboardPage({
 }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const tab: "fresh" | "market" | "archive" =
-    sp.tab === "market" ? "market" : sp.tab === "archive" ? "archive" : "fresh";
+  const tab: "fresh" | "market" | "picks" | "archive" =
+    sp.tab === "market"
+      ? "market"
+      : sp.tab === "picks"
+        ? "picks"
+        : sp.tab === "archive"
+          ? "archive"
+          : "fresh";
   const q = (sp.q ?? "").trim();
 
   return (
@@ -54,7 +60,11 @@ export default async function DashboardPage({
               ? user.role === "MASTER"
                 ? "Leads that have moved out of New, grouped by status."
                 : "Leads the team has moved out of New. Approved leads are master-only."
-              : "Long-term archive — empty for now."}
+              : tab === "picks"
+                ? user.role === "MASTER"
+                  ? "Every lead picked up by the team, grouped by who has it."
+                  : "Leads you've personally picked up."
+                : "Closed and approved leads — master only."}
         </p>
       </div>
 
@@ -133,12 +143,69 @@ async function LeadsSection({
   q,
   user,
 }: {
-  tab: "fresh" | "market" | "archive";
+  tab: "fresh" | "market" | "picks" | "archive";
   q: string;
   user: CurrentUser;
 }) {
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
+
+  /* ---------- My Pick Up tab ---------- */
+  if (tab === "picks") {
+    // Non-master: only leads where I'm an assignee (excluding APPROVED, which
+    // is master-only anyway). Master: every lead that has at least one
+    // assignee — grouped by user on the render side.
+    const baseWhere: Prisma.LeadWhereInput =
+      user.role === "MASTER"
+        ? { assignments: { some: {} } }
+        : {
+            AND: [
+              { assignments: { some: { userId: user.id } } },
+              { status: { not: "APPROVED" } },
+            ],
+          };
+
+    const [picked, teamUsers] = await Promise.all([
+      prisma.lead.findMany({
+        where: {
+          AND: [
+            baseWhere,
+            q ? { content: { contains: q, mode: "insensitive" as const } } : {},
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 200,
+        select: leadSelect,
+      }),
+      user.role === "MASTER"
+        ? prisma.user.findMany({
+            where: { active: true, role: "USER" },
+            select: { id: true, displayName: true },
+            orderBy: { displayName: "asc" },
+          })
+        : Promise.resolve([] as { id: number; displayName: string }[]),
+    ]);
+
+    if (picked.length === 0) {
+      return <EmptyState tab="picks" hasQuery={!!q} />;
+    }
+    const leads = picked.map(toLeadView);
+    return user.role === "MASTER" ? (
+      <PicksByAssignee
+        leads={leads}
+        viewer={user}
+        teamUsers={teamUsers}
+        maxPickup={settings.maxPickup}
+      />
+    ) : (
+      <MyPicksByStatus
+        leads={leads}
+        viewer={user}
+        teamUsers={teamUsers}
+        maxPickup={settings.maxPickup}
+      />
+    );
+  }
 
   /* ---------- Archive tab — master only ---------- */
   if (tab === "archive") {
@@ -316,15 +383,13 @@ async function TabBarWithCounts({
   q,
   user,
 }: {
-  tab: "fresh" | "market" | "archive";
+  tab: "fresh" | "market" | "picks" | "archive";
   q: string;
   user: CurrentUser;
 }) {
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
 
-  // Pull everything that could appear in any tab, then bucket in JS. Cheaper
-  // than three separate queries given there's no SQL-side aggregate filter.
   const visibility = freshOrMarketVisibility(user);
   const allLeads = await prisma.lead.findMany({
     where: user.role === "MASTER" ? {} : visibility,
@@ -338,6 +403,7 @@ async function TabBarWithCounts({
 
   let freshCount = 0;
   let marketCount = 0;
+  let picksCount = 0;
   let archiveCount = 0;
 
   for (const l of allLeads) {
@@ -346,11 +412,15 @@ async function TabBarWithCounts({
       (ARCHIVABLE_NOT_ABLE_STATUSES.includes(l.status) && l.assignments.length >= settings.maxPickup);
 
     if (archiveBound) {
-      if (user.role === "MASTER") archiveCount++;
+      if (user.role === "MASTER") {
+        archiveCount++;
+        // Master's My Pick Up also counts archived leads with assignees.
+        if (l.assignments.length > 0) picksCount++;
+      }
       continue;
     }
 
-    // For non-master: enforce visibility for NEW (cap) and skip ABLE not assigned to me.
+    // Per-user enforcement for Fresh / Market views.
     if (user.role !== "MASTER") {
       const mine = l.assignments.some((a) => a.userId === user.id);
       if (l.status === "NEW") {
@@ -358,6 +428,10 @@ async function TabBarWithCounts({
       } else if (ACTIVE_STATUSES.includes(l.status)) {
         if (!mine) continue;
       }
+      if (mine) picksCount++;
+    } else {
+      // Master counts any lead with at least one assignee.
+      if (l.assignments.length > 0) picksCount++;
     }
 
     if (l.createdAt > cutoff) freshCount++;
@@ -369,6 +443,7 @@ async function TabBarWithCounts({
       tab={tab}
       freshCount={freshCount}
       marketCount={marketCount}
+      picksCount={picksCount}
       archiveCount={archiveCount}
       q={q}
     />
@@ -668,21 +743,167 @@ function ArchiveByAssignee({
   );
 }
 
-function EmptyState({ tab, hasQuery }: { tab: "fresh" | "market" | "archive"; hasQuery: boolean }) {
+/**
+ * Non-master "My Pick Up" — flat collapsible groups by current status.
+ * Lets the user scan their own portfolio without other people's leads.
+ */
+function MyPicksByStatus({
+  leads,
+  viewer,
+  teamUsers,
+  maxPickup,
+}: {
+  leads: LeadView[];
+  viewer: CurrentUser;
+  teamUsers: { id: number; displayName: string }[];
+  maxPickup: number;
+}) {
+  const byStatus = new Map<LeadStatus, LeadView[]>();
+  for (const lead of leads) {
+    const arr = byStatus.get(lead.status) ?? [];
+    arr.push(lead);
+    byStatus.set(lead.status, arr);
+  }
+  // Display order: most actionable first
+  const ORDER: LeadStatus[] = [
+    "NEW",
+    "CONTACT_ABLE",
+    "DOCUMENTS_ABLE",
+    "APPOINTMENT_ABLE",
+    "CONTACT_NOT_ABLE",
+    "DOCUMENTS_NOT_ABLE",
+    "APPOINTMENT_NOT_ABLE",
+    "SPAM_OR_MISSING",
+    "REJECTED",
+  ];
+  const sections = ORDER.filter((s) => (byStatus.get(s)?.length ?? 0) > 0);
+
+  return (
+    <div className="space-y-6">
+      {sections.map((s) => {
+        const items = byStatus.get(s) ?? [];
+        return (
+          <CollapsibleSection
+            key={s}
+            storageKey={`picks:${s}`}
+            count={items.length}
+            header={
+              <div className="flex items-center gap-3">
+                <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                  {items.length}
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-ink-900">
+                    {{
+                      NEW: "Just picked up",
+                      CONTACT_ABLE: "Contact · Able",
+                      CONTACT_NOT_ABLE: "Contact · Not Able",
+                      DOCUMENTS_ABLE: "Documents · Able to Get",
+                      DOCUMENTS_NOT_ABLE: "Documents · Not Able",
+                      APPOINTMENT_ABLE: "Appointment · Able",
+                      APPOINTMENT_NOT_ABLE: "Appointment · Not Able",
+                      SPAM_OR_MISSING: "Spam or Missing",
+                      REJECTED: "Rejected",
+                      APPROVED: "Approved",
+                    }[s]}
+                  </h3>
+                </div>
+              </div>
+            }
+          >
+            <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {items.map((lead) => (
+                <li key={lead.id}>
+                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                </li>
+              ))}
+            </ul>
+          </CollapsibleSection>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Master "My Pick Up" — every assigned lead grouped by assignee user.
+ * A lead with multiple pickers appears under each of their sections.
+ */
+function PicksByAssignee({
+  leads,
+  viewer,
+  teamUsers,
+  maxPickup,
+}: {
+  leads: LeadView[];
+  viewer: CurrentUser;
+  teamUsers: { id: number; displayName: string }[];
+  maxPickup: number;
+}) {
+  const buckets = new Map<string, { label: string; items: LeadView[] }>();
+  for (const lead of leads) {
+    for (const a of lead.assignees) {
+      const key = `user:${a.id}`;
+      const b = buckets.get(key) ?? { label: a.displayName, items: [] };
+      b.items.push(lead);
+      buckets.set(key, b);
+    }
+  }
+  const entries = Array.from(buckets.entries()).sort((a, b) => a[1].label.localeCompare(b[1].label));
+
+  return (
+    <div className="space-y-6">
+      {entries.map(([key, bucket]) => (
+        <CollapsibleSection
+          key={key}
+          storageKey={`picks:${key}`}
+          count={bucket.items.length}
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                {initials(bucket.label)}
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">{bucket.label}</h3>
+                <p className="text-xs text-ink-500">
+                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} picked up
+                </p>
+              </div>
+            </div>
+          }
+        >
+          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {bucket.items.map((lead) => (
+              <li key={lead.id}>
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+              </li>
+            ))}
+          </ul>
+        </CollapsibleSection>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ tab, hasQuery }: { tab: "fresh" | "market" | "picks" | "archive"; hasQuery: boolean }) {
   const title = hasQuery
     ? "No leads match your search"
     : tab === "fresh"
       ? "No leads to show"
       : tab === "market"
         ? "Open Market is empty"
-        : "Archive is empty";
+        : tab === "picks"
+          ? "Nothing picked up yet"
+          : "Archive is empty";
   const body = hasQuery
     ? "Try a different search term."
     : tab === "fresh"
       ? "Paste a new lead above, or wait for a teammate to drop one in."
       : tab === "market"
         ? "Closed leads will appear here once the team starts moving them out of New."
-        : "Nothing has been moved to the long-term archive yet.";
+        : tab === "picks"
+          ? "Pick up a lead from Fresh or Open Market and it'll show up here."
+          : "Nothing has been moved to the long-term archive yet.";
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">

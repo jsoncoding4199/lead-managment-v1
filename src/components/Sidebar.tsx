@@ -13,6 +13,7 @@ import {
   Sparkles,
   Menu,
   X,
+  Hand,
 } from "lucide-react";
 
 type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
@@ -129,7 +130,7 @@ function SidebarInner({
         <NavLink
           href="/dashboard"
           icon={LayoutGrid}
-          active={onDashboardRoot && tab !== "market" && tab !== "archive"}
+          active={onDashboardRoot && tab !== "market" && tab !== "archive" && tab !== "picks"}
         >
           Fresh
         </NavLink>
@@ -139,6 +140,13 @@ function SidebarInner({
           active={onDashboardRoot && tab === "market"}
         >
           Open Market
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=picks"
+          icon={Hand}
+          active={onDashboardRoot && tab === "picks"}
+        >
+          My Pick Up
         </NavLink>
         <NavLink
           href="/dashboard?tab=archive"
