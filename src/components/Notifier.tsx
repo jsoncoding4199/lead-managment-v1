@@ -2,29 +2,26 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BellRing, X, Wifi } from "lucide-react";
+import { Bell, BellRing, X, Wifi, Sparkles, Plus, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Event = { id: string; kind: "status" | "comment" | "lead"; text: string; at: string; leadId: number };
+type EventKind = "status" | "lead" | "approved";
+type Event = { id: string; kind: EventKind; text: string; at: string; leadId: number };
 
-type Toast = { id: number; text: string; href: string };
+type Toast = { id: number; kind: EventKind; text: string; href: string };
 
-const POLL_MS = 10_000; // 10s
+const POLL_MS = 4_000; // 4 seconds — tight enough to feel real-time, light on the API
 const TOAST_TTL = 7_000;
 
 /**
- * Near-real-time updates without a separate websocket service:
+ * Near-real-time updates without a websocket service:
  *
- *  - polls /api/changes every 10s while the tab is visible
- *  - triggers router.refresh() when there are new events (so the page data
- *    re-fetches and updates without a hard reload)
- *  - surfaces each event as a small toast in the bottom-right
- *  - if the user has granted Notification permission, also fires a native
- *    OS notification (visible even when the browser is unfocused, as long
- *    as the tab is still open)
+ *  - polls /api/changes every POLL_MS while the tab is visible
+ *  - triggers router.refresh() when there are new events
+ *  - each event is shown as a toast bottom-right
+ *  - native OS notification if the user has granted permission via the bell
  *
- * Permission prompt is opt-in (the bell button) so we don't blast users
- * with a permission dialog on first visit.
+ * Approved events get celebratory styling (master sees these only).
  */
 export function Notifier() {
   const router = useRouter();
@@ -33,7 +30,6 @@ export function Notifier() {
   const [perm, setPerm] = useState<NotificationPermission>("default");
   const [online, setOnline] = useState(true);
 
-  // Sync permission state on mount.
   useEffect(() => {
     if (typeof Notification === "undefined") return;
     setPerm(Notification.permission);
@@ -47,10 +43,10 @@ export function Notifier() {
     };
   }, []);
 
-  const pushToast = useCallback((text: string, leadId: number) => {
+  const pushToast = useCallback((kind: EventKind, text: string, leadId: number) => {
     const id = Date.now() + Math.random();
     const href = `/dashboard/leads/${leadId}`;
-    setToasts((t) => [...t, { id, text, href }]);
+    setToasts((t) => [...t, { id, kind, text, href }]);
     window.setTimeout(() => {
       setToasts((t) => t.filter((x) => x.id !== id));
     }, TOAST_TTL);
@@ -70,7 +66,6 @@ export function Notifier() {
     }
   }, []);
 
-  // Polling loop.
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
@@ -84,10 +79,7 @@ export function Notifier() {
       try {
         const url = `/api/changes?since=${encodeURIComponent(lastCheckRef.current)}`;
         const res = await fetch(url, { cache: "no-store" });
-        if (res.status === 401) {
-          // Session expired -- stop polling, let the next nav redirect to /login.
-          return;
-        }
+        if (res.status === 401) return; // session expired, stop polling
         if (!res.ok) {
           schedule();
           return;
@@ -95,14 +87,14 @@ export function Notifier() {
         const data: { events: Event[]; hasNew: boolean; now: string } = await res.json();
         if (data.hasNew && data.events.length > 0) {
           for (const ev of data.events.slice(0, 5)) {
-            pushToast(ev.text, ev.leadId);
+            pushToast(ev.kind, ev.text, ev.leadId);
             fireBrowserNotification(ev.text, `/dashboard/leads/${ev.leadId}`);
           }
           router.refresh();
         }
         lastCheckRef.current = data.now;
       } catch {
-        // Network blip -- try again next tick.
+        /* network blip — retry next tick */
       } finally {
         schedule();
       }
@@ -113,8 +105,8 @@ export function Notifier() {
       timer = window.setTimeout(tick, POLL_MS);
     };
 
-    // Kick the first poll a beat after mount so we don't race hydration.
-    timer = window.setTimeout(tick, 2000);
+    // Kick off a beat after mount so we don't race hydration.
+    timer = window.setTimeout(tick, 1500);
 
     return () => {
       cancelled = true;
@@ -130,7 +122,6 @@ export function Notifier() {
 
   return (
     <>
-      {/* Bell button — appears in the header via the page chrome */}
       <button
         onClick={askPermission}
         title={
@@ -159,18 +150,41 @@ export function Notifier() {
         )}
       </button>
 
-      {/* Toast stack — portal-ish via fixed positioning, z above modal portal */}
       <div className="fixed bottom-4 right-4 z-[110] w-[calc(100%-2rem)] sm:w-96 space-y-2 pointer-events-none">
         {toasts.map((t) => (
           <a
             key={t.id}
             href={t.href}
-            className="pointer-events-auto block rounded-xl border border-ink-200 bg-white/95 backdrop-blur p-3 shadow-lift animate-in hover:bg-ink-50"
+            className={cn(
+              "pointer-events-auto block rounded-xl border p-3 shadow-lift animate-in transition-colors",
+              t.kind === "approved"
+                ? "border-emerald-300 bg-emerald-50/95 backdrop-blur hover:bg-emerald-50"
+                : t.kind === "lead"
+                  ? "border-brand-300 bg-brand-50/95 backdrop-blur hover:bg-brand-50"
+                  : "border-ink-200 bg-white/95 backdrop-blur hover:bg-ink-50"
+            )}
           >
             <div className="flex items-start gap-2">
-              <BellRing className="h-4 w-4 text-brand-600 shrink-0 mt-0.5" />
+              {t.kind === "approved" ? (
+                <Sparkles className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : t.kind === "lead" ? (
+                <Plus className="h-4 w-4 text-brand-600 shrink-0 mt-0.5" />
+              ) : (
+                <ArrowRight className="h-4 w-4 text-ink-700 shrink-0 mt-0.5" />
+              )}
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] leading-relaxed text-ink-800 line-clamp-3">{t.text}</p>
+                <p
+                  className={cn(
+                    "text-[13px] leading-relaxed line-clamp-3",
+                    t.kind === "approved"
+                      ? "text-emerald-900"
+                      : t.kind === "lead"
+                        ? "text-brand-900"
+                        : "text-ink-800"
+                  )}
+                >
+                  {t.text}
+                </p>
               </div>
               <button
                 onClick={(e) => {

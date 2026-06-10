@@ -11,16 +11,20 @@ export const dynamic = "force-dynamic";
  *   GET /api/changes?since=2026-06-08T03:00:00.000Z
  *
  * Returns:
- *  - events:  human-readable strings ("Alex moved #14 to Contact · Able", etc.)
- *  - hasNew:  true if anything happened since `since` (so client can refresh)
- *  - now:     server timestamp to send as `since` on the next poll
+ *   events     — `kind: "lead" | "status" | "approved"` items since `since`
+ *   hasNew     — true if anything happened (so the client can refresh)
+ *   now        — server timestamp to send as `since` on the next poll
  *
- * Auth: returns 401 if no session. Events authored by the *current* user are
- * filtered out — you don't need a notification for your own actions.
+ * Rules:
+ *   - Events authored by the *current* user are filtered out — no
+ *     self-notifications.
+ *   - "approved" status changes (toStatus === APPROVED) are master-only.
+ *     Non-master callers never see them because they can't view approved
+ *     leads anyway.
  */
 type Event = {
   id: string;
-  kind: "status" | "lead";
+  kind: "status" | "lead" | "approved";
   text: string;
   at: string;
   leadId: number;
@@ -38,11 +42,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "bad_since" }, { status: 400 });
   }
 
+  const isMaster = me.role === "MASTER";
+
   const [statusChanges, newLeads] = await Promise.all([
     prisma.leadStatusChange.findMany({
-      where: { changedAt: { gt: since }, changedById: { not: me.id } },
+      where: {
+        changedAt: { gt: since },
+        changedById: { not: me.id },
+        // Non-master: never include APPROVED transitions (those leads are
+        // master-only).
+        ...(isMaster ? {} : { toStatus: { not: "APPROVED" } }),
+      },
       orderBy: { changedAt: "desc" },
-      take: 20,
+      take: 30,
       select: {
         id: true,
         leadId: true,
@@ -54,7 +66,7 @@ export async function GET(req: NextRequest) {
     prisma.lead.findMany({
       where: { createdAt: { gt: since }, createdById: { not: me.id } },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 30,
       select: {
         id: true,
         createdAt: true,
@@ -66,13 +78,24 @@ export async function GET(req: NextRequest) {
   const events: Event[] = [];
 
   for (const c of statusChanges) {
-    events.push({
-      id: `s${c.id}`,
-      kind: "status",
-      leadId: c.leadId,
-      text: `${c.changedBy.displayName} moved lead #${c.leadId} to ${STATUS_LABEL[c.toStatus]}`,
-      at: c.changedAt.toISOString(),
-    });
+    if (c.toStatus === "APPROVED") {
+      // Master-only celebratory event.
+      events.push({
+        id: `a${c.id}`,
+        kind: "approved",
+        leadId: c.leadId,
+        text: `${c.changedBy.displayName} approved lead #${c.leadId} 🎉`,
+        at: c.changedAt.toISOString(),
+      });
+    } else {
+      events.push({
+        id: `s${c.id}`,
+        kind: "status",
+        leadId: c.leadId,
+        text: `${c.changedBy.displayName} moved lead #${c.leadId} to ${STATUS_LABEL[c.toStatus]}`,
+        at: c.changedAt.toISOString(),
+      });
+    }
   }
   for (const l of newLeads) {
     events.push({
@@ -84,7 +107,6 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Newest first.
   events.sort((a, b) => b.at.localeCompare(a.at));
 
   return NextResponse.json(
