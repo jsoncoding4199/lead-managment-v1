@@ -6,6 +6,7 @@ import { CreateUserForm } from "@/components/CreateUserForm";
 import { UserRow } from "@/components/UserRow";
 import { MaxPickupCard } from "@/components/MaxPickupCard";
 import { TeamStatsTable, type UserStatsRow } from "@/components/TeamStatsTable";
+import { MasterProfileCard } from "@/components/MasterProfileCard";
 
 function emptyStatusCounts(): Record<LeadStatus, number> {
   return {
@@ -23,9 +24,9 @@ function emptyStatusCounts(): Record<LeadStatus, number> {
 }
 
 export default async function AdminPage() {
-  await requireMaster();
+  const master = await requireMaster();
 
-  const [users, pendingResets, settings, assignmentRows] = await Promise.all([
+  const [users, pendingResets, settings, assignmentRows, masterProfile] = await Promise.all([
     prisma.user.findMany({
       where: { role: "USER" },
       orderBy: [{ active: "desc" }, { displayName: "asc" }],
@@ -41,6 +42,10 @@ export default async function AdminPage() {
         userId: true,
         lead: { select: { status: true } },
       },
+    }),
+    prisma.user.findUnique({
+      where: { id: master.id },
+      select: { id: true, username: true, displayName: true },
     }),
   ]);
 
@@ -86,6 +91,8 @@ export default async function AdminPage() {
           </a>
         </div>
       )}
+
+      {masterProfile && <MasterProfileCard master={masterProfile} />}
 
       <MaxPickupCard current={settings.maxPickup} />
 
