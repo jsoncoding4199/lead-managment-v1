@@ -30,8 +30,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Leadboard";
   const options = {
     body: data.body || "",
-    icon: data.icon || "/icon",
-    badge: data.badge || "/icon",
+    icon: data.icon || "/icon.png",
+    badge: data.badge || "/icon.png",
     data: {
       url: data.url || "/dashboard",
       kind: data.kind || "status",
