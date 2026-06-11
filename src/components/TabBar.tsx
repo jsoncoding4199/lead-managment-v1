@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 
-export type DashboardTab = "fresh" | "market" | "picks" | "archive";
+export type DashboardTab = "fresh" | "market" | "picks" | "archive" | "aha" | "ahb";
 
 type Props = {
   tab: DashboardTab;
@@ -10,10 +10,25 @@ type Props = {
   marketCount: number;
   picksCount: number;
   archiveCount: number;
+  showAHA?: boolean;
+  showAHB?: boolean;
+  ahaCount?: number;
+  ahbCount?: number;
   q: string;
 };
 
-export function TabBar({ tab, freshCount, marketCount, picksCount, archiveCount, q }: Props) {
+export function TabBar({
+  tab,
+  freshCount,
+  marketCount,
+  picksCount,
+  archiveCount,
+  showAHA,
+  showAHB,
+  ahaCount = 0,
+  ahbCount = 0,
+  q,
+}: Props) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       {/*
@@ -22,12 +37,18 @@ export function TabBar({ tab, freshCount, marketCount, picksCount, archiveCount,
         flex pills inside actually trigger overflow. w-max on the inner row
         keeps each tab from shrinking.
       */}
-      <div className="w-full sm:w-auto max-w-full rounded-xl bg-white p-0.5 sm:p-1 ring-1 ring-ink-200 shadow-soft">
+      <div className="w-full sm:w-auto max-w-full overflow-x-auto rounded-xl bg-white p-0.5 sm:p-1 ring-1 ring-ink-200 shadow-soft">
         <div className="flex w-full sm:w-max">
           <TabLink href="/dashboard" active={tab === "fresh"} count={freshCount} short="Fresh" long="Fresh" />
           <TabLink href="/dashboard?tab=market" active={tab === "market"} count={marketCount} short="Market" long="Open Market" />
           <TabLink href="/dashboard?tab=picks" active={tab === "picks"} count={picksCount} short="Picks" long="My Pick Up" />
           <TabLink href="/dashboard?tab=archive" active={tab === "archive"} count={archiveCount} short="Archive" long="Archive" />
+          {showAHA && (
+            <TabLink href="/dashboard?tab=aha" active={tab === "aha"} count={ahaCount} short="AHA" long="AHA" />
+          )}
+          {showAHB && (
+            <TabLink href="/dashboard?tab=ahb" active={tab === "ahb"} count={ahbCount} short="AHB" long="AHB" />
+          )}
         </div>
       </div>
 
@@ -63,9 +84,9 @@ function TabLink({
     <Link
       href={href}
       className={cn(
-        // Phones: equal-flex (basis-0 + flex-1) so each tab claims exactly 1/4
-        // of the bar — no overflow, no scrolling. Compact padding + tiny text
-        // make even small screens fit cleanly. Desktop reverts to natural sizing.
+        // Phones: equal-flex (basis-0 + flex-1) so each tab claims an equal
+        // slice of the bar. Compact padding + tiny text keeps things tidy even
+        // when the AHA / AHB tabs are visible. Desktop reverts to natural sizing.
         "flex-1 basis-0 sm:flex-none inline-flex items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-medium whitespace-nowrap transition-colors min-w-0",
         active ? "bg-ink-900 text-white shadow-sm" : "text-ink-600 hover:bg-ink-50"
       )}

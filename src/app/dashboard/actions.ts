@@ -8,22 +8,36 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, requireMaster } from "@/lib/auth";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
+import { CHANNEL_OWNERS, type ChannelKey } from "@/lib/channels";
 
 const CreateSchema = z.object({
   content: z.string().trim().min(1, "Paste something into the lead.").max(8000),
+  channel: z.enum(["DEFAULT", "AHA", "AHB"]).optional(),
 });
 
 export async function createLeadAction(formData: FormData): Promise<{ error?: string } | void> {
   const user = await requireUser();
-  const parsed = CreateSchema.safeParse({ content: formData.get("content") });
+  const rawChannel = formData.get("channel");
+  const parsed = CreateSchema.safeParse({
+    content: formData.get("content"),
+    channel: rawChannel || undefined,
+  });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  const channel = parsed.data.channel ?? "DEFAULT";
+  // Only master can drop into private channels — anyone else gets forced
+  // back to the default pipeline regardless of what the form sent.
+  if (channel !== "DEFAULT" && user.role !== "MASTER") {
+    return { error: "Only the master can create leads in this channel." };
   }
 
   const lead = await prisma.lead.create({
     data: {
       content: parsed.data.content,
       status: "NEW",
+      channel,
       createdById: user.id,
     },
   });
@@ -31,7 +45,36 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   revalidatePath("/dashboard");
 
   // Push runs AFTER the action response is sent — never blocks the click.
+  // For private channels, only the channel owner (+ master implicitly via
+  // self-exclude) get notified, not the whole team.
+  const channelKey = (channel === "AHA" || channel === "AHB" ? channel : null) as ChannelKey | null;
   after(async () => {
+    if (channelKey) {
+      const owner = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { displayName: CHANNEL_OWNERS[channelKey] },
+            { username: CHANNEL_OWNERS[channelKey] },
+          ],
+          active: true,
+        },
+        select: { id: true },
+      });
+      if (owner) {
+        await sendPushToUsers({
+          userIds: [owner.id],
+          excludeUserId: user.id,
+          payload: {
+            title: `New ${channelKey} lead`,
+            body: `Master added lead #${lead.id} to your ${channelKey} channel`,
+            url: `/dashboard/leads/${lead.id}`,
+            kind: "lead",
+            tag: `lead-${lead.id}`,
+          },
+        });
+      }
+      return;
+    }
     await sendPushToUsers({
       userIds: await getAllUserIds(),
       excludeUserId: user.id,
@@ -59,6 +102,17 @@ const StatusValues = [
   "APPROVED",
 ] as const;
 
+// Statuses that auto-transfer the lead into Open Market — the assignee tried
+// and couldn't progress it, so it returns to the team pool (the assignee can
+// still see it in My Picks until they drop it).
+const TRANSFER_TO_MARKET_STATUSES: LeadStatus[] = [
+  "CONTACT_NOT_ABLE",
+  "DOCUMENTS_NOT_ABLE",
+  "APPOINTMENT_NOT_ABLE",
+  "SPAM_OR_MISSING",
+  "REJECTED",
+];
+
 const ChangeStatusSchema = z.object({
   leadId: z.coerce.number().int().positive(),
   status: z.enum(StatusValues),
@@ -81,16 +135,27 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
     return; // no-op
   }
 
+  // When a lead moves to a "transfer-to-Market" status, backdate createdAt
+  // past the Fresh/Open-Market boundary so it lands directly in Open Market
+  // (regardless of its original age). The team can then re-pick it up.
+  const newStatus = parsed.data.status as LeadStatus;
+  const transferToMarket = TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
+  const marketBackdate = transferToMarket
+    ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
+    : null;
+
   await prisma.$transaction([
     prisma.lead.update({
       where: { id: lead.id },
-      data: { status: parsed.data.status as LeadStatus },
+      data: marketBackdate
+        ? { status: newStatus, createdAt: marketBackdate }
+        : { status: newStatus },
     }),
     prisma.leadStatusChange.create({
       data: {
         leadId: lead.id,
         fromStatus: lead.status,
-        toStatus: parsed.data.status as LeadStatus,
+        toStatus: newStatus,
         note: parsed.data.note,
         changedById: user.id,
       },

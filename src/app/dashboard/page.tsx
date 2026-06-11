@@ -9,6 +9,11 @@ import {
   ARCHIVABLE_NOT_ABLE_STATUSES,
   AGE_BOUNDARY_DAYS,
 } from "@/lib/leadStatus";
+import {
+  CHANNEL_LABEL,
+  canSeeChannel,
+  type ChannelKey,
+} from "@/lib/channels";
 import { LeadComposer } from "@/components/LeadComposer";
 import { LeadCard } from "@/components/LeadCard";
 import { TabBar } from "@/components/TabBar";
@@ -28,7 +33,22 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
  *   APPROVED leads are master-only in both Open and Archive.
  */
 
+type DashTab = "fresh" | "market" | "picks" | "archive" | "aha" | "ahb";
+
 type Search = { tab?: string; q?: string };
+
+function parseTab(raw: string | undefined): DashTab {
+  switch (raw) {
+    case "market":
+    case "picks":
+    case "archive":
+    case "aha":
+    case "ahb":
+      return raw;
+    default:
+      return "fresh";
+  }
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -37,15 +57,11 @@ export default async function DashboardPage({
 }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const tab: "fresh" | "market" | "picks" | "archive" =
-    sp.tab === "market"
-      ? "market"
-      : sp.tab === "picks"
-        ? "picks"
-        : sp.tab === "archive"
-          ? "archive"
-          : "fresh";
+  const tab: DashTab = parseTab(sp.tab);
   const q = (sp.q ?? "").trim();
+
+  const channelKey: ChannelKey | null =
+    tab === "aha" ? "AHA" : tab === "ahb" ? "AHB" : null;
 
   return (
     <div className="space-y-8 max-w-6xl">
@@ -64,7 +80,9 @@ export default async function DashboardPage({
                 ? user.role === "MASTER"
                   ? "Every lead picked up by the team, grouped by who has it."
                   : "Leads you've personally picked up."
-                : "Closed and approved leads — master only."}
+                : tab === "archive"
+                  ? "Closed and approved leads — master only."
+                  : `Private ${CHANNEL_LABEL[channelKey!]} channel — visible only to the channel owner and master.`}
         </p>
       </div>
 
@@ -72,7 +90,16 @@ export default async function DashboardPage({
         <TabBarWithCounts tab={tab} q={q} user={user} />
       </Suspense>
 
+      {/*
+        Composer rules:
+          - Fresh:   any user can add a default-channel lead.
+          - AHA/AHB: only master can drop leads in (and only if the tab is
+                    visible to them, which it always is for master).
+      */}
       {tab === "fresh" && <LeadComposer />}
+      {channelKey && user.role === "MASTER" && (
+        <LeadComposer channel={channelKey} />
+      )}
 
       <Suspense fallback={<LeadsSkeleton />} key={`${tab}:${q}`}>
         <LeadsSection tab={tab} q={q} user={user} />
@@ -143,12 +170,43 @@ async function LeadsSection({
   q,
   user,
 }: {
-  tab: "fresh" | "market" | "picks" | "archive";
+  tab: DashTab;
   q: string;
   user: CurrentUser;
 }) {
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
+
+  /* ---------- Private channel tabs ---------- */
+  if (tab === "aha" || tab === "ahb") {
+    const channelKey: ChannelKey = tab === "aha" ? "AHA" : "AHB";
+    if (!canSeeChannel(user, channelKey)) {
+      return <ChannelLockedNotice channel={channelKey} />;
+    }
+    const channelLeads = await prisma.lead.findMany({
+      where: {
+        AND: [
+          { channel: channelKey },
+          q ? { content: { contains: q, mode: "insensitive" as const } } : {},
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: 200,
+      select: leadSelect,
+    });
+    if (channelLeads.length === 0) {
+      return <ChannelEmpty channel={channelKey} hasQuery={!!q} />;
+    }
+    const leads = channelLeads.map(toLeadView);
+    return (
+      <ChannelLeadList
+        channel={channelKey}
+        leads={leads}
+        viewer={user}
+        maxPickup={settings.maxPickup}
+      />
+    );
+  }
 
   /* ---------- My Pick Up tab ---------- */
   if (tab === "picks") {
@@ -169,6 +227,7 @@ async function LeadsSection({
       prisma.lead.findMany({
         where: {
           AND: [
+            { channel: "DEFAULT" },
             baseWhere,
             q ? { content: { contains: q, mode: "insensitive" as const } } : {},
           ],
@@ -217,6 +276,7 @@ async function LeadsSection({
       prisma.lead.findMany({
         where: {
           AND: [
+            { channel: "DEFAULT" },
             {
               OR: [
                 { status: "APPROVED" },
@@ -266,6 +326,7 @@ async function LeadsSection({
     prisma.lead.findMany({
       where: {
         AND: [
+          { channel: "DEFAULT" },
           dateFilter,
           visibilityFilter,
           q ? { content: { contains: q, mode: "insensitive" as const } } : {},
@@ -359,6 +420,89 @@ function toLeadView(l: RawLead): LeadView {
   };
 }
 
+function ChannelLockedNotice({ channel }: { channel: ChannelKey }) {
+  return (
+    <div className="card p-12 text-center">
+      <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
+        🔒
+      </div>
+      <h3 className="mt-4 text-base font-semibold text-ink-900">
+        {CHANNEL_LABEL[channel]} channel is private
+      </h3>
+      <p className="mt-1 text-sm text-ink-500">
+        Only the channel owner and the master can view these leads.
+      </p>
+      <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">
+        Back to Fresh
+      </Link>
+    </div>
+  );
+}
+
+function ChannelEmpty({ channel, hasQuery }: { channel: ChannelKey; hasQuery: boolean }) {
+  return (
+    <div className="card p-12 text-center">
+      <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
+        ✦
+      </div>
+      <h3 className="mt-4 text-base font-semibold text-ink-900">
+        {hasQuery
+          ? "No leads match your search"
+          : `${CHANNEL_LABEL[channel]} channel is empty`}
+      </h3>
+      <p className="mt-1 text-sm text-ink-500">
+        {hasQuery
+          ? "Try a different search term."
+          : "The master can drop a new lead in from the composer above."}
+      </p>
+    </div>
+  );
+}
+
+function ChannelLeadList({
+  channel,
+  leads,
+  viewer,
+  maxPickup,
+}: {
+  channel: ChannelKey;
+  leads: LeadView[];
+  viewer: CurrentUser;
+  maxPickup: number;
+}) {
+  return (
+    <div className="space-y-6">
+      <CollapsibleSection
+        storageKey={`channel:${channel}`}
+        count={leads.length}
+        header={
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+              {channel}
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-ink-900">
+                {CHANNEL_LABEL[channel]} channel
+              </h3>
+              <p className="text-xs text-ink-500">
+                {leads.length} lead{leads.length === 1 ? "" : "s"} · private to the channel owner & master
+              </p>
+            </div>
+          </div>
+        }
+      >
+        <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {leads.map((lead) => (
+            <li key={lead.id}>
+              <LeadCard lead={lead} viewer={viewer} teamUsers={[]} maxPickup={maxPickup} />
+            </li>
+          ))}
+        </ul>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
 function ArchiveLockedNotice() {
   return (
     <div className="card p-12 text-center">
@@ -383,35 +527,45 @@ async function TabBarWithCounts({
   q,
   user,
 }: {
-  tab: "fresh" | "market" | "picks" | "archive";
+  tab: DashTab;
   q: string;
   user: CurrentUser;
 }) {
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
 
-  // Light SELECT — no large nested arrays. Each lead carries:
-  //   - assignmentCount (single int from a SQL COUNT)
-  //   - mineFlag         (boolean from a take:1 + where mine WHERE)
-  // Cuts the payload from O(leads * assignees) to O(leads).
-  const allLeads = await prisma.lead.findMany({
-    where: user.role === "MASTER" ? {} : freshOrMarketVisibility(user),
-    select: {
-      id: true,
-      status: true,
-      createdAt: true,
-      _count: { select: { assignments: true } },
-      ...(user.role === "MASTER"
-        ? {}
-        : {
-            assignments: {
-              where: { userId: user.id },
-              select: { userId: true },
-              take: 1,
-            },
-          }),
-    },
-  });
+  const showAHA = canSeeChannel(user, "AHA");
+  const showAHB = canSeeChannel(user, "AHB");
+
+  // Light SELECT for the default-channel pipeline. Channel-locked queries
+  // run in parallel below.
+  const [allLeads, ahaCount, ahbCount] = await Promise.all([
+    prisma.lead.findMany({
+      where: {
+        AND: [
+          { channel: "DEFAULT" },
+          user.role === "MASTER" ? {} : freshOrMarketVisibility(user),
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        _count: { select: { assignments: true } },
+        ...(user.role === "MASTER"
+          ? {}
+          : {
+              assignments: {
+                where: { userId: user.id },
+                select: { userId: true },
+                take: 1,
+              },
+            }),
+      },
+    }),
+    showAHA ? prisma.lead.count({ where: { channel: "AHA" } }) : Promise.resolve(0),
+    showAHB ? prisma.lead.count({ where: { channel: "AHB" } }) : Promise.resolve(0),
+  ]);
 
   let freshCount = 0;
   let marketCount = 0;
@@ -459,6 +613,10 @@ async function TabBarWithCounts({
       marketCount={marketCount}
       picksCount={picksCount}
       archiveCount={archiveCount}
+      showAHA={showAHA}
+      showAHB={showAHB}
+      ahaCount={ahaCount}
+      ahbCount={ahbCount}
       q={q}
     />
   );

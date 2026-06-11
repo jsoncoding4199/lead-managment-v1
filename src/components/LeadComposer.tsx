@@ -4,12 +4,24 @@ import { useRef, useState, useTransition } from "react";
 import { Plus, ClipboardPaste, Loader2 } from "lucide-react";
 import { createLeadAction } from "@/app/dashboard/actions";
 
-export function LeadComposer() {
+type Props = {
+  /** Private channel to drop the lead into. Omitted = default pipeline. */
+  channel?: "AHA" | "AHB";
+};
+
+export function LeadComposer({ channel }: Props = {}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const ref = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  const ctaLabel = channel
+    ? `Drop a new lead into ${channel}`
+    : "Drop a new lead";
+  const ctaHint = channel
+    ? `Goes into the private ${channel} channel — only the channel owner & master see it.`
+    : "Paste any text — contact info, message, or notes.";
 
   if (!open) {
     return (
@@ -24,8 +36,8 @@ export function LeadComposer() {
           <Plus className="h-5 w-5" />
         </span>
         <span>
-          <span className="block text-sm font-semibold text-ink-900">Drop a new lead</span>
-          <span className="block text-xs text-ink-500">Paste any text — contact info, message, or notes.</span>
+          <span className="block text-sm font-semibold text-ink-900">{ctaLabel}</span>
+          <span className="block text-xs text-ink-500">{ctaHint}</span>
         </span>
       </button>
     );
@@ -52,10 +64,17 @@ export function LeadComposer() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
           <ClipboardPaste className="h-4 w-4 text-brand-600" />
-          New lead
+          {channel ? `New ${channel} lead` : "New lead"}
         </div>
-        <span className="text-xs text-ink-400">Status starts as <strong className="text-ink-700">New</strong></span>
+        <span className="text-xs text-ink-400">
+          {channel ? (
+            <>Channel: <strong className="text-ink-700">{channel}</strong></>
+          ) : (
+            <>Status starts as <strong className="text-ink-700">New</strong></>
+          )}
+        </span>
       </div>
+      {channel && <input type="hidden" name="channel" value={channel} />}
       <textarea
         ref={ref}
         name="content"
