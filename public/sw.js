@@ -1,23 +1,137 @@
 /**
  * Service worker for Leadboard.
  *
- *  - Listens for `push` events from the browser push service.
- *  - Shows a system notification using the payload sent by the server.
- *  - On click, focuses an existing tab (if any) or opens the lead URL.
+ *  - Precaches the PWA shell (manifest + icons) on install.
+ *  - Cache-first for /_next/static/* (immutable hashed bundles) so repeat
+ *    opens paint the dashboard skeleton instantly without re-downloading
+ *    100+ KB of JS/CSS.
+ *  - Cache-first for icons / manifest (precached at install).
+ *  - Everything else (HTML, /api/*, RSC payloads, server actions) passes
+ *    straight through to the network — no risk of serving stale or
+ *    cross-user data.
+ *  - Listens for `push` events and shows a system notification.
+ *  - Tells every open tab to refresh after a push so the UI updates
+ *    instantly without waiting for the next poll.
  *
  * This file is served as-is from /sw.js so it runs in the dedicated SW
  * worker context, not the page context — no React, no ES modules, just
  * plain self-contained code.
+ *
+ * Bump CACHE_VERSION when changing precache contents or caching strategy
+ * so old caches get purged on activate.
  */
 
+const CACHE_VERSION = "leadboard-shell-v1";
+
+const PRECACHE_URLS = [
+  "/manifest.webmanifest",
+  "/icon.png",
+  "/apple-icon.png",
+];
+
 self.addEventListener("install", (event) => {
-  // Activate the new SW immediately on update so users don't have to refresh.
-  self.skipWaiting();
+  event.waitUntil(
+    (async () => {
+      // Precache shell assets. We swallow individual failures so a missing
+      // asset (e.g. apple-icon during dev) doesn't tank the whole install.
+      const cache = await caches.open(CACHE_VERSION);
+      await Promise.all(
+        PRECACHE_URLS.map(async (url) => {
+          try {
+            const res = await fetch(url, { cache: "reload" });
+            if (res.ok) await cache.put(url, res);
+          } catch (e) {
+            /* ignore — best-effort precache */
+          }
+        })
+      );
+      // Activate the new SW immediately on update so users don't have to refresh.
+      await self.skipWaiting();
+    })()
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      // Purge any stale caches from previous SW versions.
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))
+      );
+      await self.clients.claim();
+    })()
+  );
 });
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+
+  const url = new URL(req.url);
+
+  // Only handle same-origin GETs. Everything cross-origin (push services,
+  // CDNs, third-party fonts) goes straight to the network.
+  if (url.origin !== self.location.origin) return;
+
+  // Never cache API routes or RSC payloads — they're personalized and
+  // auth-gated. Serving a cached one to another user would leak data.
+  if (url.pathname.startsWith("/api/")) return;
+  if (url.search.includes("_rsc=")) return;
+
+  // Cache-first for immutable Next.js hashed bundles. These URLs change
+  // every deploy, so the cached copy is always valid for its filename.
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(cacheFirst(req));
+    return;
+  }
+
+  // Cache-first for the precached shell assets (manifest + icons).
+  if (
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname === "/icon.png" ||
+    url.pathname === "/apple-icon.png" ||
+    url.pathname === "/favicon.ico"
+  ) {
+    event.respondWith(cacheFirst(req));
+    return;
+  }
+
+  // Everything else (HTML, server actions, etc.) → straight to network.
+  // We intentionally do NOT cache HTML to avoid cross-session staleness.
+});
+
+async function cacheFirst(req) {
+  const cache = await caches.open(CACHE_VERSION);
+  const cached = await cache.match(req);
+  if (cached) {
+    // Refresh the cached copy in the background so the next open gets the
+    // latest, but serve the cached one right now for instant paint.
+    revalidateInBackground(cache, req);
+    return cached;
+  }
+  try {
+    const res = await fetch(req);
+    if (res && res.ok) {
+      // Clone before consuming — Response bodies can only be read once.
+      cache.put(req, res.clone()).catch(() => {});
+    }
+    return res;
+  } catch (err) {
+    // Network down and no cache — let the browser show its offline error.
+    throw err;
+  }
+}
+
+function revalidateInBackground(cache, req) {
+  // Fire-and-forget revalidation. Avoids blocking the response on a
+  // network round-trip but keeps the cache fresh for the next time.
+  fetch(req)
+    .then((res) => {
+      if (res && res.ok) cache.put(req, res.clone()).catch(() => {});
+    })
+    .catch(() => {});
+}
 
 self.addEventListener("push", (event) => {
   let data = {};
