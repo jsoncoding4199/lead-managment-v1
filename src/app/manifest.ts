@@ -9,7 +9,11 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#11141a",
+    // background_color is what Android paints behind the launcher icon on
+    // cold-start splash. Matching the dashboard's actual first-paint color
+    // (white) makes the splash visually identical to the loaded app — no
+    // dark-to-light "flash", so the launch feels instant.
+    background_color: "#ffffff",
     theme_color: "#1f43e6",
     categories: ["business", "productivity"],
     icons: [
