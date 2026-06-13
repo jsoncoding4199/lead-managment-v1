@@ -31,7 +31,13 @@ export default async function AdminPage() {
       where: { role: "USER" },
       orderBy: [{ active: "desc" }, { displayName: "asc" }],
       include: {
-        _count: { select: { createdLeads: true, assignments: true } },
+        _count: {
+          select: {
+            createdLeads: true,
+            assignments: true,
+            pushSubscriptions: true,
+          },
+        },
       },
     }),
     prisma.passwordResetRequest.count({ where: { resolvedAt: null } }),
@@ -67,6 +73,7 @@ export default async function AdminPage() {
       active: u.active,
       counts,
       total,
+      pushDevices: u._count.pushSubscriptions,
     };
   });
 

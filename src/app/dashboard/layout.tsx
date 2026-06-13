@@ -1,15 +1,23 @@
 import { Suspense } from "react";
 import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { logoutAction } from "@/app/login/actions";
 import { Sidebar } from "@/components/Sidebar";
 import { Notifier } from "@/components/Notifier";
 import { PushEnableButton } from "@/components/PushEnableButton";
+import { PushNudgeBanner } from "@/components/PushNudgeBanner";
 import { InstallButton } from "@/components/InstallButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  // Count this user's active push subscriptions so the nudge banner only
+  // appears for those who actually need it. ~1ms query — indexed by userId.
+  const pushSubCount = await prisma.pushSubscription.count({
+    where: { userId: user.id },
+  });
+  const hasPush = pushSubCount > 0;
 
   return (
     <div className="min-h-screen flex">
@@ -36,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
             <InstallButton />
-            <PushEnableButton />
+            <PushEnableButton serverSubscribed={hasPush} />
             <Notifier />
             <form action={logoutAction}>
               <button className="btn btn-ghost h-9 px-2 md:px-4 text-xs md:text-sm">
@@ -45,7 +53,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </form>
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-10">{children}</main>
+        <main className="flex-1 p-4 md:p-6 lg:p-10">
+          <PushNudgeBanner hasServerSubscription={hasPush} />
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import type { LeadStatus } from "@prisma/client";
+import { BellOff, BellRing } from "lucide-react";
 import { STATUS_LABEL, STATUS_TONE } from "@/lib/leadStatus";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,8 @@ export type UserStatsRow = {
   active: boolean;
   total: number;
   counts: Record<LeadStatus, number>;
+  /** Number of active Web Push subscriptions across this user's devices. */
+  pushDevices: number;
 };
 
 export function TeamStatsTable({ rows }: { rows: UserStatsRow[] }) {
@@ -44,6 +47,7 @@ export function TeamStatsTable({ rows }: { rows: UserStatsRow[] }) {
             <thead className="bg-ink-50 text-ink-500 text-[10px] uppercase tracking-wider">
               <tr>
                 <th className="text-left font-semibold px-6 py-3 sticky left-0 bg-ink-50">User</th>
+                <th className="text-center font-semibold px-3 py-3 whitespace-nowrap">Push</th>
                 <th className="text-right font-semibold px-3 py-3">Total</th>
                 {ORDER.map((s) => (
                   <th key={s} className="text-right font-semibold px-3 py-3 whitespace-nowrap">
@@ -58,6 +62,23 @@ export function TeamStatsTable({ rows }: { rows: UserStatsRow[] }) {
                   <td className="px-6 py-3 sticky left-0 bg-white">
                     <div className="font-medium text-ink-900">{row.displayName}</div>
                     <div className="text-xs text-ink-500">@{row.username}</div>
+                  </td>
+                  <td className="px-3 py-3 text-center" title={
+                    row.pushDevices > 0
+                      ? `${row.pushDevices} device${row.pushDevices === 1 ? "" : "s"} subscribed`
+                      : "User hasn't enabled push notifications"
+                  }>
+                    {row.pushDevices > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                        <BellRing className="h-3 w-3" />
+                        {row.pushDevices}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                        <BellOff className="h-3 w-3" />
+                        Off
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-3 text-right">
                     <span className="inline-flex items-center rounded-full bg-ink-900 px-2 py-0.5 text-[11px] font-semibold text-white">

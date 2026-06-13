@@ -17,9 +17,11 @@ import { cn } from "@/lib/utils";
  * The button toggles to "Disable" once subscribed; clicking it unsubscribes
  * on the device and tells the server.
  */
-export function PushEnableButton() {
+export function PushEnableButton({ serverSubscribed = false }: { serverSubscribed?: boolean }) {
   const [supported, setSupported] = useState(false);
-  const [subscribed, setSubscribed] = useState(false);
+  // Seed from server so we don't flash "Off" on first paint for users who
+  // already have a subscription on file.
+  const [subscribed, setSubscribed] = useState(serverSubscribed);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +32,7 @@ export function PushEnableButton() {
     if (!("Notification" in window)) return;
     setSupported(true);
 
-    // Restore current subscription state.
+    // Restore current subscription state from the SW.
     (async () => {
       try {
         const reg = await navigator.serviceWorker.getRegistration();
@@ -121,10 +123,10 @@ export function PushEnableButton() {
             : "Enable push notifications (works even when the app is closed)"
         }
         className={cn(
-          "grid h-9 w-9 place-items-center rounded-full transition-colors",
+          "inline-flex h-9 items-center gap-1.5 rounded-full px-2 transition-colors ring-1",
           subscribed
-            ? "text-brand-700 bg-brand-50 ring-1 ring-brand-200"
-            : "text-ink-700 bg-white ring-1 ring-ink-200 hover:bg-ink-50"
+            ? "text-brand-700 bg-brand-50 ring-brand-200"
+            : "text-rose-700 bg-rose-50 ring-rose-200 hover:bg-rose-100"
         )}
         aria-label={subscribed ? "Disable push" : "Enable push"}
       >
@@ -135,6 +137,16 @@ export function PushEnableButton() {
         ) : (
           <Smartphone className="h-4 w-4" />
         )}
+        {/*
+          Visible label so users see push state without having to interpret
+          an icon. Mobile shows a tight "On" / "Off"; desktop spells it out.
+        */}
+        <span className="text-[11px] font-semibold uppercase tracking-wide">
+          <span className="sm:hidden">{subscribed ? "On" : "Off"}</span>
+          <span className="hidden sm:inline">
+            {subscribed ? "Push on" : "Push off"}
+          </span>
+        </span>
       </button>
       {error && (
         <div className="absolute top-full right-0 mt-2 w-64 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 shadow-soft z-50">
