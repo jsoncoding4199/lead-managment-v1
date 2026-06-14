@@ -158,6 +158,12 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
     return; // no-op
   }
 
+  // Reject must always carry a written reason. Enforced both client- and
+  // server-side so a malicious client can't bypass the prompt.
+  if (parsed.data.status === "REJECTED" && !parsed.data.note?.trim()) {
+    return { error: "A rejection reason is required." };
+  }
+
   // When a lead moves to a "transfer-to-Market" status, backdate createdAt
   // past the Fresh/Open-Market boundary so it lands directly in Open Market
   // (regardless of its original age). The team can then re-pick it up.
@@ -360,6 +366,11 @@ export async function dropWithStatusAction(input: {
 
   const newStatus = parsed.data.status as LeadStatus;
   const statusChanged = lead.status !== newStatus;
+
+  // Reject requires a reason, even on drop-with-status.
+  if (statusChanged && newStatus === "REJECTED" && !parsed.data.note?.trim()) {
+    return { error: "A rejection reason is required." };
+  }
   const transferToMarket = statusChanged && TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
   const marketBackdate = transferToMarket
     ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))

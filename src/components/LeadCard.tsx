@@ -69,12 +69,13 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
     };
   }, [menuOpen, assignOpen, qualityOpen, dropOpen]);
 
-  const updateStatus = (status: LeadStatus) => {
+  const updateStatus = (status: LeadStatus, note?: string) => {
     setError(null);
     setMenuOpen(false);
     const fd = new FormData();
     fd.set("leadId", String(lead.id));
     fd.set("status", status);
+    if (note && note.trim()) fd.set("note", note.trim());
     startTransition(async () => {
       const res = await changeStatusAction(fd);
       if (res?.error) setError(res.error);
@@ -102,11 +103,16 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
     });
   };
 
-  const dropWithStatus = (status: LeadStatus) => {
+  const dropWithStatus = (status: LeadStatus, note?: string) => {
     setError(null);
     setDropOpen(false);
+    const trimmed = note?.trim();
     startTransition(async () => {
-      const res = await dropWithStatusAction({ leadId: lead.id, status });
+      const res = await dropWithStatusAction({
+        leadId: lead.id,
+        status,
+        note: trimmed && trimmed.length > 0 ? trimmed : undefined,
+      });
       if (res?.error) setError(res.error);
     });
   };
@@ -339,10 +345,11 @@ function DropMenu({
   onClose,
 }: {
   currentStatus: LeadStatus;
-  onChoose: (s: LeadStatus) => void;
+  onChoose: (s: LeadStatus, note?: string) => void;
   onClose: () => void;
 }) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  const [rejectReason, setRejectReason] = useState<string | null>(null);
   useEffect(() => {
     setPortalNode(document.body);
     const onKey = (e: KeyboardEvent) => {
@@ -353,6 +360,14 @@ function DropMenu({
   }, [onClose]);
 
   if (!portalNode) return null;
+
+  const handlePick = (status: LeadStatus) => {
+    if (status === "REJECTED") {
+      setRejectReason("");
+      return;
+    }
+    onChoose(status);
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
@@ -371,62 +386,149 @@ function DropMenu({
         <div className="md:hidden flex justify-center pt-2">
           <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
         </div>
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <div>
-            <h3 className="text-base font-semibold text-ink-900">Set final status, then drop</h3>
-            <p className="text-xs text-ink-500 mt-0.5">
-              Pick the outcome — the lead is dropped from you and tagged with this status.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
-        <div className="px-3 pb-4">
-          {STATUS_GROUPS.map((group) => (
-            <div key={group.key} className="px-1 pt-3">
-              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
-                {group.title}
+        {rejectReason !== null ? (
+          <RejectReasonStep
+            value={rejectReason}
+            onChange={setRejectReason}
+            onBack={() => setRejectReason(null)}
+            onConfirm={(text) => onChoose("REJECTED", text)}
+            onClose={onClose}
+            droppingToo
+          />
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-5 pt-4 pb-2">
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">Set final status, then drop</h3>
+                <p className="text-xs text-ink-500 mt-0.5">
+                  Pick the outcome — the lead is dropped from you and tagged with this status.
+                </p>
               </div>
-              <div className="grid grid-cols-1 gap-1">
-                {group.options.map((opt) => {
-                  const isCurrent = currentStatus === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => onChoose(opt.value)}
-                      className={
-                        "flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-sm text-left transition-colors " +
-                        (isCurrent
-                          ? "border-rose-300 bg-rose-50 text-rose-800"
-                          : opt.tone === "good"
-                            ? "border-ink-100 hover:border-emerald-200 hover:bg-emerald-50 text-emerald-700"
-                            : opt.tone === "bad"
-                              ? "border-ink-100 hover:border-rose-200 hover:bg-rose-50 text-rose-700"
-                              : "border-ink-100 hover:border-ink-300 hover:bg-ink-50 text-ink-800")
-                      }
-                    >
-                      <span className="font-medium">{opt.label}</span>
-                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-ink-500">
-                        {isCurrent && <span className="text-rose-700">current</span>}
-                        <LogOut className="h-3.5 w-3.5" />
-                        drop
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <button
+                onClick={onClose}
+                className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          ))}
-        </div>
+
+            <div className="px-3 pb-4">
+              {STATUS_GROUPS.map((group) => (
+                <div key={group.key} className="px-1 pt-3">
+                  <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
+                    {group.title}
+                  </div>
+                  <div className="grid grid-cols-1 gap-1">
+                    {group.options.map((opt) => {
+                      const isCurrent = currentStatus === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => handlePick(opt.value)}
+                          className={
+                            "flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-sm text-left transition-colors " +
+                            (isCurrent
+                              ? "border-rose-300 bg-rose-50 text-rose-800"
+                              : opt.tone === "good"
+                                ? "border-ink-100 hover:border-emerald-200 hover:bg-emerald-50 text-emerald-700"
+                                : opt.tone === "bad"
+                                  ? "border-ink-100 hover:border-rose-200 hover:bg-rose-50 text-rose-700"
+                                  : "border-ink-100 hover:border-ink-300 hover:bg-ink-50 text-ink-800")
+                          }
+                        >
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-ink-500">
+                            {isCurrent && <span className="text-rose-700">current</span>}
+                            <LogOut className="h-3.5 w-3.5" />
+                            drop
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>,
     portalNode
+  );
+}
+
+/* ---------- Reject-reason step (shared by status menu + drop menu) ---------- */
+
+/**
+ * Forced text-entry step shown after the user picks the REJECTED status.
+ * Confirm is disabled until the textarea has non-whitespace content.
+ * The trimmed value is sent as `note` on the underlying server action,
+ * where it's persisted on the LeadStatusChange row for audit history.
+ */
+function RejectReasonStep({
+  value,
+  onChange,
+  onBack,
+  onConfirm,
+  onClose,
+  droppingToo,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onBack: () => void;
+  onConfirm: (text: string) => void;
+  onClose: () => void;
+  droppingToo?: boolean;
+}) {
+  const canSubmit = value.trim().length > 0;
+  return (
+    <>
+      <div className="flex items-center justify-between px-5 pt-4 pb-2">
+        <div>
+          <h3 className="text-base font-semibold text-ink-900">Why reject?</h3>
+          <p className="text-xs text-ink-500 mt-0.5">
+            A short reason is required {droppingToo ? "before the lead can be dropped" : "to mark a lead as Rejected"}.
+            Saved in the status history for audit.
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="px-5 pb-4 space-y-3">
+        <textarea
+          autoFocus
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={5}
+          maxLength={500}
+          placeholder="e.g. Customer not interested, doesn't qualify, wrong contact info…"
+          className="input w-full resize-y text-sm"
+        />
+        <div className="flex items-center justify-between text-[10px] text-ink-400">
+          <span>{value.trim().length === 0 ? "Required" : "Looks good"}</span>
+          <span>{value.length}/500</span>
+        </div>
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button onClick={onBack} className="btn btn-ghost h-9 text-xs">
+            Back
+          </button>
+          <button
+            onClick={() => onConfirm(value.trim())}
+            disabled={!canSubmit}
+            className="btn btn-accent h-9 px-3 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {droppingToo ? "Reject & drop" : "Reject lead"}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -439,11 +541,12 @@ function StatusMenu({
   onClose,
 }: {
   currentStatus: LeadStatus;
-  onChoose: (s: LeadStatus) => void;
+  onChoose: (s: LeadStatus, note?: string) => void;
   onReset: () => void;
   onClose: () => void;
 }) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  const [rejectReason, setRejectReason] = useState<string | null>(null);
   useEffect(() => {
     setPortalNode(document.body);
     const onKey = (e: KeyboardEvent) => {
@@ -452,6 +555,14 @@ function StatusMenu({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const handlePick = (status: LeadStatus) => {
+    if (status === "REJECTED") {
+      setRejectReason("");
+      return;
+    }
+    onChoose(status);
+  };
 
   if (!portalNode) return null;
 
@@ -476,66 +587,79 @@ function StatusMenu({
         <div className="md:hidden flex justify-center pt-2">
           <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
         </div>
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <div>
-            <h3 className="text-base font-semibold text-ink-900">Change status</h3>
-            <p className="text-xs text-ink-500 mt-0.5">Pick the new state for this lead.</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
-        <div className="px-3 pb-4">
-          {STATUS_GROUPS.map((group) => (
-            <div key={group.key} className="px-1 pt-3">
-              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
-                {group.title}
+        {rejectReason !== null ? (
+          <RejectReasonStep
+            value={rejectReason}
+            onChange={setRejectReason}
+            onBack={() => setRejectReason(null)}
+            onConfirm={(text) => onChoose("REJECTED", text)}
+            onClose={onClose}
+          />
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-5 pt-4 pb-2">
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">Change status</h3>
+                <p className="text-xs text-ink-500 mt-0.5">Pick the new state for this lead.</p>
               </div>
-              <div className="grid grid-cols-1 gap-1">
-                {group.options.map((opt) => {
-                  const isCurrent = currentStatus === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => onChoose(opt.value)}
-                      className={
-                        "flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-sm text-left transition-colors " +
-                        (isCurrent
-                          ? "border-brand-300 bg-brand-50 text-brand-800"
-                          : opt.tone === "good"
-                            ? "border-ink-100 hover:border-emerald-200 hover:bg-emerald-50 text-emerald-700"
-                            : opt.tone === "bad"
-                              ? "border-ink-100 hover:border-rose-200 hover:bg-rose-50 text-rose-700"
-                              : "border-ink-100 hover:border-ink-300 hover:bg-ink-50 text-ink-800")
-                      }
-                    >
-                      <span className="font-medium">{opt.label}</span>
-                      {isCurrent ? (
-                        <span className="text-[10px] uppercase tracking-wider text-brand-700">current</span>
-                      ) : (
-                        <ChevronDown className="h-4 w-4 -rotate-90 opacity-50" />
-                      )}
-                    </button>
-                  );
-                })}
+              <button
+                onClick={onClose}
+                className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="px-3 pb-4">
+              {STATUS_GROUPS.map((group) => (
+                <div key={group.key} className="px-1 pt-3">
+                  <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
+                    {group.title}
+                  </div>
+                  <div className="grid grid-cols-1 gap-1">
+                    {group.options.map((opt) => {
+                      const isCurrent = currentStatus === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => handlePick(opt.value)}
+                          className={
+                            "flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-sm text-left transition-colors " +
+                            (isCurrent
+                              ? "border-brand-300 bg-brand-50 text-brand-800"
+                              : opt.tone === "good"
+                                ? "border-ink-100 hover:border-emerald-200 hover:bg-emerald-50 text-emerald-700"
+                                : opt.tone === "bad"
+                                  ? "border-ink-100 hover:border-rose-200 hover:bg-rose-50 text-rose-700"
+                                  : "border-ink-100 hover:border-ink-300 hover:bg-ink-50 text-ink-800")
+                          }
+                        >
+                          <span className="font-medium">{opt.label}</span>
+                          {isCurrent ? (
+                            <span className="text-[10px] uppercase tracking-wider text-brand-700">current</span>
+                          ) : (
+                            <ChevronDown className="h-4 w-4 -rotate-90 opacity-50" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              <div className="border-t border-ink-100 mt-4 pt-3 px-1">
+                <button
+                  onClick={onReset}
+                  className="w-full rounded-xl border border-ink-100 px-3 py-3 text-left text-sm text-ink-600 hover:bg-ink-50"
+                >
+                  Reset to Open Market
+                </button>
               </div>
             </div>
-          ))}
-
-          <div className="border-t border-ink-100 mt-4 pt-3 px-1">
-            <button
-              onClick={onReset}
-              className="w-full rounded-xl border border-ink-100 px-3 py-3 text-left text-sm text-ink-600 hover:bg-ink-50"
-            >
-              Reset to Open Market
-            </button>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>,
     portalNode
