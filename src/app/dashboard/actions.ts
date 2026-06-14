@@ -297,20 +297,64 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
   revalidatePath(`/dashboard/leads/${lead.id}`);
 }
 
-/** Self-drop (un-assign) a lead. Any signed-in user can drop themselves. */
-const DropSchema = z.object({ leadId: z.coerce.number().int().positive() });
+/**
+ * Drop a self-assignment, but only after the user has explicitly picked a
+ * "final" status for the lead. We require this so leads don't get dropped
+ * while still in NEW / an ABLE state — every drop now ends with a recorded
+ * outcome (e.g. CONTACT_NOT_ABLE, SPAM_OR_MISSING, REJECTED).
+ *
+ * Done atomically:
+ *   1. Update the lead's status (with optional Market backdate if the
+ *      target status is in TRANSFER_TO_MARKET_STATUSES). Skipped if the
+ *      lead is already at that status — no LeadStatusChange row in that case.
+ *   2. Delete the user's leadAssignment row.
+ *   3. Increment User.dropsCount if a row was actually deleted.
+ */
+const DropWithStatusSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  status: z.enum(StatusValues),
+  note: z.string().trim().max(500).optional(),
+});
 
-export async function dropLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+export async function dropWithStatusAction(input: {
+  leadId: number;
+  status: LeadStatus;
+  note?: string;
+}): Promise<{ error?: string } | void> {
   const me = await requireUser();
-  const parsed = DropSchema.safeParse({ leadId: formData.get("leadId") });
-  if (!parsed.success) return { error: "Invalid lead." };
+  const parsed = DropWithStatusSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid drop." };
 
-  // Atomic delete + counter increment. dropsCount only ticks up when there
-  // was an actual assignment to remove (count > 0) — calls for users who
-  // weren't assigned are no-ops in both tables.
+  const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
+  if (!lead) return { error: "Lead not found." };
+
+  const newStatus = parsed.data.status as LeadStatus;
+  const statusChanged = lead.status !== newStatus;
+  const transferToMarket = statusChanged && TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
+  const marketBackdate = transferToMarket
+    ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
+    : null;
+
   await prisma.$transaction(async (tx) => {
+    if (statusChanged) {
+      await tx.lead.update({
+        where: { id: lead.id },
+        data: marketBackdate
+          ? { status: newStatus, createdAt: marketBackdate }
+          : { status: newStatus },
+      });
+      await tx.leadStatusChange.create({
+        data: {
+          leadId: lead.id,
+          fromStatus: lead.status,
+          toStatus: newStatus,
+          note: parsed.data.note,
+          changedById: me.id,
+        },
+      });
+    }
     const result = await tx.leadAssignment.deleteMany({
-      where: { leadId: parsed.data.leadId, userId: me.id },
+      where: { leadId: lead.id, userId: me.id },
     });
     if (result.count > 0) {
       await tx.user.update({
@@ -321,7 +365,39 @@ export async function dropLeadAction(formData: FormData): Promise<{ error?: stri
   });
 
   revalidatePath("/dashboard");
-  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+  revalidatePath(`/dashboard/leads/${lead.id}`);
+
+  // Push runs after the response. Same payload shape as the regular status
+  // change so receivers don't have to special-case drops.
+  if (statusChanged) {
+    after(async () => {
+      if (newStatus === "APPROVED") {
+        await sendPushToUsers({
+          userIds: await getMasterIds(),
+          excludeUserId: me.id,
+          payload: {
+            title: "Lead approved 🎉",
+            body: `${me.displayName} approved lead #${lead.id}`,
+            url: `/dashboard/leads/${lead.id}`,
+            kind: "approved",
+            tag: `lead-${lead.id}`,
+          },
+        });
+      } else {
+        await sendPushToUsers({
+          userIds: await getAllUserIds(),
+          excludeUserId: me.id,
+          payload: {
+            title: "Lead status changed",
+            body: `${me.displayName} moved #${lead.id} → ${STATUS_LABEL[newStatus]}`,
+            url: `/dashboard/leads/${lead.id}`,
+            kind: "status",
+            tag: `lead-${lead.id}`,
+          },
+        });
+      }
+    });
+  }
 }
 
 /** Master-only — update the global max-pickup setting. */
