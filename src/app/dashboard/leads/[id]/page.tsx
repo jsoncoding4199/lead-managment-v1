@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
 import { STATUS_LABEL, ACTIVE_STATUSES, ARCHIVABLE_NOT_ABLE_STATUSES } from "@/lib/leadStatus";
+import { canAccessLeadChannel } from "@/lib/channels";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
 import { LeadContentEditor } from "@/components/LeadContentEditor";
@@ -39,6 +40,11 @@ export default async function LeadDetailPage({
     getAppSettings(),
   ]);
   if (!lead) notFound();
+
+  // Channel guard — block direct URL access to AHA / AHB leads for anyone
+  // who isn't the channel owner or master. Indistinguishable from a real
+  // 404 so the ID can't be probed to detect existence.
+  if (!canAccessLeadChannel(user, lead.channel)) notFound();
 
   // Non-master visibility per status:
   //   - APPROVED: master-only, hard 404 for everyone else.

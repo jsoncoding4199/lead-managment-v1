@@ -8,7 +8,29 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, requireMaster } from "@/lib/auth";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
-import { CHANNEL_OWNERS, type ChannelKey } from "@/lib/channels";
+import { CHANNEL_OWNERS, canAccessLeadChannel, type ChannelKey } from "@/lib/channels";
+
+/**
+ * Channel guard for every Lead-touching action. Fetches just the lead's
+ * channel + status (cheap, single index lookup) and returns null when the
+ * caller has no business operating on this lead — by lead missing OR by
+ * channel access denied. The two are returned identically so probing IDs
+ * can't confirm whether a private lead exists. Returns the lead's channel
+ * + current status when access is granted so the caller can avoid a second
+ * fetch.
+ */
+async function loadAccessibleLeadMeta(
+  leadId: number,
+  user: { id: number; username: string; displayName: string; role: "MASTER" | "USER" }
+): Promise<{ channel: import("@prisma/client").LeadChannel; status: LeadStatus } | null> {
+  const meta = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { channel: true, status: true },
+  });
+  if (!meta) return null;
+  if (!canAccessLeadChannel(user, meta.channel)) return null;
+  return meta;
+}
 
 const CreateSchema = z.object({
   content: z.string().trim().min(1, "Paste something into the lead.").max(8000),
@@ -130,6 +152,7 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
 
   const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
   if (!lead) return { error: "Lead not found." };
+  if (!canAccessLeadChannel(user, lead.channel)) return { error: "Lead not found." };
 
   if (lead.status === parsed.data.status) {
     return; // no-op
@@ -214,6 +237,11 @@ export async function setLeadAssignmentsAction(input: {
   const parsed = SetAssignmentsSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid assignment." };
 
+  // Master can see all channels, but call the helper anyway so the rule
+  // lives in one place; also guarantees the lead exists.
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, master);
+  if (!meta) return { error: "Lead not found." };
+
   // Validate every userId is an active USER (not master, not disabled).
   const valid = await prisma.user.count({
     where: { id: { in: parsed.data.userIds }, active: true, role: "USER" },
@@ -267,6 +295,7 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
   ]);
 
   if (!lead) return { error: "Lead not found." };
+  if (!canAccessLeadChannel(me, lead.channel)) return { error: "Lead not found." };
   if (lead.status === "APPROVED" && me.role !== "MASTER") {
     return { error: "This lead is already closed." };
   }
@@ -327,6 +356,7 @@ export async function dropWithStatusAction(input: {
 
   const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
   if (!lead) return { error: "Lead not found." };
+  if (!canAccessLeadChannel(me, lead.channel)) return { error: "Lead not found." };
 
   const newStatus = parsed.data.status as LeadStatus;
   const statusChanged = lead.status !== newStatus;
@@ -430,12 +460,15 @@ const RemarkSchema = z.object({
 });
 
 export async function updateRemarkAction(formData: FormData): Promise<{ error?: string } | void> {
-  await requireUser();
+  const me = await requireUser();
   const parsed = RemarkSchema.safeParse({
     leadId: formData.get("leadId"),
     remark: formData.get("remark"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid remark." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
+  if (!meta) return { error: "Lead not found." };
 
   await prisma.lead.update({
     where: { id: parsed.data.leadId },
@@ -452,12 +485,15 @@ const EditContentSchema = z.object({
 });
 
 export async function editLeadContentAction(formData: FormData): Promise<{ error?: string } | void> {
-  await requireUser();
+  const me = await requireUser();
   const parsed = EditContentSchema.safeParse({
     leadId: formData.get("leadId"),
     content: formData.get("content"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid content." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
+  if (!meta) return { error: "Lead not found." };
 
   await prisma.lead.update({
     where: { id: parsed.data.leadId },
@@ -492,6 +528,7 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
 
   const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
   if (!lead) return { error: "Lead not found." };
+  if (!canAccessLeadChannel(user, lead.channel)) return { error: "Lead not found." };
 
   // Two days + 1 hour gives the lead a clean "aged" timestamp on the Open
   // Market side of the boundary, even accounting for small clock drift.
@@ -546,12 +583,15 @@ const QualitySchema = z.object({
 });
 
 export async function updateLeadQualityAction(formData: FormData): Promise<{ error?: string } | void> {
-  await requireUser();
+  const me = await requireUser();
   const parsed = QualitySchema.safeParse({
     leadId: formData.get("leadId"),
     quality: formData.get("quality") ?? "",
   });
   if (!parsed.success) return { error: "Invalid quality." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
+  if (!meta) return { error: "Lead not found." };
 
   await prisma.lead.update({
     where: { id: parsed.data.leadId },
@@ -569,9 +609,12 @@ const DeleteLeadSchema = z.object({
 });
 
 export async function deleteLeadAction(formData: FormData): Promise<{ error?: string } | void> {
-  await requireUser();
+  const me = await requireUser();
   const parsed = DeleteLeadSchema.safeParse({ leadId: formData.get("leadId") });
   if (!parsed.success) return { error: "Invalid lead." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
+  if (!meta) return { error: "Lead not found." };
 
   // Cascade handles status history & assignments via Prisma's onDelete: Cascade.
   await prisma.lead.delete({ where: { id: parsed.data.leadId } });

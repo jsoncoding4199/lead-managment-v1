@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_LABEL } from "@/lib/leadStatus";
+import { visibleChannelsAll } from "@/lib/channels";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,16 @@ export async function GET(req: NextRequest) {
 
   const isMaster = me.role === "MASTER";
 
+  // Channel filter — keep AHA / AHB events out of the polling feed for any
+  // user who can't see those channels. Same set of channels used for both
+  // queries so behavior is consistent across event kinds.
+  const channelList = visibleChannelsAll({
+    id: me.id,
+    username: me.username,
+    displayName: me.displayName,
+    role: me.role,
+  });
+
   const [statusChanges, newLeads] = await Promise.all([
     prisma.leadStatusChange.findMany({
       where: {
@@ -52,6 +63,9 @@ export async function GET(req: NextRequest) {
         // Non-master: never include APPROVED transitions (those leads are
         // master-only).
         ...(isMaster ? {} : { toStatus: { not: "APPROVED" } }),
+        // Filter by the parent lead's channel — privates leak only to the
+        // channel owner and master.
+        lead: { channel: { in: channelList } },
       },
       orderBy: { changedAt: "desc" },
       take: 30,
@@ -64,7 +78,11 @@ export async function GET(req: NextRequest) {
       },
     }),
     prisma.lead.findMany({
-      where: { createdAt: { gt: since }, createdById: { not: me.id } },
+      where: {
+        createdAt: { gt: since },
+        createdById: { not: me.id },
+        channel: { in: channelList },
+      },
       orderBy: { createdAt: "desc" },
       take: 30,
       select: {
