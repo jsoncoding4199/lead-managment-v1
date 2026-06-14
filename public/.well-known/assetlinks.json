@@ -3,9 +3,9 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "REPLACE_ME_WITH_PACKAGE_NAME",
+      "package_name": "app.vercel.lead_managment_v1.twa",
       "sha256_cert_fingerprints": [
-        "REPLACE_ME_WITH_SHA256_FINGERPRINT_FROM_PWABUILDER"
+        "75:3A:6A:EA:AC:6B:98:0A:6D:8E:18:18:AD:E7:85:8E:52:5C:AC:7F:9A:4F:BD:A8:3A:17:1E:D1:75:7B:36:6A"
       ]
     }
   }
