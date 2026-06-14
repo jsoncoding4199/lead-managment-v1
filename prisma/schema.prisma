@@ -50,6 +50,13 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  // Cumulative self-action counters. Incremented atomically by the
+  // pickUp / drop actions; never decremented. Survive status changes,
+  // reassignments, and lead deletions so the stats reflect each user's
+  // total activity over time.
+  pickUpsCount Int @default(0)
+  dropsCount   Int @default(0)
+
   createdLeads      Lead[]                 @relation("CreatedBy")
   assignments       LeadAssignment[]       @relation("Assignee")
   assignmentsMade   LeadAssignment[]       @relation("AssignedBy")

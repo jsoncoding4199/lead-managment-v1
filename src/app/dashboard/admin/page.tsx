@@ -26,7 +26,7 @@ function emptyStatusCounts(): Record<LeadStatus, number> {
 export default async function AdminPage() {
   const master = await requireMaster();
 
-  const [users, pendingResets, settings, assignmentRows, masterProfile] = await Promise.all([
+  const [users, pendingResets, settings, statusChangeRows, masterProfile] = await Promise.all([
     prisma.user.findMany({
       where: { role: "USER" },
       orderBy: [{ active: "desc" }, { displayName: "asc" }],
@@ -42,12 +42,13 @@ export default async function AdminPage() {
     }),
     prisma.passwordResetRequest.count({ where: { resolvedAt: null } }),
     getAppSettings(),
-    prisma.leadAssignment.findMany({
-      where: { user: { role: "USER" } },
-      select: {
-        userId: true,
-        lead: { select: { status: true } },
-      },
+    // Cumulative status-change activity per user. Each row in
+    // LeadStatusChange is one transition; grouping by (changedById, toStatus)
+    // and counting gives "how many times this user has set a lead to this
+    // status" — never decrements when the lead later moves on.
+    prisma.leadStatusChange.groupBy({
+      by: ["changedById", "toStatus"],
+      _count: { _all: true },
     }),
     prisma.user.findUnique({
       where: { id: master.id },
@@ -55,24 +56,26 @@ export default async function AdminPage() {
     }),
   ]);
 
-  // Aggregate assignments per user by status.
-  const statsByUser = new Map<number, Record<LeadStatus, number>>();
-  for (const a of assignmentRows) {
-    const bucket = statsByUser.get(a.userId) ?? emptyStatusCounts();
-    bucket[a.lead.status] += 1;
-    statsByUser.set(a.userId, bucket);
+  // Aggregate transitions per user by destination status.
+  const changeCountsByUser = new Map<number, Record<LeadStatus, number>>();
+  for (const row of statusChangeRows) {
+    const bucket = changeCountsByUser.get(row.changedById) ?? emptyStatusCounts();
+    bucket[row.toStatus] += row._count._all;
+    changeCountsByUser.set(row.changedById, bucket);
   }
 
   const statsRows: UserStatsRow[] = users.map((u) => {
-    const counts = statsByUser.get(u.id) ?? emptyStatusCounts();
-    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const changeCounts = changeCountsByUser.get(u.id) ?? emptyStatusCounts();
+    const totalChanges = Object.values(changeCounts).reduce((a, b) => a + b, 0);
     return {
       userId: u.id,
       displayName: u.displayName,
       username: u.username,
       active: u.active,
-      counts,
-      total,
+      changeCounts,
+      totalChanges,
+      pickUpsCount: u.pickUpsCount,
+      dropsCount: u.dropsCount,
       pushDevices: u._count.pushSubscriptions,
     };
   });

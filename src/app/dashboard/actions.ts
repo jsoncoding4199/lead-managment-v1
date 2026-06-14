@@ -277,13 +277,21 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
     return { error: `This lead is already at capacity (${settings.maxPickup}).` };
   }
 
-  await prisma.leadAssignment.create({
-    data: {
-      leadId: lead.id,
-      userId: me.id,
-      assignedById: me.id, // self-assigned
-    },
-  });
+  // Wrap the assignment + counter increment in a single transaction so the
+  // pickUpsCount stays consistent with the actual assignment table.
+  await prisma.$transaction([
+    prisma.leadAssignment.create({
+      data: {
+        leadId: lead.id,
+        userId: me.id,
+        assignedById: me.id, // self-assigned
+      },
+    }),
+    prisma.user.update({
+      where: { id: me.id },
+      data: { pickUpsCount: { increment: 1 } },
+    }),
+  ]);
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
@@ -297,8 +305,19 @@ export async function dropLeadAction(formData: FormData): Promise<{ error?: stri
   const parsed = DropSchema.safeParse({ leadId: formData.get("leadId") });
   if (!parsed.success) return { error: "Invalid lead." };
 
-  await prisma.leadAssignment.deleteMany({
-    where: { leadId: parsed.data.leadId, userId: me.id },
+  // Atomic delete + counter increment. dropsCount only ticks up when there
+  // was an actual assignment to remove (count > 0) — calls for users who
+  // weren't assigned are no-ops in both tables.
+  await prisma.$transaction(async (tx) => {
+    const result = await tx.leadAssignment.deleteMany({
+      where: { leadId: parsed.data.leadId, userId: me.id },
+    });
+    if (result.count > 0) {
+      await tx.user.update({
+        where: { id: me.id },
+        data: { dropsCount: { increment: 1 } },
+      });
+    }
   });
 
   revalidatePath("/dashboard");
