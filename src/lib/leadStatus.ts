@@ -54,15 +54,34 @@ export const ACTIVE_STATUSES: LeadStatus[] = [
   "APPOINTMENT_ABLE",
 ];
 
-// When a lead in one of these statuses hits max pickup, it migrates from
-// Fresh/Open Market into the master-only Archive tab.
-export const ARCHIVABLE_NOT_ABLE_STATUSES: LeadStatus[] = [
+// "Soft negative" outcomes — the team tried and couldn't progress the
+// lead, but it's not a hard close. Visible to everyone in Open Market so
+// anyone can take another shot. Backdated to the Market boundary on
+// transition (see TRANSFER_TO_MARKET_STATUSES). These never auto-archive
+// based on pickup count.
+export const SOFT_NEGATIVE_STATUSES: LeadStatus[] = [
   "CONTACT_NOT_ABLE",
   "DOCUMENTS_NOT_ABLE",
   "APPOINTMENT_NOT_ABLE",
   "SPAM_OR_MISSING",
-  "REJECTED",
 ];
+
+// Statuses that auto-transfer the lead into Open Market on transition —
+// backdate Lead.createdAt past the Fresh→Market boundary. Same as the
+// "soft negative" list above; aliased for semantic clarity at call sites.
+export const TRANSFER_TO_MARKET_STATUSES: LeadStatus[] = SOFT_NEGATIVE_STATUSES;
+
+// Terminal statuses that always land the lead in the master-only Archive
+// tab. No more team pickups, no more visibility outside master. APPROVED
+// = successful close; REJECTED = hard rejection (requires a written
+// reason, see changeStatusAction).
+export const ALWAYS_ARCHIVED_STATUSES: LeadStatus[] = ["APPROVED", "REJECTED"];
+
+// DEPRECATED alias kept for callers we haven't migrated yet. The name no
+// longer reflects behavior (NOT_ABLE statuses don't auto-archive on max
+// pickup anymore). Prefer SOFT_NEGATIVE_STATUSES for visibility checks
+// and ALWAYS_ARCHIVED_STATUSES for archive checks.
+export const ARCHIVABLE_NOT_ABLE_STATUSES: LeadStatus[] = SOFT_NEGATIVE_STATUSES;
 
 /**
  * How many days a lead can sit before it auto-migrates from Fresh to

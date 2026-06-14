@@ -4,7 +4,11 @@ import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
-import { STATUS_LABEL, ACTIVE_STATUSES, ARCHIVABLE_NOT_ABLE_STATUSES } from "@/lib/leadStatus";
+import {
+  STATUS_LABEL,
+  ACTIVE_STATUSES,
+  ALWAYS_ARCHIVED_STATUSES,
+} from "@/lib/leadStatus";
 import { canAccessLeadChannel } from "@/lib/channels";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
@@ -47,23 +51,18 @@ export default async function LeadDetailPage({
   if (!canAccessLeadChannel(user, lead.channel)) notFound();
 
   // Non-master visibility per status:
-  //   - APPROVED: master-only, hard 404 for everyone else.
+  //   - ALWAYS_ARCHIVED (APPROVED / REJECTED): master-only, hard 404.
+  //     The Archive tab itself is hidden from non-master users now.
   //   - ABLE (Contact/Documents/Appointment): only assignees can view.
   //   - NEW: assignees, plus anyone if there's still a pickup slot.
-  //   - NOT_ABLE/SPAM/REJECTED: visible to everyone while they have a free
-  //     slot; once max pickup is reached, they move to the master Archive
-  //     and only assignees retain access.
+  //   - Soft-negative (NOT_ABLE / SPAM): visible to everyone — they stay
+  //     in Open Market for the team to keep retrying. No archive lockout.
   if (user.role !== "MASTER") {
-    if (lead.status === "APPROVED") notFound();
+    if (ALWAYS_ARCHIVED_STATUSES.includes(lead.status)) notFound();
     const iAmAssigned = lead.assignments.some((a) => a.user.id === user.id);
     if (ACTIVE_STATUSES.includes(lead.status) && !iAmAssigned) notFound();
     if (lead.status === "NEW" && !iAmAssigned && lead.assignments.length >= settings.maxPickup) {
       notFound();
-    }
-    if (ARCHIVABLE_NOT_ABLE_STATUSES.includes(lead.status) && !iAmAssigned) {
-      // Once a NOT_ABLE lead hits max pickup it's in master Archive — block
-      // non-assignees from viewing directly.
-      if (lead.assignments.length >= settings.maxPickup) notFound();
     }
   }
 

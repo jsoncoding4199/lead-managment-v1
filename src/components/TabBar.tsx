@@ -17,6 +17,8 @@ type Props = {
   marketCount: number;
   picksCount: number;
   archiveCount: number;
+  /** Master-only by default — hide for everyone else. */
+  showArchive?: boolean;
   showAHA?: boolean;
   showAHB?: boolean;
   ahaCount?: number;
@@ -39,6 +41,7 @@ export function TabBar({
   marketCount,
   picksCount,
   archiveCount,
+  showArchive,
   showAHA,
   showAHB,
   ahaCount = 0,
@@ -49,8 +52,10 @@ export function TabBar({
     { key: "fresh", href: "/dashboard", label: "Fresh", short: "Fresh", count: freshCount, icon: <Sparkles className="h-4 w-4" /> },
     { key: "market", href: "/dashboard?tab=market", label: "Open Market", short: "Market", count: marketCount, icon: <Store className="h-4 w-4" /> },
     { key: "picks", href: "/dashboard?tab=picks", label: "My Pick Up", short: "Picks", count: picksCount, icon: <BookmarkCheck className="h-4 w-4" /> },
-    { key: "archive", href: "/dashboard?tab=archive", label: "Archive", short: "Archive", count: archiveCount, icon: <Archive className="h-4 w-4" /> },
   ];
+  if (showArchive) {
+    tabs.push({ key: "archive", href: "/dashboard?tab=archive", label: "Archive", short: "Archive", count: archiveCount, icon: <Archive className="h-4 w-4" /> });
+  }
   if (showAHA) {
     tabs.push({ key: "aha", href: "/dashboard?tab=aha", label: "AHA", short: "AHA", count: ahaCount, icon: <Crown className="h-4 w-4" /> });
   }

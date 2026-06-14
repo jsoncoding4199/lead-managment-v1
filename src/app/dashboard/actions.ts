@@ -6,9 +6,30 @@ import { z } from "zod";
 import type { LeadStatus, LeadQuality } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, requireMaster } from "@/lib/auth";
-import { STATUS_LABEL } from "@/lib/leadStatus";
+import {
+  STATUS_LABEL,
+  TRANSFER_TO_MARKET_STATUSES,
+  ALWAYS_ARCHIVED_STATUSES,
+} from "@/lib/leadStatus";
 import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
 import { CHANNEL_OWNERS, canAccessLeadChannel, type ChannelKey } from "@/lib/channels";
+
+/**
+ * True when the actor is the AHA / AHB channel owner (and not master)
+ * working on a lead in their own private channel. Used to decide whether
+ * an outbound transition (NOT_ABLE / SPAM / REJECTED / APPROVED / Reset)
+ * should also kick the lead back to the public DEFAULT channel.
+ *
+ * Master never auto-flips a channel — they manage explicitly.
+ */
+function isChannelOwnerActing(
+  actor: { id: number; username: string; displayName: string; role: "MASTER" | "USER" },
+  channel: import("@prisma/client").LeadChannel
+): boolean {
+  if (channel === "DEFAULT") return false;
+  if (actor.role === "MASTER") return false;
+  return canAccessLeadChannel(actor, channel);
+}
 
 /**
  * Channel guard for every Lead-touching action. Fetches just the lead's
@@ -124,17 +145,6 @@ const StatusValues = [
   "APPROVED",
 ] as const;
 
-// Statuses that auto-transfer the lead into Open Market — the assignee tried
-// and couldn't progress it, so it returns to the team pool (the assignee can
-// still see it in My Picks until they drop it).
-const TRANSFER_TO_MARKET_STATUSES: LeadStatus[] = [
-  "CONTACT_NOT_ABLE",
-  "DOCUMENTS_NOT_ABLE",
-  "APPOINTMENT_NOT_ABLE",
-  "SPAM_OR_MISSING",
-  "REJECTED",
-];
-
 const ChangeStatusSchema = z.object({
   leadId: z.coerce.number().int().positive(),
   status: z.enum(StatusValues),
@@ -169,16 +179,31 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   // (regardless of its original age). The team can then re-pick it up.
   const newStatus = parsed.data.status as LeadStatus;
   const transferToMarket = TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
+  const isOutboundFromChannel =
+    transferToMarket || ALWAYS_ARCHIVED_STATUSES.includes(newStatus);
+  // Adam / Eddie working on their own AHA / AHB lead: outbound transitions
+  // (NOT_ABLE / SPAM / REJECTED / APPROVED) flip the lead back to the
+  // public DEFAULT channel so it shows up in Open Market or Archive for
+  // the team. Master's actions never auto-flip.
+  const flipChannelToDefault =
+    isOutboundFromChannel && isChannelOwnerActing(user, lead.channel);
   const marketBackdate = transferToMarket
     ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
     : null;
 
+  type LeadUpdate = {
+    status: LeadStatus;
+    createdAt?: Date;
+    channel?: "DEFAULT";
+  };
+  const leadUpdate: LeadUpdate = { status: newStatus };
+  if (marketBackdate) leadUpdate.createdAt = marketBackdate;
+  if (flipChannelToDefault) leadUpdate.channel = "DEFAULT";
+
   await prisma.$transaction([
     prisma.lead.update({
       where: { id: lead.id },
-      data: marketBackdate
-        ? { status: newStatus, createdAt: marketBackdate }
-        : { status: newStatus },
+      data: leadUpdate,
     }),
     prisma.leadStatusChange.create({
       data: {
@@ -372,18 +397,39 @@ export async function dropWithStatusAction(input: {
     return { error: "A rejection reason is required." };
   }
   const transferToMarket = statusChanged && TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
+  // Channel-owner drop with an outbound status flips the lead's channel
+  // back to public DEFAULT so the rest of the team can see it (Market for
+  // soft-negative, Archive for REJECTED / APPROVED). Runs even if the
+  // status didn't change — e.g. Adam drops a CONTACT_NOT_ABLE lead with
+  // the same status, the lead still leaves the private AHA channel.
+  const isOutboundChoice =
+    TRANSFER_TO_MARKET_STATUSES.includes(newStatus) ||
+    ALWAYS_ARCHIVED_STATUSES.includes(newStatus);
+  const flipChannelToDefault =
+    isOutboundChoice && isChannelOwnerActing(me, lead.channel);
   const marketBackdate = transferToMarket
     ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
     : null;
+  const needsLeadUpdate = statusChanged || flipChannelToDefault;
+
+  type LeadUpdate = {
+    status?: LeadStatus;
+    createdAt?: Date;
+    channel?: "DEFAULT";
+  };
 
   await prisma.$transaction(async (tx) => {
-    if (statusChanged) {
+    if (needsLeadUpdate) {
+      const leadUpdate: LeadUpdate = {};
+      if (statusChanged) leadUpdate.status = newStatus;
+      if (marketBackdate) leadUpdate.createdAt = marketBackdate;
+      if (flipChannelToDefault) leadUpdate.channel = "DEFAULT";
       await tx.lead.update({
         where: { id: lead.id },
-        data: marketBackdate
-          ? { status: newStatus, createdAt: marketBackdate }
-          : { status: newStatus },
+        data: leadUpdate,
       });
+    }
+    if (statusChanged) {
       await tx.leadStatusChange.create({
         data: {
           leadId: lead.id,
@@ -546,10 +592,16 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
   const boundary = new Date(Date.now() - (2 * 86_400_000 + 3_600_000));
   const noteSuffix = user.role === "MASTER" ? " (master cleared assignments)" : "";
 
+  // Channel owner resetting their own private lead: flip back to DEFAULT so
+  // the lead lands in the public Open Market for the whole team.
+  const flipChannelToDefault = isChannelOwnerActing(user, lead.channel);
+
   await prisma.$transaction(async (tx) => {
     await tx.lead.update({
       where: { id: lead.id },
-      data: { status: "NEW", createdAt: boundary },
+      data: flipChannelToDefault
+        ? { status: "NEW", createdAt: boundary, channel: "DEFAULT" }
+        : { status: "NEW", createdAt: boundary },
     });
     if (user.role === "MASTER") {
       await tx.leadAssignment.deleteMany({ where: { leadId: lead.id } });

@@ -6,7 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
 import {
   ACTIVE_STATUSES,
-  ARCHIVABLE_NOT_ABLE_STATUSES,
+  ALWAYS_ARCHIVED_STATUSES,
+  SOFT_NEGATIVE_STATUSES,
   AGE_BOUNDARY_DAYS,
 } from "@/lib/leadStatus";
 import {
@@ -124,17 +125,17 @@ type LeadView = {
 
 /**
  * Visibility within Fresh + Open Market for non-master users.
- *   - NEW + NOT_ABLE/SPAM/REJECTED visible to everyone (they can be picked up).
+ *   - NEW + soft-negative (NOT_ABLE/SPAM) visible to everyone — they can
+ *     still be picked up by the team.
  *   - ABLE statuses visible only to the assignees.
- *   - APPROVED never (it's master-only and not in these tabs anyway).
- * Archive itself is master-only — non-master access is blocked one level up
- * in LeadsSection / TabBarWithCounts.
+ *   - APPROVED / REJECTED never — those live in the master-only Archive.
+ * Archive itself is now master-only and hidden from non-master tabs.
  */
 function freshOrMarketVisibility(user: CurrentUser): Prisma.LeadWhereInput {
   if (user.role === "MASTER") return {};
   return {
     AND: [
-      { status: { not: "APPROVED" } },
+      { status: { notIn: ALWAYS_ARCHIVED_STATUSES } },
       {
         OR: [
           { status: { notIn: ACTIVE_STATUSES } },
@@ -155,14 +156,15 @@ function ageBoundaryDate(): Date {
   return new Date(Date.now() - AGE_BOUNDARY_DAYS * 86_400_000);
 }
 
-/** "Archive-bound" — would currently appear in the Archive tab (master only). */
-function isArchiveBound(
-  lead: { status: LeadStatus; assignments: { userId: number }[] | { user: { id: number } }[] },
-  maxPickup: number
-): boolean {
-  if (lead.status === "APPROVED") return true;
-  if (!ARCHIVABLE_NOT_ABLE_STATUSES.includes(lead.status)) return false;
-  return lead.assignments.length >= maxPickup;
+/**
+ * "Archive-bound" — would currently appear in the Archive tab (master only).
+ * Simpler than before: APPROVED and REJECTED always archive; everything
+ * else stays in the active pipeline regardless of pickup count. NOT_ABLE
+ * and SPAM leads stick around in Open Market so the team can keep
+ * retrying them.
+ */
+function isArchiveBound(lead: { status: LeadStatus }): boolean {
+  return ALWAYS_ARCHIVED_STATUSES.includes(lead.status);
 }
 
 async function LeadsSection({
@@ -277,12 +279,7 @@ async function LeadsSection({
         where: {
           AND: [
             { channel: "DEFAULT" },
-            {
-              OR: [
-                { status: "APPROVED" },
-                { status: { in: ARCHIVABLE_NOT_ABLE_STATUSES } },
-              ],
-            },
+            { status: { in: ALWAYS_ARCHIVED_STATUSES } },
             q ? { content: { contains: q, mode: "insensitive" as const } } : {},
           ],
         },
@@ -298,7 +295,7 @@ async function LeadsSection({
     ]);
 
     // Keep only leads that genuinely live in Archive right now.
-    const filtered = archivable.filter((l) => isArchiveBound(l, settings.maxPickup));
+    const filtered = archivable.filter((l) => isArchiveBound(l));
     if (filtered.length === 0) {
       return <EmptyState tab="archive" hasQuery={!!q} />;
     }
@@ -346,18 +343,20 @@ async function LeadsSection({
   ]);
 
   // Post-filter:
-  //   - Drop leads that should be in Archive (NOT_ABLE/SPAM/REJECT/APPROVED + max picked).
+  //   - Drop leads that should be in Archive (APPROVED / REJECTED only).
   //   - For non-master: enforce pickup-cap rule on NEW leads (capacity rule).
   const visibleLeads = rawLeads.filter((l) => {
-    if (isArchiveBound(l, settings.maxPickup)) return false;
+    if (isArchiveBound(l)) return false;
     if (user.role === "MASTER") return true;
     const iAmAssigned = l.assignments.some((a) => a.user.id === user.id);
     if (iAmAssigned) return true;
     if (l.status === "NEW") {
       return l.assignments.length < settings.maxPickup;
     }
-    // NOT_ABLE / SPAM / REJECTED leads still visible to everyone in F/OM.
-    if (ARCHIVABLE_NOT_ABLE_STATUSES.includes(l.status)) return true;
+    // Soft-negative (NOT_ABLE / SPAM) leads stay visible to everyone in
+    // Fresh / Market so the team can keep trying them. They no longer
+    // auto-archive based on pickup count.
+    if (SOFT_NEGATIVE_STATUSES.includes(l.status)) return true;
     // ABLE leads were already filtered out by visibility WHERE for non-assigned.
     return false;
   });
@@ -574,11 +573,10 @@ async function TabBarWithCounts({
 
   for (const l of allLeads) {
     const count = l._count.assignments;
-    const archiveBound =
-      l.status === "APPROVED" ||
-      (ARCHIVABLE_NOT_ABLE_STATUSES.includes(l.status) && count >= settings.maxPickup);
+    const archiveBound = ALWAYS_ARCHIVED_STATUSES.includes(l.status);
 
     if (archiveBound) {
+      // Archive is master-only — non-master never sees the tab or its count.
       if (user.role === "MASTER") {
         archiveCount++;
         if (count > 0) picksCount++;
@@ -606,6 +604,9 @@ async function TabBarWithCounts({
     else marketCount++;
   }
 
+  // Archive tab is hidden from everyone except master.
+  const showArchive = user.role === "MASTER";
+
   return (
     <TabBar
       tab={tab}
@@ -613,6 +614,7 @@ async function TabBarWithCounts({
       marketCount={marketCount}
       picksCount={picksCount}
       archiveCount={archiveCount}
+      showArchive={showArchive}
       showAHA={showAHA}
       showAHB={showAHB}
       ahaCount={ahaCount}
