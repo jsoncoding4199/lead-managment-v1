@@ -34,6 +34,25 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        {/*
+          Inline SW registration. Two reasons it lives in <head> instead of
+          being delegated to the <ServiceWorkerRegistrar /> React component:
+            - PWABuilder's HTML parser scans the response body for any
+              `serviceWorker.register('/sw.js')` reference and reports the
+              site as "not a PWA" if it can't find one statically. The
+              client component's bundled JS isn't visible to that parser.
+            - Registering during HTML parse (before React hydrates) gets
+              the SW installing milliseconds sooner. Idempotent — the
+              ServiceWorkerRegistrar below is harmless defense in depth.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){})}",
+          }}
+        />
+      </head>
       <body className={inter.className}>
         <ServiceWorkerRegistrar />
         {children}
