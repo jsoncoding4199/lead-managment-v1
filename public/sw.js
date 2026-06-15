@@ -152,8 +152,23 @@ self.addEventListener("push", (event) => {
     },
     tag: data.tag || "leadboard",
     renotify: true,
-    // Vibrate pattern (where supported).
+    // Vibrate pattern (where supported). Including a vibrate field signals
+    // to Android that this is an "alerting" notification (heads-up + sound
+    // + lock-screen visible) instead of a silent one.
     vibrate: data.kind === "approved" ? [200, 50, 200, 50, 400] : [120, 60, 120],
+    // Explicit silent:false makes intent clear to OS notification channels.
+    silent: false,
+    // Server-supplied timestamp so OS sorts events chronologically.
+    timestamp: Date.now(),
+    // requireInteraction keeps important events on screen until the user
+    // dismisses them. Applied to approved + new-lead events (high signal);
+    // generic status changes auto-dismiss after a few seconds.
+    requireInteraction: data.kind === "approved" || data.kind === "lead",
+    // One-tap actions render as buttons below the notification on Android,
+    // adding visible weight and giving the user a fast "Open" affordance.
+    actions: [
+      { action: "open", title: "Open" },
+    ],
   };
 
   event.waitUntil(
