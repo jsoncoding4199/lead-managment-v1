@@ -672,10 +672,14 @@ function LeadsSkeleton() {
 /* ---------- Grouped renderers ---------- */
 
 /**
- * Open tab grouping rules:
- *  - Non-master: two buckets — "My picked-up" and "Available to pick up"
- *  - Master: grouped by each assignee user. A lead with multiple assignees
- *    appears under each of them; unassigned ones go in their own bucket.
+ * Open tab (Fresh + Open Market) grouping rules:
+ *  - Group every lead by the user who CREATED it (Lead.createdBy), not by
+ *    the assignees. Same rule for master and non-master so the layout
+ *    stays predictable across roles.
+ *  - Non-master still excludes their own picks here — those live in the
+ *    My Pick Up tab so this view stays focused on grabbable leads.
+ *  - Each creator section is collapsed by default; the lead count sits in
+ *    the badge next to the title so you can scan totals before expanding.
  */
 function OpenGrouped({
   leads,
@@ -688,115 +692,68 @@ function OpenGrouped({
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
 }) {
-  if (viewer.role !== "MASTER") {
-    // Non-master in Fresh / Open Market sees only leads they haven't picked
-    // up. Their own picks live exclusively in the My Pick Up tab so the
-    // pool view stays focused on what's grabbable.
-    const available = leads.filter((l) => !l.assignees.some((a) => a.id === viewer.id));
-    if (available.length === 0) {
-      return (
-        <div className="card p-10 text-center">
-          <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">✦</div>
-          <h3 className="mt-4 text-base font-semibold text-ink-900">Nothing to pick up right now</h3>
-          <p className="mt-1 text-sm text-ink-500">
-            Your own picks are in the <Link href="/dashboard?tab=picks" className="text-brand-700 font-medium hover:underline">My Pick Up</Link> tab.
-          </p>
-        </div>
-      );
-    }
+  const visibleLeads = viewer.role === "MASTER"
+    ? leads
+    : leads.filter((l) => !l.assignees.some((a) => a.id === viewer.id));
+
+  if (visibleLeads.length === 0) {
     return (
-      <div className="space-y-6">
-        <CollapsibleSection
-          storageKey="open:available"
-          count={available.length}
-          header={
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
-                ⬆
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-ink-900">Available to pick up</h3>
-                <p className="text-xs text-ink-500">
-                  {available.length} open · up to {maxPickup} pickers per lead · your picks live in{" "}
-                  <Link href="/dashboard?tab=picks" className="text-brand-700 font-medium hover:underline">
-                    My Pick Up
-                  </Link>
-                </p>
-              </div>
-            </div>
-          }
-        >
-          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {available.map((lead) => (
-              <li key={lead.id}>
-                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
-              </li>
-            ))}
-          </ul>
-        </CollapsibleSection>
+      <div className="card p-10 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">✦</div>
+        <h3 className="mt-4 text-base font-semibold text-ink-900">Nothing to show right now</h3>
+        <p className="mt-1 text-sm text-ink-500">
+          {viewer.role === "MASTER"
+            ? "No leads in this view."
+            : (
+              <>
+                Your own picks live in the{" "}
+                <Link href="/dashboard?tab=picks" className="text-brand-700 font-medium hover:underline">
+                  My Pick Up
+                </Link>{" "}
+                tab.
+              </>
+            )}
+        </p>
       </div>
     );
   }
 
-  // Master view: group by each assignee. Leads with no assignees go in "Unassigned".
+  // Group by creator. A lead appears under exactly one bucket — its
+  // creator's. If createdBy ever ends up null (defensive), bucket it
+  // under "Unknown" so it's still visible.
   const buckets = new Map<string, { label: string; items: LeadView[] }>();
-  const unassigned: LeadView[] = [];
-  for (const lead of leads) {
-    if (lead.assignees.length === 0) {
-      unassigned.push(lead);
-      continue;
-    }
-    for (const a of lead.assignees) {
-      const key = `user:${a.id}`;
-      const bucket = buckets.get(key) ?? { label: a.displayName, items: [] };
-      bucket.items.push(lead);
-      buckets.set(key, bucket);
-    }
+  for (const lead of visibleLeads) {
+    const creator = lead.createdBy;
+    const key = creator ? `user:${creator.id}` : "unknown";
+    const label = creator?.displayName ?? "Unknown";
+    const bucket = buckets.get(key) ?? { label, items: [] };
+    bucket.items.push(lead);
+    buckets.set(key, bucket);
   }
 
-  const entries = Array.from(buckets.entries()).sort((a, b) => a[1].label.localeCompare(b[1].label));
+  const entries = Array.from(buckets.entries()).sort(
+    (a, b) => a[1].label.localeCompare(b[1].label)
+  );
 
   return (
     <div className="space-y-6">
-      {unassigned.length > 0 && (
-        <CollapsibleSection
-          storageKey="open:unassigned"
-          count={unassigned.length}
-          header={
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-amber-100 text-sm font-semibold text-amber-700">
-                ?
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-ink-900">Unassigned</h3>
-                <p className="text-xs text-ink-500">Not picked up by anyone yet.</p>
-              </div>
-            </div>
-          }
-        >
-          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {unassigned.map((lead) => (
-              <li key={lead.id}>
-                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
-              </li>
-            ))}
-          </ul>
-        </CollapsibleSection>
-      )}
       {entries.map(([key, bucket]) => (
         <CollapsibleSection
           key={key}
-          storageKey={`open:${key}`}
+          storageKey={`open:by-creator:${key}`}
           count={bucket.items.length}
+          defaultOpen={false}
           header={
             <div className="flex items-center gap-3">
               <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
                 {initials(bucket.label)}
               </div>
               <div>
-                <h3 className="text-base font-semibold text-ink-900">{bucket.label}</h3>
+                <h3 className="text-base font-semibold text-ink-900">
+                  {bucket.label}
+                </h3>
                 <p className="text-xs text-ink-500">
-                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} picked up
+                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} added by {bucket.label}
                 </p>
               </div>
             </div>
