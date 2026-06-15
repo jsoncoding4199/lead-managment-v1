@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Hand, LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
@@ -108,6 +108,32 @@ export default async function LeadDetailPage({
         <p className="text-xs text-ink-500 mt-0.5">
           Every status change is recorded here for visibility.
         </p>
+
+        {/*
+          Lifetime activity counters on the lead itself. They never
+          decrement when the lead's status moves on, so they reflect
+          "how many times this lead has been worked on" — independent
+          of who. Same pattern as User.pickUpsCount / dropsCount but
+          scoped per-lead.
+        */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200"
+            title="Total self-pickups for this lead (cumulative)"
+          >
+            <Hand className="h-3 w-3" />
+            Picked up {lead.pickUpsCount}{" "}
+            {lead.pickUpsCount === 1 ? "time" : "times"}
+          </span>
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200"
+            title="Total drops for this lead (cumulative)"
+          >
+            <LogOut className="h-3 w-3" />
+            Dropped {lead.dropsCount}{" "}
+            {lead.dropsCount === 1 ? "time" : "times"}
+          </span>
+        </div>
 
         {lead.history.length === 0 ? (
           <div className="mt-4 text-sm text-ink-500">No status changes yet.</div>

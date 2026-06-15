@@ -337,8 +337,9 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
     return { error: `This lead is already at capacity (${settings.maxPickup}).` };
   }
 
-  // Wrap the assignment + counter increment in a single transaction so the
-  // pickUpsCount stays consistent with the actual assignment table.
+  // Wrap the assignment + counters in a single transaction. Both the
+  // user's and the lead's pickUpsCount stay consistent with the actual
+  // assignment table; neither one decrements when the user later drops.
   await prisma.$transaction([
     prisma.leadAssignment.create({
       data: {
@@ -349,6 +350,10 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
     }),
     prisma.user.update({
       where: { id: me.id },
+      data: { pickUpsCount: { increment: 1 } },
+    }),
+    prisma.lead.update({
+      where: { id: lead.id },
       data: { pickUpsCount: { increment: 1 } },
     }),
   ]);
@@ -446,6 +451,10 @@ export async function dropWithStatusAction(input: {
     if (result.count > 0) {
       await tx.user.update({
         where: { id: me.id },
+        data: { dropsCount: { increment: 1 } },
+      });
+      await tx.lead.update({
+        where: { id: lead.id },
         data: { dropsCount: { increment: 1 } },
       });
     }

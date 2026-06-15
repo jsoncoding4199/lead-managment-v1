@@ -93,6 +93,11 @@ model Lead {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   createdById  Int
+  // Lifetime counters for this lead. Incremented atomically inside the
+  // pickUp / drop transactions; never decremented. Independent of which
+  // user did the pickup or drop — they're a per-lead activity total.
+  pickUpsCount Int          @default(0)
+  dropsCount   Int          @default(0)
 
   createdBy   User               @relation("CreatedBy", fields: [createdById], references: [id])
   history     LeadStatusChange[]
