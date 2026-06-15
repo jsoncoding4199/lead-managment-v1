@@ -4,6 +4,15 @@ export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
 }
 
+/**
+ * Wall-clock timezone for every date the app displays. The team is in
+ * Malaysia (UTC+8); pinning it here keeps the server (Vercel runs in UTC
+ * by default) and the client showing the same timestamp — no hydration
+ * mismatch, no UTC flash before hydration. Change in one place if the
+ * team ever relocates.
+ */
+const APP_TIMEZONE = "Asia/Kuala_Lumpur";
+
 export function timeAgo(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   const sec = Math.floor((Date.now() - d.getTime()) / 1000);
@@ -14,18 +23,25 @@ export function timeAgo(date: Date | string): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
-  return d.toLocaleDateString();
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: APP_TIMEZONE,
+  }).format(d);
 }
 
 export function formatDateTime(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleString(undefined, {
+  return new Intl.DateTimeFormat("en-GB", {
     year: "numeric",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    hour12: true,
+    timeZone: APP_TIMEZONE,
+  }).format(d);
 }
 
 export function daysAgo(date: Date | string): number {
