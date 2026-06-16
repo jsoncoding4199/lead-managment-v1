@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
-import { Bell, X, Loader2 } from "lucide-react";
+import { Bell, X, Loader2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const SNOOZE_KEY = "lb:push-snooze-until";
@@ -176,6 +177,13 @@ export function PushNudgeBanner({
               "Enable notifications"
             )}
           </button>
+          <Link
+            href="/dashboard/notifications"
+            className="btn btn-ghost h-8 text-xs px-3 text-ink-700 inline-flex items-center gap-1"
+          >
+            <History className="h-3.5 w-3.5" />
+            View notifications
+          </Link>
           <button
             type="button"
             onClick={snooze}

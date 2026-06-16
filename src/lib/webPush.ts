@@ -46,6 +46,27 @@ export async function sendPushToUsers(opts: {
   payload: PushPayload;
 }): Promise<void> {
   if (opts.userIds.length === 0) return;
+
+  // Record the notification per recipient FIRST, regardless of whether
+  // we can deliver push. The in-app feed at /dashboard/notifications is
+  // the source of truth — push is best-effort delivery on top of that.
+  const recipientIds = opts.userIds.filter((id) => id !== opts.excludeUserId);
+  if (recipientIds.length > 0) {
+    try {
+      await prisma.notification.createMany({
+        data: recipientIds.map((userId) => ({
+          userId,
+          title: opts.payload.title,
+          body: opts.payload.body,
+          url: opts.payload.url ?? null,
+          kind: opts.payload.kind ?? null,
+        })),
+      });
+    } catch {
+      /* feed write failure shouldn't block push delivery */
+    }
+  }
+
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
     // Push not configured — silently skip so dev / preview don't crash.
     return;
@@ -57,11 +78,7 @@ export async function sendPushToUsers(opts: {
   }
 
   const subs = await prisma.pushSubscription.findMany({
-    where: {
-      userId: {
-        in: opts.userIds.filter((id) => id !== opts.excludeUserId),
-      },
-    },
+    where: { userId: { in: recipientIds } },
   });
   if (subs.length === 0) return;
 

@@ -64,6 +64,26 @@ model User {
   resetRequests     PasswordResetRequest[] @relation("ResetSubject")
   resolvedResets    PasswordResetRequest[] @relation("ResetResolver")
   pushSubscriptions PushSubscription[]
+  notifications     Notification[]
+}
+
+// In-app notification feed. One row is created per recipient every time
+// the server fires a push (sendPushToUsers). Recorded even when the user
+// has no push subscription, so the in-app feed at /dashboard/notifications
+// is the source of truth — push delivery is best-effort, this table is not.
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  title     String
+  body      String
+  url       String?
+  kind      String?
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 // Browser-issued Web Push subscription. One row per (user, browser).
