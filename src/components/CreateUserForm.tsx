@@ -6,12 +6,12 @@ import { createUserAction } from "@/app/dashboard/admin/actions";
 export function CreateUserForm() {
   const [state, action, pending] = useActionState(createUserAction, null);
   const ref = useRef<HTMLFormElement>(null);
-  const [channel, setChannel] = useState<"DEFAULT" | "AHA" | "AHB">("DEFAULT");
+  const [isPrivate, setIsPrivate] = useState(false);
 
   useEffect(() => {
     if (state?.ok) {
       ref.current?.reset();
-      setChannel("DEFAULT");
+      setIsPrivate(false);
     }
   }, [state]);
 
@@ -32,17 +32,17 @@ export function CreateUserForm() {
       <div className="sm:col-span-2">
         <label className="label">User type</label>
         <select
-          name="channel"
-          value={channel}
-          onChange={(e) => setChannel(e.target.value as "DEFAULT" | "AHA" | "AHB")}
+          name="isPrivateChannel"
+          value={isPrivate ? "true" : "false"}
+          onChange={(e) => setIsPrivate(e.target.value === "true")}
           className="input h-11 sm:h-10"
         >
-          <option value="DEFAULT">Normal user — public pipeline</option>
-          <option value="AHA">Private channel · AHA</option>
-          <option value="AHB">Private channel · AHB</option>
+          <option value="false">Normal user — public pipeline</option>
+          <option value="true">Private channel user — own pipeline</option>
         </select>
         <p className="mt-1 text-[10px] text-ink-500">
-          Private channel users only see leads in their own channel.
+          Private channel users get their own tab on the dashboard. Only
+          master and that user can see leads in their pipeline.
         </p>
       </div>
 

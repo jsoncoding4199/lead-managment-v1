@@ -5,22 +5,25 @@ import { Plus, ClipboardPaste, Loader2 } from "lucide-react";
 import { createLeadAction } from "@/app/dashboard/actions";
 
 type Props = {
-  /** Private channel to drop the lead into. Omitted = default pipeline. */
-  channel?: "AHA" | "AHB";
+  /** Private-channel user id to drop the lead into. Omitted = public pipeline. */
+  privateChannelUserId?: number;
+  /** Display label for the private channel (the user's displayName). */
+  privateChannelLabel?: string;
 };
 
-export function LeadComposer({ channel }: Props = {}) {
+export function LeadComposer({ privateChannelUserId, privateChannelLabel }: Props = {}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const ref = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const ctaLabel = channel
-    ? `Drop a new lead into ${channel}`
+  const isPrivate = privateChannelUserId !== undefined;
+  const ctaLabel = isPrivate
+    ? `Drop a new lead into ${privateChannelLabel}'s pipeline`
     : "Drop a new lead";
-  const ctaHint = channel
-    ? `Goes into the private ${channel} channel — only the channel owner & master see it.`
+  const ctaHint = isPrivate
+    ? `Goes into ${privateChannelLabel}'s private pipeline — only they and master see it.`
     : "Paste any text — contact info, message, or notes.";
 
   if (!open) {
@@ -64,17 +67,19 @@ export function LeadComposer({ channel }: Props = {}) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
           <ClipboardPaste className="h-4 w-4 text-brand-600" />
-          {channel ? `New ${channel} lead` : "New lead"}
+          {isPrivate ? `New private lead for ${privateChannelLabel}` : "New lead"}
         </div>
         <span className="text-xs text-ink-400">
-          {channel ? (
-            <>Channel: <strong className="text-ink-700">{channel}</strong></>
+          {isPrivate ? (
+            <>Pipeline: <strong className="text-ink-700">{privateChannelLabel}</strong></>
           ) : (
             <>Status starts as <strong className="text-ink-700">New</strong></>
           )}
         </span>
       </div>
-      {channel && <input type="hidden" name="channel" value={channel} />}
+      {isPrivate && (
+        <input type="hidden" name="privateChannelUserId" value={privateChannelUserId} />
+      )}
       <textarea
         ref={ref}
         name="content"

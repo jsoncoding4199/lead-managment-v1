@@ -12,23 +12,24 @@ import {
   ALWAYS_ARCHIVED_STATUSES,
 } from "@/lib/leadStatus";
 import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
-import { CHANNEL_OWNERS, canAccessLeadChannel, type ChannelKey } from "@/lib/channels";
+import { canAccessLead } from "@/lib/channels";
 
 /**
- * True when the actor is the AHA / AHB channel owner (and not master)
- * working on a lead in their own private channel. Used to decide whether
- * an outbound transition (NOT_ABLE / SPAM / REJECTED / APPROVED / Reset)
- * should also kick the lead back to the public DEFAULT channel.
+ * True when the actor is the owner of the private channel this lead
+ * belongs to (and not master) working on their own lead. Used to decide
+ * whether an outbound transition (NOT_ABLE / SPAM / REJECTED / APPROVED
+ * / Reset) should also kick the lead back to the public pipeline by
+ * clearing privateChannelUserId.
  *
- * Master never auto-flips a channel — they manage explicitly.
+ * Master never auto-clears — they manage explicitly.
  */
 function isChannelOwnerActing(
   actor: import("@/lib/auth").CurrentUser,
-  channel: import("@prisma/client").LeadChannel
+  privateChannelUserId: number | null
 ): boolean {
-  if (channel === "DEFAULT") return false;
+  if (privateChannelUserId === null) return false;
   if (actor.role === "MASTER") return false;
-  return canAccessLeadChannel(actor, channel);
+  return privateChannelUserId === actor.id;
 }
 
 /**
@@ -78,82 +79,77 @@ async function loadAccessibleLeadMeta(
   leadId: number,
   user: import("@/lib/auth").CurrentUser
 ): Promise<{
-  channel: import("@prisma/client").LeadChannel;
+  privateChannelUserId: number | null;
   status: LeadStatus;
   createdById: number;
 } | null> {
   const meta = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { channel: true, status: true, createdById: true },
+    select: { privateChannelUserId: true, status: true, createdById: true },
   });
   if (!meta) return null;
-  if (!canAccessLeadChannel(user, meta.channel)) return null;
+  if (!canAccessLead(user, meta.privateChannelUserId)) return null;
   return meta;
 }
 
 const CreateSchema = z.object({
   content: z.string().trim().min(1, "Paste something into the lead.").max(8000),
-  channel: z.enum(["DEFAULT", "AHA", "AHB"]).optional(),
+  // Optional pointer to a private channel user. Master-only; everyone
+  // else's value is ignored. Empty / 0 means a public lead.
+  privateChannelUserId: z.coerce.number().int().positive().optional(),
 });
 
 export async function createLeadAction(formData: FormData): Promise<{ error?: string } | void> {
   const user = await requireUser();
-  const rawChannel = formData.get("channel");
+  const rawPrivate = formData.get("privateChannelUserId");
   const parsed = CreateSchema.safeParse({
     content: formData.get("content"),
-    channel: rawChannel || undefined,
+    privateChannelUserId: rawPrivate || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const channel = parsed.data.channel ?? "DEFAULT";
-  // Only master can drop into private channels — anyone else gets forced
-  // back to the default pipeline regardless of what the form sent.
-  if (channel !== "DEFAULT" && user.role !== "MASTER") {
-    return { error: "Only the master can create leads in this channel." };
+  let privateChannelUserId: number | null = parsed.data.privateChannelUserId ?? null;
+  if (privateChannelUserId !== null && user.role !== "MASTER") {
+    return { error: "Only the master can create leads in private channels." };
+  }
+  if (privateChannelUserId !== null) {
+    // Verify the target is actually a private-channel user — defends
+    // against arbitrary userIds posted from the client.
+    const target = await prisma.user.findUnique({
+      where: { id: privateChannelUserId },
+      select: { id: true, isPrivateChannel: true, active: true },
+    });
+    if (!target || !target.isPrivateChannel || !target.active) {
+      return { error: "Pick a valid private-channel user." };
+    }
   }
 
   const lead = await prisma.lead.create({
     data: {
       content: parsed.data.content,
       status: "NEW",
-      channel,
+      privateChannelUserId,
       createdById: user.id,
     },
   });
 
   revalidatePath("/dashboard");
 
-  // Push runs AFTER the action response is sent — never blocks the click.
-  // For private channels, only the channel owner (+ master implicitly via
-  // self-exclude) get notified, not the whole team.
-  const channelKey = (channel === "AHA" || channel === "AHB" ? channel : null) as ChannelKey | null;
   after(async () => {
-    if (channelKey) {
-      const owner = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { displayName: CHANNEL_OWNERS[channelKey] },
-            { username: CHANNEL_OWNERS[channelKey] },
-          ],
-          active: true,
+    if (privateChannelUserId !== null) {
+      await sendPushToUsers({
+        userIds: [privateChannelUserId],
+        excludeUserId: user.id,
+        payload: {
+          title: "New private-channel lead",
+          body: `Master added lead #${lead.id} to your private pipeline`,
+          url: `/dashboard/leads/${lead.id}`,
+          kind: "lead",
+          tag: `lead-${lead.id}`,
         },
-        select: { id: true },
       });
-      if (owner) {
-        await sendPushToUsers({
-          userIds: [owner.id],
-          excludeUserId: user.id,
-          payload: {
-            title: `New ${channelKey} lead`,
-            body: `Master added lead #${lead.id} to your ${channelKey} channel`,
-            url: `/dashboard/leads/${lead.id}`,
-            kind: "lead",
-            tag: `lead-${lead.id}`,
-          },
-        });
-      }
       return;
     }
     await sendPushToUsers({
@@ -200,7 +196,7 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
 
   const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
   if (!lead) return { error: "Lead not found." };
-  if (!canAccessLeadChannel(user, lead.channel)) return { error: "Lead not found." };
+  if (!canAccessLead(user, lead.privateChannelUserId)) return { error: "Lead not found." };
 
   if (lead.status === parsed.data.status) {
     return; // no-op
@@ -219,12 +215,12 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   const transferToMarket = TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
   const isOutboundFromChannel =
     transferToMarket || ALWAYS_ARCHIVED_STATUSES.includes(newStatus);
-  // Adam / Eddie working on their own AHA / AHB lead: outbound transitions
-  // (NOT_ABLE / SPAM / REJECTED / APPROVED) flip the lead back to the
-  // public DEFAULT channel so it shows up in Open Market or Archive for
-  // the team. Master's actions never auto-flip.
-  const flipChannelToDefault =
-    isOutboundFromChannel && isChannelOwnerActing(user, lead.channel);
+  // Private-channel user working on their own lead: outbound transitions
+  // (NOT_ABLE / SPAM / REJECTED / APPROVED) clear privateChannelUserId so
+  // the lead lands back in the public Open Market or Archive for the
+  // team. Master's actions never auto-clear.
+  const clearPrivateChannel =
+    isOutboundFromChannel && isChannelOwnerActing(user, lead.privateChannelUserId);
   const marketBackdate = transferToMarket
     ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
     : null;
@@ -232,11 +228,11 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   type LeadUpdate = {
     status: LeadStatus;
     createdAt?: Date;
-    channel?: "DEFAULT";
+    privateChannelUserId?: null;
   };
   const leadUpdate: LeadUpdate = { status: newStatus };
   if (marketBackdate) leadUpdate.createdAt = marketBackdate;
-  if (flipChannelToDefault) leadUpdate.channel = "DEFAULT";
+  if (clearPrivateChannel) leadUpdate.privateChannelUserId = null;
 
   await prisma.$transaction([
     prisma.lead.update({
@@ -407,7 +403,7 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
   ]);
 
   if (!lead) return { error: "Lead not found." };
-  if (!canAccessLeadChannel(me, lead.channel)) return { error: "Lead not found." };
+  if (!canAccessLead(me, lead.privateChannelUserId)) return { error: "Lead not found." };
   if (lead.status === "APPROVED" && me.role !== "MASTER") {
     return { error: "This lead is already closed." };
   }
@@ -483,7 +479,7 @@ export async function dropWithStatusAction(input: {
 
   const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
   if (!lead) return { error: "Lead not found." };
-  if (!canAccessLeadChannel(me, lead.channel)) return { error: "Lead not found." };
+  if (!canAccessLead(me, lead.privateChannelUserId)) return { error: "Lead not found." };
 
   const newStatus = parsed.data.status as LeadStatus;
   const statusChanged = lead.status !== newStatus;
@@ -493,25 +489,24 @@ export async function dropWithStatusAction(input: {
     return { error: "A rejection reason is required." };
   }
   const transferToMarket = statusChanged && TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
-  // Channel-owner drop with an outbound status flips the lead's channel
-  // back to public DEFAULT so the rest of the team can see it (Market for
-  // soft-negative, Archive for REJECTED / APPROVED). Runs even if the
-  // status didn't change — e.g. Adam drops a CONTACT_NOT_ABLE lead with
-  // the same status, the lead still leaves the private AHA channel.
+  // Channel-owner drop with an outbound status clears the lead's private
+  // owner so the rest of the team can see it (Market for soft-negative,
+  // Archive for REJECTED / APPROVED). Runs even if the status didn't
+  // change — dropping kicks the lead out of the private pipeline either way.
   const isOutboundChoice =
     TRANSFER_TO_MARKET_STATUSES.includes(newStatus) ||
     ALWAYS_ARCHIVED_STATUSES.includes(newStatus);
-  const flipChannelToDefault =
-    isOutboundChoice && isChannelOwnerActing(me, lead.channel);
+  const clearPrivateChannel =
+    isOutboundChoice && isChannelOwnerActing(me, lead.privateChannelUserId);
   const marketBackdate = transferToMarket
     ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
     : null;
-  const needsLeadUpdate = statusChanged || flipChannelToDefault;
+  const needsLeadUpdate = statusChanged || clearPrivateChannel;
 
   type LeadUpdate = {
     status?: LeadStatus;
     createdAt?: Date;
-    channel?: "DEFAULT";
+    privateChannelUserId?: null;
   };
 
   await prisma.$transaction(async (tx) => {
@@ -519,7 +514,7 @@ export async function dropWithStatusAction(input: {
       const leadUpdate: LeadUpdate = {};
       if (statusChanged) leadUpdate.status = newStatus;
       if (marketBackdate) leadUpdate.createdAt = marketBackdate;
-      if (flipChannelToDefault) leadUpdate.channel = "DEFAULT";
+      if (clearPrivateChannel) leadUpdate.privateChannelUserId = null;
       await tx.lead.update({
         where: { id: lead.id },
         data: leadUpdate,
@@ -787,22 +782,22 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
 
   const lead = await prisma.lead.findUnique({ where: { id: parsed.data.leadId } });
   if (!lead) return { error: "Lead not found." };
-  if (!canAccessLeadChannel(user, lead.channel)) return { error: "Lead not found." };
+  if (!canAccessLead(user, lead.privateChannelUserId)) return { error: "Lead not found." };
 
   // Two days + 1 hour gives the lead a clean "aged" timestamp on the Open
   // Market side of the boundary, even accounting for small clock drift.
   const boundary = new Date(Date.now() - (2 * 86_400_000 + 3_600_000));
   const noteSuffix = user.role === "MASTER" ? " (master cleared assignments)" : "";
 
-  // Channel owner resetting their own private lead: flip back to DEFAULT so
-  // the lead lands in the public Open Market for the whole team.
-  const flipChannelToDefault = isChannelOwnerActing(user, lead.channel);
+  // Channel owner resetting their own private lead: clear privateChannelUserId
+  // so the lead lands in the public Open Market for the whole team.
+  const clearPrivateChannel = isChannelOwnerActing(user, lead.privateChannelUserId);
 
   await prisma.$transaction(async (tx) => {
     await tx.lead.update({
       where: { id: lead.id },
-      data: flipChannelToDefault
-        ? { status: "NEW", createdAt: boundary, channel: "DEFAULT" }
+      data: clearPrivateChannel
+        ? { status: "NEW", createdAt: boundary, privateChannelUserId: null }
         : { status: "NEW", createdAt: boundary },
     });
     if (user.role === "MASTER") {

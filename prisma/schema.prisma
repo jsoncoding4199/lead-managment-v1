@@ -48,11 +48,13 @@ model User {
   displayName  String
   role         Role        @default(USER)
   active       Boolean     @default(true)
-  // Which private channel this user belongs to. DEFAULT = regular user
-  // (sees the public pipeline only). AHA / AHB = private-channel user
-  // (sees that channel's leads, hidden from everyone except master).
-  // Master ignores this field — they see everything.
+  // Legacy channel column from the AHA/AHB era. Kept for safety while the
+  // new isPrivateChannel + Lead.privateChannelUserId model takes over.
   channel      LeadChannel @default(DEFAULT)
+  // When true, this user owns their own private pipeline. Master can
+  // assign leads to them, the user has a dedicated tab named after their
+  // displayName, and only the user (plus master) sees those leads.
+  isPrivateChannel Boolean  @default(false)
   createdAt    DateTime    @default(now())
 
   // Cumulative self-action counters. Incremented atomically by the
@@ -62,15 +64,16 @@ model User {
   pickUpsCount Int @default(0)
   dropsCount   Int @default(0)
 
-  createdLeads      Lead[]                 @relation("CreatedBy")
-  assignments       LeadAssignment[]       @relation("Assignee")
-  assignmentsMade   LeadAssignment[]       @relation("AssignedBy")
-  changes           LeadStatusChange[]
-  resetRequests     PasswordResetRequest[] @relation("ResetSubject")
-  resolvedResets    PasswordResetRequest[] @relation("ResetResolver")
-  pushSubscriptions PushSubscription[]
-  notifications     Notification[]
-  remarks           LeadRemark[]
+  createdLeads        Lead[]                 @relation("CreatedBy")
+  assignments         LeadAssignment[]       @relation("Assignee")
+  assignmentsMade     LeadAssignment[]       @relation("AssignedBy")
+  changes             LeadStatusChange[]
+  resetRequests       PasswordResetRequest[] @relation("ResetSubject")
+  resolvedResets      PasswordResetRequest[] @relation("ResetResolver")
+  pushSubscriptions   PushSubscription[]
+  notifications       Notification[]
+  remarks             LeadRemark[]
+  privateChannelLeads Lead[]                 @relation("PrivateChannelOwner")
 }
 
 // Per-user remark on a lead. Replaces the single Lead.remark string with a
@@ -134,7 +137,14 @@ model Lead {
   remark       String?
   status       LeadStatus   @default(NEW)
   quality      LeadQuality?
+  // Legacy channel column. Kept for safety; new code uses
+  // privateChannelUserId instead.
   channel      LeadChannel  @default(DEFAULT)
+  // When non-null, this lead belongs to the named user's private
+  // pipeline — only that user (and master) may see/touch it.
+  // null = public pipeline (Fresh/Market/Picks/Archive).
+  privateChannelUserId Int?
+  privateChannelUser   User? @relation("PrivateChannelOwner", fields: [privateChannelUserId], references: [id])
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   createdById  Int
@@ -154,6 +164,7 @@ model Lead {
   @@index([createdAt])
   @@index([updatedAt])
   @@index([channel])
+  @@index([privateChannelUserId])
 }
 
 model LeadAssignment {

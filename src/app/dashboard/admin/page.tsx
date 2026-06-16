@@ -7,6 +7,7 @@ import { UserRow } from "@/components/UserRow";
 import { MaxPickupCard } from "@/components/MaxPickupCard";
 import { TeamStatsTable, type UserStatsRow } from "@/components/TeamStatsTable";
 import { MasterProfileCard } from "@/components/MasterProfileCard";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 function emptyStatusCounts(): Record<LeadStatus, number> {
   return {
@@ -102,45 +103,90 @@ export default async function AdminPage() {
         </div>
       )}
 
-      {masterProfile && <MasterProfileCard master={masterProfile} />}
+      {masterProfile && (
+        <CollapsibleSection
+          storageKey="team:profile"
+          defaultOpen={false}
+          header={<TeamHeader title="My profile" subtitle="Edit your master account details." />}
+        >
+          <MasterProfileCard master={masterProfile} />
+        </CollapsibleSection>
+      )}
 
-      <MaxPickupCard current={settings.maxPickup} />
+      <CollapsibleSection
+        storageKey="team:max-pickup"
+        defaultOpen={false}
+        header={<TeamHeader title="Pickup capacity" subtitle="How many people can pick up a single lead." />}
+      >
+        <MaxPickupCard current={settings.maxPickup} />
+      </CollapsibleSection>
 
-      <TeamStatsTable rows={statsRows} />
+      <CollapsibleSection
+        storageKey="team:activity"
+        defaultOpen={false}
+        header={
+          <TeamHeader
+            title="Activity by user"
+            subtitle="Cumulative status changes, pickups, and drops per user."
+          />
+        }
+      >
+        <TeamStatsTable rows={statsRows} />
+      </CollapsibleSection>
 
-      <section className="card p-4 md:p-6">
-        <h3 className="text-sm font-semibold text-ink-900">Add a new user</h3>
-        <p className="text-xs text-ink-500 mt-0.5">They can sign in immediately with the password you set.</p>
-        <div className="mt-4">
+      <CollapsibleSection
+        storageKey="team:add-user"
+        defaultOpen={false}
+        header={
+          <TeamHeader
+            title="Add a new user"
+            subtitle="They can sign in immediately with the password you set."
+          />
+        }
+      >
+        <section className="card p-4 md:p-6">
           <CreateUserForm />
-        </div>
-      </section>
+        </section>
+      </CollapsibleSection>
 
-      <section className="card overflow-hidden">
-        <div className="px-4 md:px-6 py-3 md:py-4 border-b border-ink-200/70 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ink-900">Users ({users.length})</h3>
-        </div>
-        {users.length === 0 ? (
-          <div className="p-10 text-center text-sm text-ink-500">
-            No users yet — add your first teammate above.
-          </div>
-        ) : (
-          <ul className="divide-y divide-ink-100">
-            {users.map((u) => (
-              <UserRow
-                key={u.id}
-                user={{
-                  id: u.id,
-                  username: u.username,
-                  displayName: u.displayName,
-                  active: u.active,
-                  channel: u.channel,
-                }}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
+      <CollapsibleSection
+        storageKey="team:users"
+        defaultOpen={false}
+        count={users.length}
+        header={<TeamHeader title="Users" subtitle="Edit, disable, or delete team members." />}
+      >
+        <section className="card overflow-hidden">
+          {users.length === 0 ? (
+            <div className="p-10 text-center text-sm text-ink-500">
+              No users yet — add your first teammate above.
+            </div>
+          ) : (
+            <ul className="divide-y divide-ink-100">
+              {users.map((u) => (
+                <UserRow
+                  key={u.id}
+                  user={{
+                    id: u.id,
+                    username: u.username,
+                    displayName: u.displayName,
+                    active: u.active,
+                    isPrivateChannel: u.isPrivateChannel,
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function TeamHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-ink-900">{title}</h3>
+      <p className="text-xs text-ink-500 mt-0.5">{subtitle}</p>
     </div>
   );
 }

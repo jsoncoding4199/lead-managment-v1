@@ -1,62 +1,55 @@
-import type { LeadChannel } from "@prisma/client";
 import type { CurrentUser } from "./auth";
 
-export type ChannelKey = "AHA" | "AHB";
-
-export const CHANNEL_LABEL: Record<ChannelKey, string> = {
-  AHA: "AHA",
-  AHB: "AHB",
-};
-
-export const CHANNEL_KEYS: ChannelKey[] = ["AHA", "AHB"];
-
-// Legacy: the named owners of each private channel. Kept only so admin
-// UIs can display the canonical channel name. Authorization no longer
-// depends on these strings — it uses the User.channel column instead.
-export const CHANNEL_OWNERS: Record<ChannelKey, string> = {
-  AHA: "AHA Adam",
-  AHB: "AHB Eddie",
-};
-
-export function canSeeChannel(user: CurrentUser, channel: ChannelKey): boolean {
-  if (user.role === "MASTER") return true;
-  return user.channel === channel;
-}
-
-export function visibleChannels(user: CurrentUser): ChannelKey[] {
-  return CHANNEL_KEYS.filter((k) => canSeeChannel(user, k));
-}
-
-// "Default" channel = the regular pipeline (Fresh/Market/Picks/Archive).
-// Used everywhere those tabs query leads so private-channel leads stay
-// segregated.
-export const DEFAULT_CHANNEL: LeadChannel = "DEFAULT";
+/**
+ * NEW MODEL: private channels are per-user. A user with isPrivateChannel
+ * = true owns their own private pipeline. Master can assign leads to any
+ * private user; the leads carry `Lead.privateChannelUserId` pointing at
+ * that user. Only the user (plus master) can see/touch them.
+ *
+ * Public leads have privateChannelUserId = null and live in the
+ * Fresh/Market/Picks/Archive tabs everyone shares.
+ */
 
 /**
- * Authoritative read-access check for a lead based on its channel.
+ * Can `user` read/touch a lead whose private owner is
+ * `privateChannelUserId` (null = public)?
  *
- *   - DEFAULT      → everyone may view (subject to status/assignment rules
- *                    enforced elsewhere)
- *   - AHA / AHB    → only users whose User.channel matches, plus master
- *
- * Use this as the *only* check that says "can this user see this lead's
- * channel" — keeps the rule in one place.
+ *   - public lead     → everyone
+ *   - private lead    → only the channel owner and master
  */
-export function canAccessLeadChannel(user: CurrentUser, channel: LeadChannel): boolean {
-  if (channel === "DEFAULT") return true;
+export function canAccessLead(
+  user: CurrentUser,
+  privateChannelUserId: number | null
+): boolean {
+  if (privateChannelUserId === null) return true;
   if (user.role === "MASTER") return true;
-  return user.channel === channel;
+  return privateChannelUserId === user.id;
 }
 
 /**
- * Every LeadChannel the user is allowed to read leads from. Always
- * includes DEFAULT; adds the user's assigned private channel if they
- * have one. Master sees everything.
+ * Convenience for actions that have a full Lead-like object. Same rule
+ * as canAccessLead — just unwraps the field.
  */
-export function visibleChannelsAll(user: CurrentUser): LeadChannel[] {
-  if (user.role === "MASTER") return ["DEFAULT", "AHA", "AHB"];
-  const list: LeadChannel[] = ["DEFAULT"];
-  if (user.channel === "AHA") list.push("AHA");
-  if (user.channel === "AHB") list.push("AHB");
-  return list;
+export function canAccessLeadObj(
+  user: CurrentUser,
+  lead: { privateChannelUserId: number | null }
+): boolean {
+  return canAccessLead(user, lead.privateChannelUserId);
+}
+
+/**
+ * Tab key used in URLs (`?tab=private-42`). Encodes a private channel
+ * user's id so we can show that user's pipeline tab without a hardcoded
+ * AHA/AHB scheme.
+ */
+export function privateChannelTabKey(userId: number): string {
+  return `private-${userId}`;
+}
+
+export function parsePrivateChannelTab(tab: string | null | undefined): number | null {
+  if (!tab) return null;
+  const match = /^private-(\d+)$/.exec(tab);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
 }

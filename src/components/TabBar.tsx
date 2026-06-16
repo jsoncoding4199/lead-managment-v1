@@ -9,25 +9,25 @@ import {
   Crown,
 } from "lucide-react";
 
-export type DashboardTab = "fresh" | "market" | "picks" | "archive" | "aha" | "ahb";
+type PrivateChannel = {
+  key: string;
+  label: string;
+  count: number;
+};
 
 type Props = {
-  tab: DashboardTab;
+  activeTab: string;
   freshCount: number;
   marketCount: number;
   picksCount: number;
   archiveCount: number;
-  /** Master-only by default — hide for everyone else. */
   showArchive?: boolean;
-  showAHA?: boolean;
-  showAHB?: boolean;
-  ahaCount?: number;
-  ahbCount?: number;
+  privateChannels: PrivateChannel[];
   q: string;
 };
 
 type TabItem = {
-  key: DashboardTab;
+  key: string;
   href: string;
   label: string;
   short: string;
@@ -36,16 +36,13 @@ type TabItem = {
 };
 
 export function TabBar({
-  tab,
+  activeTab,
   freshCount,
   marketCount,
   picksCount,
   archiveCount,
   showArchive,
-  showAHA,
-  showAHB,
-  ahaCount = 0,
-  ahbCount = 0,
+  privateChannels,
   q,
 }: Props) {
   const tabs: TabItem[] = [
@@ -54,27 +51,33 @@ export function TabBar({
     { key: "picks", href: "/dashboard?tab=picks", label: "My Pick Up", short: "Picks", count: picksCount, icon: <BookmarkCheck className="h-4 w-4" /> },
   ];
   if (showArchive) {
-    tabs.push({ key: "archive", href: "/dashboard?tab=archive", label: "Archive", short: "Archive", count: archiveCount, icon: <Archive className="h-4 w-4" /> });
+    tabs.push({
+      key: "archive",
+      href: "/dashboard?tab=archive",
+      label: "Archive",
+      short: "Archive",
+      count: archiveCount,
+      icon: <Archive className="h-4 w-4" />,
+    });
   }
-  if (showAHA) {
-    tabs.push({ key: "aha", href: "/dashboard?tab=aha", label: "AHA", short: "AHA", count: ahaCount, icon: <Crown className="h-4 w-4" /> });
-  }
-  if (showAHB) {
-    tabs.push({ key: "ahb", href: "/dashboard?tab=ahb", label: "AHB", short: "AHB", count: ahbCount, icon: <Crown className="h-4 w-4" /> });
+  for (const ch of privateChannels) {
+    tabs.push({
+      key: ch.key,
+      href: `/dashboard?tab=${ch.key}`,
+      label: ch.label,
+      short: ch.label.split(/\s+/)[0] ?? ch.label,
+      count: ch.count,
+      icon: <Crown className="h-4 w-4" />,
+    });
   }
 
-  // Aim for at most two rows on mobile. Column count = ceil(n / 2):
-  //   4 tabs → 2 cols (2x2),  5 tabs → 3 cols (3+2),  6 tabs → 3 cols (3+3).
-  const mobileCols = Math.max(1, Math.ceil(tabs.length / 2));
+  // Mobile: aim for 2 cols by default, but cap at 3 cols so labels stay
+  // legible. Wraps to 3+ rows automatically when there are many tabs
+  // (e.g. 4 private-channel users + 4 static tabs = 8 tabs → 3 cols, 3 rows).
+  const mobileCols = tabs.length <= 4 ? 2 : tabs.length <= 9 ? 3 : 4;
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      {/*
-        Mobile: sticky to the page top so tabs stay reachable while scrolling
-        long lead lists. Grid with dynamic column count keeps every tab the
-        same comfortable size and wraps to at most two rows. Desktop reverts
-        to a natural inline pill row.
-      */}
       <div
         className={cn(
           "w-full sm:w-auto",
@@ -83,7 +86,7 @@ export function TabBar({
         )}
       >
         <div
-          className="grid gap-1 sm:flex sm:w-max sm:gap-1"
+          className="grid gap-1 sm:flex sm:flex-wrap sm:w-max sm:gap-1"
           style={{ gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))` }}
         >
           {tabs.map((t) => (
@@ -94,14 +97,14 @@ export function TabBar({
               short={t.short}
               count={t.count}
               icon={t.icon}
-              active={tab === t.key}
+              active={activeTab === t.key}
             />
           ))}
         </div>
       </div>
 
       <form className="relative w-full sm:w-auto" action="/dashboard">
-        {tab !== "fresh" && <input type="hidden" name="tab" value={tab} />}
+        {activeTab !== "fresh" && <input type="hidden" name="tab" value={activeTab} />}
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
         <input
           type="search"
@@ -133,8 +136,6 @@ function TabLink({
   return (
     <Link
       href={href}
-      // h-11 = 44px Android Material minimum touch target. min-w-0 lets the
-      // grid cell shrink to its column width without overflow.
       className={cn(
         "inline-flex h-11 items-center justify-center gap-1.5 min-w-0",
         "rounded-lg px-2 sm:px-4 text-[12px] sm:text-sm font-medium whitespace-nowrap",
@@ -147,7 +148,7 @@ function TabLink({
     >
       <span className={cn("shrink-0", active ? "text-white" : "text-ink-500")}>{icon}</span>
       <span className="sm:hidden truncate">{short}</span>
-      <span className="hidden sm:inline">{label}</span>
+      <span className="hidden sm:inline truncate">{label}</span>
       <span
         className={cn(
           "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 tabular-nums leading-none",

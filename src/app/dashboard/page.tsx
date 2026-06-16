@@ -10,44 +10,39 @@ import {
   SOFT_NEGATIVE_STATUSES,
   AGE_BOUNDARY_DAYS,
 } from "@/lib/leadStatus";
-import {
-  CHANNEL_LABEL,
-  canSeeChannel,
-  type ChannelKey,
-} from "@/lib/channels";
+import { parsePrivateChannelTab, privateChannelTabKey } from "@/lib/channels";
 import { LeadComposer } from "@/components/LeadComposer";
 import { LeadCard } from "@/components/LeadCard";
 import { TabBar } from "@/components/TabBar";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 /**
- * The page itself does the minimum work needed to render the chrome
- * (header, tabs, composer) and streams the leads + counts inside Suspense.
- *
  * VISIBILITY MODEL
- *   non-master users see leads where:
- *     - they are in the assignment list, OR
- *     - the lead has free slots (assignments.count < maxPickup) AND they are
- *       not already assigned (they could still pick it up).
- *   master sees all leads.
- *
- *   APPROVED leads are master-only in both Open and Archive.
+ *   - Public leads (privateChannelUserId = null) live in Fresh / Open
+ *     Market / My Pick Up / Archive — all the team can see them.
+ *   - Private leads belong to a single private-channel user. Only that
+ *     user and master can see them. Each gets their own tab named after
+ *     their displayName.
  */
 
-type DashTab = "fresh" | "market" | "picks" | "archive" | "aha" | "ahb";
+type DashStaticTab = "fresh" | "market" | "picks" | "archive";
+
+type DashTab =
+  | { kind: "static"; key: DashStaticTab }
+  | { kind: "private"; userId: number };
 
 type Search = { tab?: string; q?: string };
 
 function parseTab(raw: string | undefined): DashTab {
+  const privateId = parsePrivateChannelTab(raw);
+  if (privateId !== null) return { kind: "private", userId: privateId };
   switch (raw) {
     case "market":
     case "picks":
     case "archive":
-    case "aha":
-    case "ahb":
-      return raw;
+      return { kind: "static", key: raw };
     default:
-      return "fresh";
+      return { kind: "static", key: "fresh" };
   }
 }
 
@@ -61,29 +56,39 @@ export default async function DashboardPage({
   const tab: DashTab = parseTab(sp.tab);
   const q = (sp.q ?? "").trim();
 
-  const channelKey: ChannelKey | null =
-    tab === "aha" ? "AHA" : tab === "ahb" ? "AHB" : null;
+  // Resolve private-channel user (if any) up front so we can label the
+  // header subtitle and gate the composer.
+  let privateUser: { id: number; displayName: string } | null = null;
+  if (tab.kind === "private") {
+    privateUser = await prisma.user.findUnique({
+      where: { id: tab.userId },
+      select: { id: true, displayName: true },
+    });
+  }
 
   return (
-    <div className="space-y-8 max-w-6xl">
+    <div className="space-y-5 md:space-y-8 max-w-6xl">
       <div>
-        <h2 className="text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
-        <p className="text-ink-500 mt-1 text-sm">
-          {tab === "fresh"
-            ? user.role === "MASTER"
+        <h2 className="text-2xl md:text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
+        <p className="text-ink-500 mt-1 text-xs md:text-sm">
+          {tab.kind === "static" && tab.key === "fresh" &&
+            (user.role === "MASTER"
               ? "Fresh leads in the active pipeline."
-              : "Your picked-up leads, plus leads still available to pick up."
-            : tab === "market"
-              ? user.role === "MASTER"
-                ? "Leads that have moved out of New, grouped by status."
-                : "Leads the team has moved out of New. Approved leads are master-only."
-              : tab === "picks"
-                ? user.role === "MASTER"
-                  ? "Every lead picked up by the team, grouped by who has it."
-                  : "Leads you've personally picked up."
-                : tab === "archive"
-                  ? "Closed and approved leads — master only."
-                  : `Private ${CHANNEL_LABEL[channelKey!]} channel — visible only to the channel owner and master.`}
+              : "Your picked-up leads, plus leads still available to pick up.")}
+          {tab.kind === "static" && tab.key === "market" &&
+            (user.role === "MASTER"
+              ? "Leads that have moved out of New, grouped by status."
+              : "Leads the team has moved out of New. Approved leads are master-only.")}
+          {tab.kind === "static" && tab.key === "picks" &&
+            (user.role === "MASTER"
+              ? "Every lead picked up by the team, grouped by who has it."
+              : "Leads you've personally picked up.")}
+          {tab.kind === "static" && tab.key === "archive" &&
+            "Closed and approved leads — master only."}
+          {tab.kind === "private" &&
+            (privateUser
+              ? `Private pipeline for ${privateUser.displayName} — visible only to them and master.`
+              : "Private channel — visible only to the channel owner and master.")}
         </p>
       </div>
 
@@ -91,22 +96,24 @@ export default async function DashboardPage({
         <TabBarWithCounts tab={tab} q={q} user={user} />
       </Suspense>
 
-      {/*
-        Composer rules:
-          - Fresh:   any user can add a default-channel lead.
-          - AHA/AHB: only master can drop leads in (and only if the tab is
-                    visible to them, which it always is for master).
-      */}
-      {tab === "fresh" && <LeadComposer />}
-      {channelKey && user.role === "MASTER" && (
-        <LeadComposer channel={channelKey} />
+      {/* Composer rules */}
+      {tab.kind === "static" && tab.key === "fresh" && <LeadComposer />}
+      {tab.kind === "private" && user.role === "MASTER" && privateUser && (
+        <LeadComposer
+          privateChannelUserId={privateUser.id}
+          privateChannelLabel={privateUser.displayName}
+        />
       )}
 
-      <Suspense fallback={<LeadsSkeleton />} key={`${tab}:${q}`}>
-        <LeadsSection tab={tab} q={q} user={user} />
+      <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${q}`}>
+        <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} />
       </Suspense>
     </div>
   );
+}
+
+function serializeTab(tab: DashTab): string {
+  return tab.kind === "static" ? tab.key : `private-${tab.userId}`;
 }
 
 /* ---------- Lead data section ---------- */
@@ -123,14 +130,6 @@ type LeadView = {
   assignees: { id: number; displayName: string }[];
 };
 
-/**
- * Visibility within Fresh + Open Market for non-master users.
- *   - NEW + soft-negative (NOT_ABLE/SPAM) visible to everyone — they can
- *     still be picked up by the team.
- *   - ABLE statuses visible only to the assignees.
- *   - APPROVED / REJECTED never — those live in the master-only Archive.
- * Archive itself is now master-only and hidden from non-master tabs.
- */
 function freshOrMarketVisibility(user: CurrentUser): Prisma.LeadWhereInput {
   if (user.role === "MASTER") return {};
   return {
@@ -151,18 +150,10 @@ function freshOrMarketVisibility(user: CurrentUser): Prisma.LeadWhereInput {
   };
 }
 
-/** Returns the cutoff date — leads created before this go into Open Market. */
 function ageBoundaryDate(): Date {
   return new Date(Date.now() - AGE_BOUNDARY_DAYS * 86_400_000);
 }
 
-/**
- * "Archive-bound" — would currently appear in the Archive tab (master only).
- * Simpler than before: APPROVED and REJECTED always archive; everything
- * else stays in the active pipeline regardless of pickup count. NOT_ABLE
- * and SPAM leads stick around in Open Market so the team can keep
- * retrying them.
- */
 function isArchiveBound(lead: { status: LeadStatus }): boolean {
   return ALWAYS_ARCHIVED_STATUSES.includes(lead.status);
 }
@@ -171,24 +162,28 @@ async function LeadsSection({
   tab,
   q,
   user,
+  privateUser,
 }: {
   tab: DashTab;
   q: string;
   user: CurrentUser;
+  privateUser: { id: number; displayName: string } | null;
 }) {
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
 
   /* ---------- Private channel tabs ---------- */
-  if (tab === "aha" || tab === "ahb") {
-    const channelKey: ChannelKey = tab === "aha" ? "AHA" : "AHB";
-    if (!canSeeChannel(user, channelKey)) {
-      return <ChannelLockedNotice channel={channelKey} />;
+  if (tab.kind === "private") {
+    if (user.role !== "MASTER" && user.id !== tab.userId) {
+      return <ChannelLockedNotice label={privateUser?.displayName ?? "this channel"} />;
+    }
+    if (!privateUser) {
+      return <ChannelLockedNotice label="this channel" />;
     }
     const channelLeads = await prisma.lead.findMany({
       where: {
         AND: [
-          { channel: channelKey },
+          { privateChannelUserId: tab.userId },
           q ? { content: { contains: q, mode: "insensitive" as const } } : {},
         ],
       },
@@ -197,12 +192,12 @@ async function LeadsSection({
       select: leadSelect,
     });
     if (channelLeads.length === 0) {
-      return <ChannelEmpty channel={channelKey} hasQuery={!!q} />;
+      return <ChannelEmpty label={privateUser.displayName} hasQuery={!!q} />;
     }
     const leads = channelLeads.map(toLeadView);
     return (
       <ChannelLeadList
-        channel={channelKey}
+        label={privateUser.displayName}
         leads={leads}
         viewer={user}
         maxPickup={settings.maxPickup}
@@ -211,10 +206,7 @@ async function LeadsSection({
   }
 
   /* ---------- My Pick Up tab ---------- */
-  if (tab === "picks") {
-    // Non-master: only leads where I'm an assignee (excluding APPROVED, which
-    // is master-only anyway). Master: every lead that has at least one
-    // assignee — grouped by user on the render side.
+  if (tab.key === "picks") {
     const baseWhere: Prisma.LeadWhereInput =
       user.role === "MASTER"
         ? { assignments: { some: {} } }
@@ -229,7 +221,7 @@ async function LeadsSection({
       prisma.lead.findMany({
         where: {
           AND: [
-            { channel: "DEFAULT" },
+            { privateChannelUserId: null },
             baseWhere,
             q ? { content: { contains: q, mode: "insensitive" as const } } : {},
           ],
@@ -252,24 +244,14 @@ async function LeadsSection({
     }
     const leads = picked.map(toLeadView);
     return user.role === "MASTER" ? (
-      <PicksByAssignee
-        leads={leads}
-        viewer={user}
-        teamUsers={teamUsers}
-        maxPickup={settings.maxPickup}
-      />
+      <PicksByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
     ) : (
-      <MyPicksByStatus
-        leads={leads}
-        viewer={user}
-        teamUsers={teamUsers}
-        maxPickup={settings.maxPickup}
-      />
+      <MyPicksByStatus leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
     );
   }
 
   /* ---------- Archive tab — master only ---------- */
-  if (tab === "archive") {
+  if (tab.key === "archive") {
     if (user.role !== "MASTER") {
       return <ArchiveLockedNotice />;
     }
@@ -278,7 +260,7 @@ async function LeadsSection({
       prisma.lead.findMany({
         where: {
           AND: [
-            { channel: "DEFAULT" },
+            { privateChannelUserId: null },
             { status: { in: ALWAYS_ARCHIVED_STATUSES } },
             q ? { content: { contains: q, mode: "insensitive" as const } } : {},
           ],
@@ -294,26 +276,17 @@ async function LeadsSection({
       }),
     ]);
 
-    // Keep only leads that genuinely live in Archive right now.
     const filtered = archivable.filter((l) => isArchiveBound(l));
     if (filtered.length === 0) {
       return <EmptyState tab="archive" hasQuery={!!q} />;
     }
     const leads = filtered.map(toLeadView);
-    return (
-      <ArchiveByAssignee
-        leads={leads}
-        viewer={user}
-        teamUsers={teamUsers}
-        maxPickup={settings.maxPickup}
-      />
-    );
+    return <ArchiveByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />;
   }
 
   /* ---------- Fresh + Open Market tabs ---------- */
 
-  // Date-based bucketing: Fresh = createdAt > cutoff, Open Market = createdAt <= cutoff.
-  const dateFilter: Prisma.LeadWhereInput = tab === "fresh"
+  const dateFilter: Prisma.LeadWhereInput = tab.key === "fresh"
     ? { createdAt: { gt: cutoff } }
     : { createdAt: { lte: cutoff } };
 
@@ -323,7 +296,7 @@ async function LeadsSection({
     prisma.lead.findMany({
       where: {
         AND: [
-          { channel: "DEFAULT" },
+          { privateChannelUserId: null },
           dateFilter,
           visibilityFilter,
           q ? { content: { contains: q, mode: "insensitive" as const } } : {},
@@ -342,9 +315,6 @@ async function LeadsSection({
       : Promise.resolve([] as { id: number; displayName: string }[]),
   ]);
 
-  // Post-filter:
-  //   - Drop leads that should be in Archive (APPROVED / REJECTED only).
-  //   - For non-master: enforce pickup-cap rule on NEW leads (capacity rule).
   const visibleLeads = rawLeads.filter((l) => {
     if (isArchiveBound(l)) return false;
     if (user.role === "MASTER") return true;
@@ -353,27 +323,16 @@ async function LeadsSection({
     if (l.status === "NEW") {
       return l.assignments.length < settings.maxPickup;
     }
-    // Soft-negative (NOT_ABLE / SPAM) leads stay visible to everyone in
-    // Fresh / Market so the team can keep trying them. They no longer
-    // auto-archive based on pickup count.
     if (SOFT_NEGATIVE_STATUSES.includes(l.status)) return true;
-    // ABLE leads were already filtered out by visibility WHERE for non-assigned.
     return false;
   });
 
   if (visibleLeads.length === 0) {
-    return <EmptyState tab={tab} hasQuery={!!q} />;
+    return <EmptyState tab={tab.key} hasQuery={!!q} />;
   }
 
   const leads = visibleLeads.map(toLeadView);
-  return (
-    <OpenGrouped
-      leads={leads}
-      viewer={user}
-      teamUsers={teamUsers}
-      maxPickup={settings.maxPickup}
-    />
-  );
+  return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />;
 }
 
 /* ---------- Shared Prisma select + projection ---------- */
@@ -419,14 +378,14 @@ function toLeadView(l: RawLead): LeadView {
   };
 }
 
-function ChannelLockedNotice({ channel }: { channel: ChannelKey }) {
+function ChannelLockedNotice({ label }: { label: string }) {
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
         🔒
       </div>
       <h3 className="mt-4 text-base font-semibold text-ink-900">
-        {CHANNEL_LABEL[channel]} channel is private
+        {label}&apos;s pipeline is private
       </h3>
       <p className="mt-1 text-sm text-ink-500">
         Only the channel owner and the master can view these leads.
@@ -438,16 +397,14 @@ function ChannelLockedNotice({ channel }: { channel: ChannelKey }) {
   );
 }
 
-function ChannelEmpty({ channel, hasQuery }: { channel: ChannelKey; hasQuery: boolean }) {
+function ChannelEmpty({ label, hasQuery }: { label: string; hasQuery: boolean }) {
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
         ✦
       </div>
       <h3 className="mt-4 text-base font-semibold text-ink-900">
-        {hasQuery
-          ? "No leads match your search"
-          : `${CHANNEL_LABEL[channel]} channel is empty`}
+        {hasQuery ? "No leads match your search" : `${label}'s pipeline is empty`}
       </h3>
       <p className="mt-1 text-sm text-ink-500">
         {hasQuery
@@ -459,12 +416,12 @@ function ChannelEmpty({ channel, hasQuery }: { channel: ChannelKey; hasQuery: bo
 }
 
 function ChannelLeadList({
-  channel,
+  label,
   leads,
   viewer,
   maxPickup,
 }: {
-  channel: ChannelKey;
+  label: string;
   leads: LeadView[];
   viewer: CurrentUser;
   maxPickup: number;
@@ -472,17 +429,16 @@ function ChannelLeadList({
   return (
     <div className="space-y-6">
       <CollapsibleSection
-        storageKey={`channel:${channel}`}
+        storageKey={`channel:${label}`}
         count={leads.length}
+        defaultOpen={false}
         header={
           <div className="flex items-center gap-3">
             <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-              {channel}
+              {initials(label)}
             </div>
             <div>
-              <h3 className="text-base font-semibold text-ink-900">
-                {CHANNEL_LABEL[channel]} channel
-              </h3>
+              <h3 className="text-base font-semibold text-ink-900">{label}</h3>
               <p className="text-xs text-ink-500">
                 {leads.length} lead{leads.length === 1 ? "" : "s"} · private to the channel owner & master
               </p>
@@ -533,16 +489,26 @@ async function TabBarWithCounts({
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
 
-  const showAHA = canSeeChannel(user, "AHA");
-  const showAHB = canSeeChannel(user, "AHB");
+  // Private-channel users this viewer can SEE as tabs:
+  //   master   → all active private-channel users
+  //   private  → just themselves
+  //   normal   → none
+  const visiblePrivateUsers =
+    user.role === "MASTER"
+      ? await prisma.user.findMany({
+          where: { active: true, role: "USER", isPrivateChannel: true },
+          select: { id: true, displayName: true },
+          orderBy: { displayName: "asc" },
+        })
+      : user.isPrivateChannel
+        ? [{ id: user.id, displayName: user.displayName }]
+        : [];
 
-  // Light SELECT for the default-channel pipeline. Channel-locked queries
-  // run in parallel below.
-  const [allLeads, ahaCount, ahbCount] = await Promise.all([
+  const [allLeads, privateCountsRaw] = await Promise.all([
     prisma.lead.findMany({
       where: {
         AND: [
-          { channel: "DEFAULT" },
+          { privateChannelUserId: null },
           user.role === "MASTER" ? {} : freshOrMarketVisibility(user),
         ],
       },
@@ -562,9 +528,21 @@ async function TabBarWithCounts({
             }),
       },
     }),
-    showAHA ? prisma.lead.count({ where: { channel: "AHA" } }) : Promise.resolve(0),
-    showAHB ? prisma.lead.count({ where: { channel: "AHB" } }) : Promise.resolve(0),
+    visiblePrivateUsers.length > 0
+      ? prisma.lead.groupBy({
+          by: ["privateChannelUserId"],
+          where: { privateChannelUserId: { in: visiblePrivateUsers.map((u) => u.id) } },
+          _count: { _all: true },
+        })
+      : Promise.resolve([] as { privateChannelUserId: number | null; _count: { _all: number } }[]),
   ]);
+
+  const privateCountsMap = new Map<number, number>();
+  for (const r of privateCountsRaw) {
+    if (r.privateChannelUserId !== null) {
+      privateCountsMap.set(r.privateChannelUserId, r._count._all);
+    }
+  }
 
   let freshCount = 0;
   let marketCount = 0;
@@ -576,7 +554,6 @@ async function TabBarWithCounts({
     const archiveBound = ALWAYS_ARCHIVED_STATUSES.includes(l.status);
 
     if (archiveBound) {
-      // Archive is master-only — non-master never sees the tab or its count.
       if (user.role === "MASTER") {
         archiveCount++;
         if (count > 0) picksCount++;
@@ -585,7 +562,6 @@ async function TabBarWithCounts({
     }
 
     if (user.role !== "MASTER") {
-      // mineFlag inferred from the targeted take:1 select.
       const mine = (l.assignments as { userId: number }[] | undefined)?.length ?? 0;
       if (mine) {
         picksCount++;
@@ -604,21 +580,21 @@ async function TabBarWithCounts({
     else marketCount++;
   }
 
-  // Archive tab is hidden from everyone except master.
   const showArchive = user.role === "MASTER";
 
   return (
     <TabBar
-      tab={tab}
+      activeTab={serializeTab(tab)}
       freshCount={freshCount}
       marketCount={marketCount}
       picksCount={picksCount}
       archiveCount={archiveCount}
       showArchive={showArchive}
-      showAHA={showAHA}
-      showAHB={showAHB}
-      ahaCount={ahaCount}
-      ahbCount={ahbCount}
+      privateChannels={visiblePrivateUsers.map((u) => ({
+        key: privateChannelTabKey(u.id),
+        label: u.displayName,
+        count: privateCountsMap.get(u.id) ?? 0,
+      }))}
       q={q}
     />
   );
@@ -647,22 +623,6 @@ function LeadsSkeleton() {
               <div className="h-3 w-20 rounded bg-ink-100 animate-pulse" />
             </div>
           </div>
-          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {[0, 1].map((i) => (
-              <li key={i} className="card p-5 space-y-3">
-                <div className="flex justify-between">
-                  <div className="h-5 w-24 rounded-full bg-ink-100 animate-pulse" />
-                  <div className="h-7 w-28 rounded-md bg-ink-100 animate-pulse" />
-                </div>
-                <div className="h-24 rounded-lg bg-ink-50 animate-pulse" />
-                <div className="flex gap-3">
-                  <div className="h-3 w-20 rounded bg-ink-100 animate-pulse" />
-                  <div className="h-3 w-20 rounded bg-ink-100 animate-pulse" />
-                  <div className="h-3 w-16 rounded bg-ink-100 animate-pulse" />
-                </div>
-              </li>
-            ))}
-          </ul>
         </section>
       ))}
     </div>
@@ -671,16 +631,6 @@ function LeadsSkeleton() {
 
 /* ---------- Grouped renderers ---------- */
 
-/**
- * Open tab (Fresh + Open Market) grouping rules:
- *  - Group every lead by the user who CREATED it (Lead.createdBy), not by
- *    the assignees. Same rule for master and non-master so the layout
- *    stays predictable across roles.
- *  - Non-master still excludes their own picks here — those live in the
- *    My Pick Up tab so this view stays focused on grabbable leads.
- *  - Each creator section is collapsed by default; the lead count sits in
- *    the badge next to the title so you can scan totals before expanding.
- */
 function OpenGrouped({
   leads,
   viewer,
@@ -718,9 +668,6 @@ function OpenGrouped({
     );
   }
 
-  // Group by creator. A lead appears under exactly one bucket — its
-  // creator's. If createdBy ever ends up null (defensive), bucket it
-  // under "Unknown" so it's still visible.
   const buckets = new Map<string, { label: string; items: LeadView[] }>();
   for (const lead of visibleLeads) {
     const creator = lead.createdBy;
@@ -772,12 +719,6 @@ function OpenGrouped({
   );
 }
 
-/**
- * Archive tab is master-only and grouped by the picker user's name. A lead
- * picked up by N people appears under each of their sections, mirroring the
- * master Open view. Unassigned APPROVED leads (if any) go in their own
- * fallback bucket — shouldn't happen often but it's defensive.
- */
 function ArchiveByAssignee({
   leads,
   viewer,
@@ -812,6 +753,7 @@ function ArchiveByAssignee({
         <CollapsibleSection
           storageKey="archive:unassigned"
           count={unassigned.length}
+          defaultOpen={false}
           header={
             <div className="flex items-center gap-3">
               <div className="grid h-9 w-9 place-items-center rounded-full bg-amber-100 text-sm font-semibold text-amber-700">
@@ -838,6 +780,7 @@ function ArchiveByAssignee({
           key={key}
           storageKey={`archive:${key}`}
           count={bucket.items.length}
+          defaultOpen={false}
           header={
             <div className="flex items-center gap-3">
               <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
@@ -865,10 +808,6 @@ function ArchiveByAssignee({
   );
 }
 
-/**
- * Non-master "My Pick Up" — flat collapsible groups by current status.
- * Lets the user scan their own portfolio without other people's leads.
- */
 function MyPicksByStatus({
   leads,
   viewer,
@@ -886,7 +825,6 @@ function MyPicksByStatus({
     arr.push(lead);
     byStatus.set(lead.status, arr);
   }
-  // Display order: most actionable first
   const ORDER: LeadStatus[] = [
     "NEW",
     "CONTACT_ABLE",
@@ -909,6 +847,7 @@ function MyPicksByStatus({
             key={s}
             storageKey={`picks:${s}`}
             count={items.length}
+            defaultOpen={false}
             header={
               <div className="flex items-center gap-3">
                 <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
@@ -947,10 +886,6 @@ function MyPicksByStatus({
   );
 }
 
-/**
- * Master "My Pick Up" — every assigned lead grouped by assignee user.
- * A lead with multiple pickers appears under each of their sections.
- */
 function PicksByAssignee({
   leads,
   viewer,
@@ -980,6 +915,7 @@ function PicksByAssignee({
           key={key}
           storageKey={`picks:${key}`}
           count={bucket.items.length}
+          defaultOpen={false}
           header={
             <div className="flex items-center gap-3">
               <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">

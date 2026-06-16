@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { Trash2, Pencil, Save, Loader2 } from "lucide-react";
-import type { LeadChannel } from "@prisma/client";
 import {
   deleteUserAction,
   editUserAction,
@@ -15,7 +14,7 @@ type User = {
   username: string;
   displayName: string;
   active: boolean;
-  channel: LeadChannel;
+  isPrivateChannel: boolean;
 };
 
 export function UserRow({ user }: { user: User }) {
@@ -27,7 +26,7 @@ export function UserRow({ user }: { user: User }) {
   const [newPassword, setNewPassword] = useState("");
   const [editName, setEditName] = useState(user.displayName);
   const [editUsername, setEditUsername] = useState(user.username);
-  const [editChannel, setEditChannel] = useState<LeadChannel>(user.channel);
+  const [editIsPrivate, setEditIsPrivate] = useState<boolean>(user.isPrivateChannel);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const closeAllExpanders = () => {
@@ -52,7 +51,7 @@ export function UserRow({ user }: { user: User }) {
     fd.set("userId", String(user.id));
     fd.set("displayName", editName);
     fd.set("username", editUsername);
-    fd.set("channel", editChannel);
+    fd.set("isPrivateChannel", editIsPrivate ? "true" : "false");
     startTransition(async () => {
       const res = await editUserAction(fd);
       if (res?.ok) {
@@ -130,9 +129,9 @@ export function UserRow({ user }: { user: User }) {
             >
               {user.active ? "Active" : "Disabled"}
             </span>
-            {user.channel !== "DEFAULT" && (
+            {user.isPrivateChannel && (
               <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 bg-violet-50 text-violet-700 ring-violet-200">
-                {user.channel}
+                Private
               </span>
             )}
           </div>
@@ -147,7 +146,7 @@ export function UserRow({ user }: { user: User }) {
                 setEditOpen(true);
                 setEditName(user.displayName);
                 setEditUsername(user.username);
-                setEditChannel(user.channel);
+                setEditIsPrivate(user.isPrivateChannel);
               }
             }}
             disabled={pending}
@@ -228,15 +227,14 @@ export function UserRow({ user }: { user: User }) {
                   </p>
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="label">Channel</label>
+                  <label className="label">User type</label>
                   <select
                     className="input"
-                    value={editChannel}
-                    onChange={(e) => setEditChannel(e.target.value as LeadChannel)}
+                    value={editIsPrivate ? "true" : "false"}
+                    onChange={(e) => setEditIsPrivate(e.target.value === "true")}
                   >
-                    <option value="DEFAULT">Normal user — public pipeline</option>
-                    <option value="AHA">Private channel · AHA</option>
-                    <option value="AHB">Private channel · AHB</option>
+                    <option value="false">Normal user — public pipeline</option>
+                    <option value="true">Private channel user — own pipeline</option>
                   </select>
                 </div>
               </div>

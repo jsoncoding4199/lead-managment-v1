@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_LABEL } from "@/lib/leadStatus";
-import { visibleChannelsAll } from "@/lib/channels";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -45,10 +45,19 @@ export async function GET(req: NextRequest) {
 
   const isMaster = me.role === "MASTER";
 
-  // Channel filter — keep AHA / AHB events out of the polling feed for any
-  // user who can't see those channels. Same set of channels used for both
-  // queries so behavior is consistent across event kinds.
-  const channelList = visibleChannelsAll(me);
+  // Private-channel filter — keep private leads out of the polling feed
+  // for anyone who isn't that channel's owner or master.
+  //   master                → any lead
+  //   private-channel user  → public leads OR their own private leads
+  //   normal user           → public leads only
+  const leadVisibility: Prisma.LeadWhereInput = isMaster
+    ? {}
+    : {
+        OR: [
+          { privateChannelUserId: null },
+          { privateChannelUserId: me.id },
+        ],
+      };
 
   const [statusChanges, newLeads] = await Promise.all([
     prisma.leadStatusChange.findMany({
@@ -58,9 +67,7 @@ export async function GET(req: NextRequest) {
         // Non-master: never include APPROVED transitions (those leads are
         // master-only).
         ...(isMaster ? {} : { toStatus: { not: "APPROVED" } }),
-        // Filter by the parent lead's channel — privates leak only to the
-        // channel owner and master.
-        lead: { channel: { in: channelList } },
+        lead: leadVisibility,
       },
       orderBy: { changedAt: "desc" },
       take: 30,
@@ -76,7 +83,7 @@ export async function GET(req: NextRequest) {
       where: {
         createdAt: { gt: since },
         createdById: { not: me.id },
-        channel: { in: channelList },
+        ...leadVisibility,
       },
       orderBy: { createdAt: "desc" },
       take: 30,
