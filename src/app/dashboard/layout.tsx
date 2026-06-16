@@ -6,17 +6,20 @@ import { Sidebar } from "@/components/Sidebar";
 import { Notifier } from "@/components/Notifier";
 import { PushEnableButton } from "@/components/PushEnableButton";
 import { PushNudgeBanner } from "@/components/PushNudgeBanner";
+import { NotificationsBell } from "@/components/NotificationsBell";
 import { InstallButton } from "@/components/InstallButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  // Count this user's active push subscriptions so the nudge banner only
-  // appears for those who actually need it. ~1ms query — indexed by userId.
-  const pushSubCount = await prisma.pushSubscription.count({
-    where: { userId: user.id },
-  });
+  // Two tiny indexed counts run in parallel: one for the nudge banner,
+  // one for the bell badge. Both are ~1ms; running them with the layout
+  // means every navigation refreshes both without any client polling.
+  const [pushSubCount, unreadCount] = await Promise.all([
+    prisma.pushSubscription.count({ where: { userId: user.id } }),
+    prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+  ]);
   const hasPush = pushSubCount > 0;
 
   return (
@@ -44,6 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
             <InstallButton />
+            <NotificationsBell unreadCount={unreadCount} />
             <PushEnableButton serverSubscribed={hasPush} />
             <Notifier />
             <form action={logoutAction}>
