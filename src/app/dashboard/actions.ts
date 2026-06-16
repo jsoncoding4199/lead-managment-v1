@@ -32,6 +32,39 @@ function isChannelOwnerActing(
 }
 
 /**
+ * Focused "your lead was dropped / rejected" push to the lead's original
+ * creator. Carries the actor + reason so the creator sees exactly why,
+ * without having to open the lead. Quietly no-ops if the creator IS the
+ * actor (you don't notify yourself about your own action).
+ */
+async function notifyCreatorOfOutcome(opts: {
+  leadId: number;
+  creatorId: number;
+  actorId: number;
+  actorName: string;
+  status: LeadStatus;
+  note?: string;
+  flavor: "drop" | "reject";
+}): Promise<void> {
+  if (opts.creatorId === opts.actorId) return;
+  const reason = opts.note?.trim() || STATUS_LABEL[opts.status];
+  const title =
+    opts.flavor === "reject" ? "Your lead was rejected" : "Your lead was dropped";
+  await sendPushToUsers({
+    userIds: [opts.creatorId],
+    payload: {
+      title,
+      body: `${opts.actorName} · #${opts.leadId}: ${reason}`,
+      url: `/dashboard/leads/${opts.leadId}`,
+      kind: opts.flavor === "reject" ? "status" : "lead",
+      // Distinct tag so this focused notification doesn't get clobbered by
+      // (or clobber) the broadcast "Lead status changed" push.
+      tag: `lead-${opts.leadId}-creator`,
+    },
+  });
+}
+
+/**
  * Channel guard for every Lead-touching action. Fetches just the lead's
  * channel + status (cheap, single index lookup) and returns null when the
  * caller has no business operating on this lead — by lead missing OR by
@@ -236,8 +269,15 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
         },
       });
     } else {
+      // Reject: tell the lead's creator directly with the reason. Drop
+      // them from the broadcast so they don't get pinged twice.
+      const isReject = toStatus === "REJECTED";
+      const allUsers = await getAllUserIds();
+      const broadcastIds = isReject
+        ? allUsers.filter((id) => id !== lead.createdById)
+        : allUsers;
       await sendPushToUsers({
-        userIds: await getAllUserIds(),
+        userIds: broadcastIds,
         excludeUserId: user.id,
         payload: {
           title: "Lead status changed",
@@ -247,6 +287,17 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
           tag: `lead-${lead.id}`,
         },
       });
+      if (isReject) {
+        await notifyCreatorOfOutcome({
+          leadId: lead.id,
+          creatorId: lead.createdById,
+          actorId: user.id,
+          actorName: user.displayName,
+          status: toStatus,
+          note: parsed.data.note,
+          flavor: "reject",
+        });
+      }
     }
   });
 }
@@ -480,8 +531,13 @@ export async function dropWithStatusAction(input: {
           },
         });
       } else {
+        // Drop with a final status: the creator gets a dedicated "Your
+        // lead was dropped/rejected" push carrying the reason. Drop them
+        // from the broadcast so they don't get pinged twice.
+        const allUsers = await getAllUserIds();
+        const broadcastIds = allUsers.filter((id) => id !== lead.createdById);
         await sendPushToUsers({
-          userIds: await getAllUserIds(),
+          userIds: broadcastIds,
           excludeUserId: me.id,
           payload: {
             title: "Lead status changed",
@@ -490,6 +546,15 @@ export async function dropWithStatusAction(input: {
             kind: "status",
             tag: `lead-${lead.id}`,
           },
+        });
+        await notifyCreatorOfOutcome({
+          leadId: lead.id,
+          creatorId: lead.createdById,
+          actorId: me.id,
+          actorName: me.displayName,
+          status: newStatus,
+          note: parsed.data.note,
+          flavor: newStatus === "REJECTED" ? "reject" : "drop",
         });
       }
     });
