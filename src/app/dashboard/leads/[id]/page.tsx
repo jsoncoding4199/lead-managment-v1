@@ -13,7 +13,7 @@ import { canAccessLeadChannel } from "@/lib/channels";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
 import { LeadContentEditor } from "@/components/LeadContentEditor";
-import { LeadRemarkEditor } from "@/components/LeadRemarkEditor";
+import { LeadRemarkThread } from "@/components/LeadRemarkThread";
 import { DeleteLeadCard } from "@/components/DeleteLeadCard";
 
 export default async function LeadDetailPage({
@@ -38,6 +38,10 @@ export default async function LeadDetailPage({
         history: {
           orderBy: { changedAt: "desc" },
           include: { changedBy: { select: { displayName: true } } },
+        },
+        remarks: {
+          orderBy: { createdAt: "asc" },
+          include: { author: { select: { id: true, displayName: true } } },
         },
       },
     }),
@@ -101,7 +105,17 @@ export default async function LeadDetailPage({
 
       <LeadContentEditor leadId={lead.id} initial={lead.content} />
 
-      <LeadRemarkEditor leadId={lead.id} initial={lead.remark} />
+      <LeadRemarkThread
+        leadId={lead.id}
+        viewerId={user.id}
+        remarks={lead.remarks.map((r) => ({
+          id: r.id,
+          body: r.body,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+          author: r.author,
+        }))}
+      />
 
       <section className="card p-6">
         <h3 className="text-sm font-semibold text-ink-900">Status history</h3>

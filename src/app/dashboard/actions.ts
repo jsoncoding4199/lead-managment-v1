@@ -585,29 +585,74 @@ export async function updateMaxPickupAction(
   return { ok: true };
 }
 
-const RemarkSchema = z.object({
+/**
+ * Append a new message to the lead's remark thread. Any user with channel
+ * access can post — each message belongs to its author.
+ */
+const AddRemarkSchema = z.object({
   leadId: z.coerce.number().int().positive(),
-  remark: z.string().trim().max(2000),
+  body: z.string().trim().min(1, "Type something first.").max(2000),
 });
 
-export async function updateRemarkAction(formData: FormData): Promise<{ error?: string } | void> {
+export async function addLeadRemarkAction(formData: FormData): Promise<{ error?: string } | void> {
   const me = await requireUser();
-  const parsed = RemarkSchema.safeParse({
+  const parsed = AddRemarkSchema.safeParse({
     leadId: formData.get("leadId"),
-    remark: formData.get("remark"),
+    body: formData.get("body"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid remark." };
 
   const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
   if (!meta) return { error: "Lead not found." };
 
-  await prisma.lead.update({
-    where: { id: parsed.data.leadId },
-    data: { remark: parsed.data.remark.length === 0 ? null : parsed.data.remark },
+  await prisma.leadRemark.create({
+    data: {
+      leadId: parsed.data.leadId,
+      authorId: me.id,
+      body: parsed.data.body,
+    },
   });
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
+/**
+ * Edit a remark message. Only the author can edit their own row — the
+ * updateMany WHERE clause enforces this without a separate fetch+check,
+ * so a forged remarkId from someone else's row simply matches zero rows.
+ */
+const EditRemarkSchema = z.object({
+  remarkId: z.coerce.number().int().positive(),
+  body: z.string().trim().min(1, "Message can't be empty.").max(2000),
+});
+
+export async function editLeadRemarkAction(formData: FormData): Promise<{ error?: string } | void> {
+  const me = await requireUser();
+  const parsed = EditRemarkSchema.safeParse({
+    remarkId: formData.get("remarkId"),
+    body: formData.get("body"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid edit." };
+
+  // Channel guard: load the parent lead to verify access before any write.
+  const remark = await prisma.leadRemark.findUnique({
+    where: { id: parsed.data.remarkId },
+    select: { leadId: true, authorId: true },
+  });
+  if (!remark) return { error: "Message not found." };
+  if (remark.authorId !== me.id) return { error: "You can only edit your own messages." };
+
+  const meta = await loadAccessibleLeadMeta(remark.leadId, me);
+  if (!meta) return { error: "Message not found." };
+
+  await prisma.leadRemark.update({
+    where: { id: parsed.data.remarkId },
+    data: { body: parsed.data.body },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${remark.leadId}`);
 }
 
 const EditContentSchema = z.object({

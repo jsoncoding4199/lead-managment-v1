@@ -65,6 +65,26 @@ model User {
   resolvedResets    PasswordResetRequest[] @relation("ResetResolver")
   pushSubscriptions PushSubscription[]
   notifications     Notification[]
+  remarks           LeadRemark[]
+}
+
+// Per-user remark on a lead. Replaces the single Lead.remark string with a
+// chat-style thread: any user with channel access can append a message, but
+// only the author can edit their own. updatedAt > createdAt means the row
+// has been edited (we never touch the row except via the edit action, so
+// this comparison is reliable).
+model LeadRemark {
+  id        Int      @id @default(autoincrement())
+  leadId    Int
+  authorId  Int
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([leadId, createdAt])
 }
 
 // In-app notification feed. One row is created per recipient every time
@@ -122,6 +142,7 @@ model Lead {
   createdBy   User               @relation("CreatedBy", fields: [createdById], references: [id])
   history     LeadStatusChange[]
   assignments LeadAssignment[]
+  remarks     LeadRemark[]
 
   @@index([status])
   @@index([createdById])
