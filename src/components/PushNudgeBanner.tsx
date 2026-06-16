@@ -143,65 +143,70 @@ export function PushNudgeBanner({
   if (!supported || hidden) return null;
 
   return (
-    <div className="card mb-4 border-brand-200 bg-gradient-to-br from-brand-50 to-white p-4 flex items-start gap-3 animate-in">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-100 text-brand-700">
-        <Bell className="h-5 w-5" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-ink-900">
-          Get notified about new leads
-        </p>
-        <p className="mt-0.5 text-xs text-ink-600">
-          Push notifications work even when the app is closed. One-tap setup.
-        </p>
-        {error && (
-          <p className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
-            {error}
-          </p>
-        )}
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={enable}
-            disabled={pending}
-            className={cn(
-              "btn btn-accent h-8 text-xs px-3",
-              pending && "opacity-70"
-            )}
-          >
-            {pending ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Enabling…
-              </>
-            ) : (
-              "Enable notifications"
-            )}
-          </button>
-          <Link
-            href="/dashboard/notifications"
-            className="btn btn-ghost h-8 text-xs px-3 text-ink-700 inline-flex items-center gap-1"
-          >
-            <History className="h-3.5 w-3.5" />
-            View notifications
-          </Link>
-          <button
-            type="button"
-            onClick={snooze}
-            disabled={pending}
-            className="btn btn-ghost h-8 text-xs px-2 text-ink-600"
-          >
-            Not now
-          </button>
+    <div className="card mb-4 border-brand-200 bg-gradient-to-br from-brand-50 to-white p-3 md:p-4 animate-in">
+      {/* Header row: icon, copy, dismiss. Copy + dismiss share a flex
+          row so the X always sits at the top-right corner regardless of
+          how much body text wraps. */}
+      <div className="flex items-start gap-3">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-100 text-brand-700">
+          <Bell className="h-4 w-4" />
         </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-ink-900 leading-snug">
+            Get notified about new leads
+          </p>
+          <p className="mt-0.5 text-xs text-ink-600 leading-snug">
+            Works even when the app is closed.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={snooze}
+          aria-label="Dismiss"
+          className="shrink-0 grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={snooze}
-        aria-label="Dismiss"
-        className="shrink-0 rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
-      >
-        <X className="h-4 w-4" />
-      </button>
+
+      {error && (
+        <p className="mt-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
+          {error}
+        </p>
+      )}
+
+      {/* Action row: 2-col grid on mobile so each button gets a thumb-
+          sized half of the row; flex on desktop so they sit inline. */}
+      <div className="mt-3 grid grid-cols-2 gap-2 md:flex md:items-center md:justify-start">
+        <button
+          type="button"
+          onClick={enable}
+          disabled={pending}
+          className={cn(
+            "btn btn-accent h-11 md:h-9 text-sm md:text-xs px-3 inline-flex items-center justify-center gap-1.5",
+            pending && "opacity-70"
+          )}
+        >
+          {pending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Enabling…</span>
+            </>
+          ) : (
+            <>
+              <Bell className="h-4 w-4 md:hidden" />
+              <span>Enable</span>
+            </>
+          )}
+        </button>
+        <Link
+          href="/dashboard/notifications"
+          className="btn btn-ghost h-11 md:h-9 text-sm md:text-xs px-3 text-ink-700 inline-flex items-center justify-center gap-1.5 border border-ink-200 bg-white"
+        >
+          <History className="h-4 w-4" />
+          <span>View</span>
+        </Link>
+      </div>
     </div>
   );
 }
