@@ -15,6 +15,7 @@ import {
   LogOut,
   Users,
   Check,
+  ArrowRight,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
@@ -177,9 +178,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
         </pre>
         <Link
           href={`/dashboard/leads/${lead.id}`}
-          className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:underline"
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm ring-1 ring-brand-700/20 hover:bg-brand-700 active:bg-brand-800 transition-colors"
         >
-          Open details →
+          Open details
+          <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
 
