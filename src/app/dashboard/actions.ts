@@ -32,33 +32,34 @@ function isChannelOwnerActing(
 }
 
 /**
- * Focused "your lead was dropped / rejected" push to the lead's original
- * creator. Carries the actor + reason so the creator sees exactly why,
- * without having to open the lead. Quietly no-ops if the creator IS the
- * actor (you don't notify yourself about your own action).
+ * Focused push to the lead's original creator about a change to their
+ * lead. Carries the actor + a one-liner describing what happened. Quiet
+ * no-op when the creator IS the actor (don't notify yourself).
+ *
+ * Used for ALL change events — status, drop, reject, reset, pickup,
+ * assignment, content edit, quality, delete, remark add/edit — so the
+ * creator gets one consistent feed of "what happened to my lead".
+ *
+ * Uses a distinct tag (`lead-${id}-creator`) so the focused push doesn't
+ * collide with the broadcast "lead-${id}" push for the same event.
  */
-async function notifyCreatorOfOutcome(opts: {
+async function notifyLeadCreator(opts: {
   leadId: number;
   creatorId: number;
   actorId: number;
-  actorName: string;
-  status: LeadStatus;
-  note?: string;
-  flavor: "drop" | "reject";
+  title: string;
+  body: string;
+  url?: string;
+  kind?: "status" | "lead" | "approved";
 }): Promise<void> {
   if (opts.creatorId === opts.actorId) return;
-  const reason = opts.note?.trim() || STATUS_LABEL[opts.status];
-  const title =
-    opts.flavor === "reject" ? "Your lead was rejected" : "Your lead was dropped";
   await sendPushToUsers({
     userIds: [opts.creatorId],
     payload: {
-      title,
-      body: `${opts.actorName} · #${opts.leadId}: ${reason}`,
-      url: `/dashboard/leads/${opts.leadId}`,
-      kind: opts.flavor === "reject" ? "status" : "lead",
-      // Distinct tag so this focused notification doesn't get clobbered by
-      // (or clobber) the broadcast "Lead status changed" push.
+      title: opts.title,
+      body: opts.body,
+      url: opts.url ?? `/dashboard/leads/${opts.leadId}`,
+      kind: opts.kind ?? "lead",
       tag: `lead-${opts.leadId}-creator`,
     },
   });
@@ -76,10 +77,14 @@ async function notifyCreatorOfOutcome(opts: {
 async function loadAccessibleLeadMeta(
   leadId: number,
   user: { id: number; username: string; displayName: string; role: "MASTER" | "USER" }
-): Promise<{ channel: import("@prisma/client").LeadChannel; status: LeadStatus } | null> {
+): Promise<{
+  channel: import("@prisma/client").LeadChannel;
+  status: LeadStatus;
+  createdById: number;
+} | null> {
   const meta = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { channel: true, status: true },
+    select: { channel: true, status: true, createdById: true },
   });
   if (!meta) return null;
   if (!canAccessLeadChannel(user, meta.channel)) return null;
@@ -252,13 +257,32 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
 
-  // Push runs after the response is sent — master gets approved events,
-  // everyone else gets non-APPROVED transitions.
+  // Push runs after the response is sent.
+  //   1. Focused push to the lead's creator (regardless of which status)
+  //      so they always learn about state changes to their own lead.
+  //   2. Broadcast push to the rest of the team — masters only when the
+  //      status is APPROVED, everyone otherwise. Creator is excluded
+  //      from the broadcast so they only get the focused notification.
   const toStatus = parsed.data.status as LeadStatus;
   after(async () => {
+    const reason = parsed.data.note?.trim() || STATUS_LABEL[toStatus];
+    const focusedTitle =
+      toStatus === "APPROVED" ? "Your lead was approved 🎉" :
+      toStatus === "REJECTED" ? "Your lead was rejected" :
+      "Your lead status changed";
+    await notifyLeadCreator({
+      leadId: lead.id,
+      creatorId: lead.createdById,
+      actorId: user.id,
+      title: focusedTitle,
+      body: `${user.displayName} · #${lead.id}: ${reason}`,
+      kind: toStatus === "APPROVED" ? "approved" : "status",
+    });
+
     if (toStatus === "APPROVED") {
+      const masterIds = await getMasterIds();
       await sendPushToUsers({
-        userIds: await getMasterIds(),
+        userIds: masterIds.filter((id) => id !== lead.createdById),
         excludeUserId: user.id,
         payload: {
           title: "Lead approved 🎉",
@@ -269,15 +293,9 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
         },
       });
     } else {
-      // Reject: tell the lead's creator directly with the reason. Drop
-      // them from the broadcast so they don't get pinged twice.
-      const isReject = toStatus === "REJECTED";
       const allUsers = await getAllUserIds();
-      const broadcastIds = isReject
-        ? allUsers.filter((id) => id !== lead.createdById)
-        : allUsers;
       await sendPushToUsers({
-        userIds: broadcastIds,
+        userIds: allUsers.filter((id) => id !== lead.createdById),
         excludeUserId: user.id,
         payload: {
           title: "Lead status changed",
@@ -287,17 +305,6 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
           tag: `lead-${lead.id}`,
         },
       });
-      if (isReject) {
-        await notifyCreatorOfOutcome({
-          leadId: lead.id,
-          creatorId: lead.createdById,
-          actorId: user.id,
-          actorName: user.displayName,
-          status: toStatus,
-          note: parsed.data.note,
-          flavor: "reject",
-        });
-      }
     }
   });
 }
@@ -350,6 +357,29 @@ export async function setLeadAssignmentsAction(input: {
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+
+  // Notify the creator that assignments on their lead changed. Look up
+  // the new assignees' display names for the body so the creator sees
+  // who's working it now.
+  after(async () => {
+    if (meta.createdById === master.id) return;
+    let body = `${master.displayName} unassigned everyone from #${parsed.data.leadId}`;
+    if (parsed.data.userIds.length > 0) {
+      const assignees = await prisma.user.findMany({
+        where: { id: { in: parsed.data.userIds } },
+        select: { displayName: true },
+      });
+      const names = assignees.map((u) => u.displayName).join(", ");
+      body = `${master.displayName} assigned #${parsed.data.leadId} to ${names}`;
+    }
+    await notifyLeadCreator({
+      leadId: parsed.data.leadId,
+      creatorId: meta.createdById,
+      actorId: master.id,
+      title: "Your lead was reassigned",
+      body,
+    });
+  });
 }
 
 /**
@@ -411,6 +441,16 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
+
+  after(async () => {
+    await notifyLeadCreator({
+      leadId: lead.id,
+      creatorId: lead.createdById,
+      actorId: me.id,
+      title: "Your lead was picked up",
+      body: `${me.displayName} picked up #${lead.id}`,
+    });
+  });
 }
 
 /**
@@ -514,13 +554,30 @@ export async function dropWithStatusAction(input: {
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
 
-  // Push runs after the response. Same payload shape as the regular status
-  // change so receivers don't have to special-case drops.
+  // Push runs after the response.
+  //   1. Focused push to the creator (they always learn about the drop).
+  //   2. Broadcast to the rest of the team — masters only on APPROVED,
+  //      everyone else otherwise. Creator excluded from broadcast.
   if (statusChanged) {
     after(async () => {
+      const reason = parsed.data.note?.trim() || STATUS_LABEL[newStatus];
+      const focusedTitle =
+        newStatus === "APPROVED" ? "Your lead was approved 🎉" :
+        newStatus === "REJECTED" ? "Your lead was rejected" :
+        "Your lead was dropped";
+      await notifyLeadCreator({
+        leadId: lead.id,
+        creatorId: lead.createdById,
+        actorId: me.id,
+        title: focusedTitle,
+        body: `${me.displayName} · #${lead.id}: ${reason}`,
+        kind: newStatus === "APPROVED" ? "approved" : "status",
+      });
+
       if (newStatus === "APPROVED") {
+        const masterIds = await getMasterIds();
         await sendPushToUsers({
-          userIds: await getMasterIds(),
+          userIds: masterIds.filter((id) => id !== lead.createdById),
           excludeUserId: me.id,
           payload: {
             title: "Lead approved 🎉",
@@ -531,13 +588,9 @@ export async function dropWithStatusAction(input: {
           },
         });
       } else {
-        // Drop with a final status: the creator gets a dedicated "Your
-        // lead was dropped/rejected" push carrying the reason. Drop them
-        // from the broadcast so they don't get pinged twice.
         const allUsers = await getAllUserIds();
-        const broadcastIds = allUsers.filter((id) => id !== lead.createdById);
         await sendPushToUsers({
-          userIds: broadcastIds,
+          userIds: allUsers.filter((id) => id !== lead.createdById),
           excludeUserId: me.id,
           payload: {
             title: "Lead status changed",
@@ -546,15 +599,6 @@ export async function dropWithStatusAction(input: {
             kind: "status",
             tag: `lead-${lead.id}`,
           },
-        });
-        await notifyCreatorOfOutcome({
-          leadId: lead.id,
-          creatorId: lead.createdById,
-          actorId: me.id,
-          actorName: me.displayName,
-          status: newStatus,
-          note: parsed.data.note,
-          flavor: newStatus === "REJECTED" ? "reject" : "drop",
         });
       }
     });
@@ -615,6 +659,21 @@ export async function addLeadRemarkAction(formData: FormData): Promise<{ error?:
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+
+  after(async () => {
+    // Truncate long messages so the push body stays readable.
+    const snippet =
+      parsed.data.body.length > 120
+        ? parsed.data.body.slice(0, 117) + "…"
+        : parsed.data.body;
+    await notifyLeadCreator({
+      leadId: parsed.data.leadId,
+      creatorId: meta.createdById,
+      actorId: me.id,
+      title: "New remark on your lead",
+      body: `${me.displayName}: ${snippet}`,
+    });
+  });
 }
 
 /**
@@ -653,6 +712,20 @@ export async function editLeadRemarkAction(formData: FormData): Promise<{ error?
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${remark.leadId}`);
+
+  after(async () => {
+    const snippet =
+      parsed.data.body.length > 120
+        ? parsed.data.body.slice(0, 117) + "…"
+        : parsed.data.body;
+    await notifyLeadCreator({
+      leadId: remark.leadId,
+      creatorId: meta.createdById,
+      actorId: me.id,
+      title: "Remark edited on your lead",
+      body: `${me.displayName} (edited): ${snippet}`,
+    });
+  });
 }
 
 const EditContentSchema = z.object({
@@ -678,6 +751,16 @@ export async function editLeadContentAction(formData: FormData): Promise<{ error
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+
+  after(async () => {
+    await notifyLeadCreator({
+      leadId: parsed.data.leadId,
+      creatorId: meta.createdById,
+      actorId: me.id,
+      title: "Your lead was edited",
+      body: `${me.displayName} updated #${parsed.data.leadId}`,
+    });
+  });
 }
 
 /**
@@ -741,10 +824,19 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
 
-  // Recirculation event — push after the response, broadcast to everyone.
+  // Recirculation event — focused push to creator, broadcast to the team
+  // (creator excluded so they only get the focused one).
   after(async () => {
+    await notifyLeadCreator({
+      leadId: lead.id,
+      creatorId: lead.createdById,
+      actorId: user.id,
+      title: "Your lead is back in Open Market",
+      body: `${user.displayName} reset #${lead.id}`,
+    });
+    const allUsers = await getAllUserIds();
     await sendPushToUsers({
-      userIds: await getAllUserIds(),
+      userIds: allUsers.filter((id) => id !== lead.createdById),
       excludeUserId: user.id,
       payload: {
         title: "Lead back in Open Market",
@@ -784,6 +876,17 @@ export async function updateLeadQualityAction(formData: FormData): Promise<{ err
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+
+  after(async () => {
+    const label = parsed.data.quality === "" ? "cleared" : parsed.data.quality;
+    await notifyLeadCreator({
+      leadId: parsed.data.leadId,
+      creatorId: meta.createdById,
+      actorId: me.id,
+      title: "Your lead quality was updated",
+      body: `${me.displayName} set quality on #${parsed.data.leadId} → ${label}`,
+    });
+  });
 }
 
 const DeleteLeadSchema = z.object({
@@ -803,4 +906,19 @@ export async function deleteLeadAction(formData: FormData): Promise<{ error?: st
 
   revalidatePath("/dashboard");
   // After delete the detail page won't exist anymore; the client redirects.
+
+  after(async () => {
+    // Lead is gone — link the creator to the dashboard, not the dead detail.
+    if (meta.createdById === me.id) return;
+    await sendPushToUsers({
+      userIds: [meta.createdById],
+      payload: {
+        title: "Your lead was deleted",
+        body: `${me.displayName} deleted #${parsed.data.leadId}`,
+        url: "/dashboard",
+        kind: "lead",
+        tag: `lead-${parsed.data.leadId}-creator`,
+      },
+    });
+  });
 }
