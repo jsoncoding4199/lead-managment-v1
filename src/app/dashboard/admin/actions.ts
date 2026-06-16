@@ -10,6 +10,7 @@ const CreateUserSchema = z.object({
   username: z.string().trim().toLowerCase().min(2).max(40).regex(/^[a-z0-9._-]+$/, "lowercase letters, digits, . _ - only"),
   displayName: z.string().trim().min(1).max(60),
   password: z.string().min(6).max(200),
+  channel: z.enum(["DEFAULT", "AHA", "AHB"]).optional(),
 });
 
 export async function createUserAction(_prev: { error?: string; ok?: boolean } | null, formData: FormData) {
@@ -18,6 +19,7 @@ export async function createUserAction(_prev: { error?: string; ok?: boolean } |
     username: formData.get("username"),
     displayName: formData.get("displayName"),
     password: formData.get("password"),
+    channel: formData.get("channel") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
@@ -33,6 +35,7 @@ export async function createUserAction(_prev: { error?: string; ok?: boolean } |
       displayName: parsed.data.displayName,
       passwordHash,
       role: "USER",
+      channel: parsed.data.channel ?? "DEFAULT",
     },
   });
 
@@ -107,11 +110,12 @@ export async function resetUserPasswordAction(_prev: { error?: string; ok?: bool
  * The master cannot delete themselves. Other MASTER accounts also can't be
  * deleted through this UI (we hide the button), but we double-check here too.
  */
-/** Master can rename users — change display name and/or username. */
+/** Master can rename users and change their channel assignment. */
 const EditUserSchema = z.object({
   userId: z.coerce.number().int().positive(),
   username: z.string().trim().toLowerCase().min(2).max(40).regex(/^[a-z0-9._-]+$/, "lowercase letters, digits, . _ - only"),
   displayName: z.string().trim().min(1).max(60),
+  channel: z.enum(["DEFAULT", "AHA", "AHB"]).optional(),
 });
 
 export async function editUserAction(formData: FormData): Promise<{ error?: string; ok?: boolean } | void> {
@@ -120,6 +124,7 @@ export async function editUserAction(formData: FormData): Promise<{ error?: stri
     userId: formData.get("userId"),
     username: formData.get("username"),
     displayName: formData.get("displayName"),
+    channel: formData.get("channel") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
@@ -129,7 +134,6 @@ export async function editUserAction(formData: FormData): Promise<{ error?: stri
     return { error: "Other master accounts can't be edited from here." };
   }
 
-  // If username changed, make sure the new one isn't taken by someone else.
   if (parsed.data.username !== target.username) {
     const clash = await prisma.user.findUnique({ where: { username: parsed.data.username } });
     if (clash && clash.id !== target.id) {
@@ -137,9 +141,20 @@ export async function editUserAction(formData: FormData): Promise<{ error?: stri
     }
   }
 
+  // Master ignores the channel field (their access is unconditional);
+  // non-master users get their channel set or left alone if not provided.
+  const channelUpdate =
+    parsed.data.channel && target.role !== "MASTER"
+      ? { channel: parsed.data.channel }
+      : {};
+
   await prisma.user.update({
     where: { id: target.id },
-    data: { username: parsed.data.username, displayName: parsed.data.displayName },
+    data: {
+      username: parsed.data.username,
+      displayName: parsed.data.displayName,
+      ...channelUpdate,
+    },
   });
 
   revalidatePath("/dashboard/admin");

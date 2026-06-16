@@ -48,12 +48,7 @@ export async function GET(req: NextRequest) {
   // Channel filter — keep AHA / AHB events out of the polling feed for any
   // user who can't see those channels. Same set of channels used for both
   // queries so behavior is consistent across event kinds.
-  const channelList = visibleChannelsAll({
-    id: me.id,
-    username: me.username,
-    displayName: me.displayName,
-    role: me.role,
-  });
+  const channelList = visibleChannelsAll(me);
 
   const [statusChanges, newLeads] = await Promise.all([
     prisma.leadStatusChange.findMany({

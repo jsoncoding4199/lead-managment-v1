@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   Hand,
+  Settings,
 } from "lucide-react";
 
 type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
@@ -154,6 +155,17 @@ function SidebarInner({
           active={onDashboardRoot && tab === "archive"}
         >
           Archive
+        </NavLink>
+
+        <div className="px-3 pt-6 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+          Account
+        </div>
+        <NavLink
+          href="/dashboard/settings"
+          icon={Settings}
+          active={pathname === "/dashboard/settings"}
+        >
+          Settings
         </NavLink>
 
         {user.role === "MASTER" && (

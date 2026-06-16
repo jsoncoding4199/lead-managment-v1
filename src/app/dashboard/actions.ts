@@ -23,7 +23,7 @@ import { CHANNEL_OWNERS, canAccessLeadChannel, type ChannelKey } from "@/lib/cha
  * Master never auto-flips a channel — they manage explicitly.
  */
 function isChannelOwnerActing(
-  actor: { id: number; username: string; displayName: string; role: "MASTER" | "USER" },
+  actor: import("@/lib/auth").CurrentUser,
   channel: import("@prisma/client").LeadChannel
 ): boolean {
   if (channel === "DEFAULT") return false;
@@ -76,7 +76,7 @@ async function notifyLeadCreator(opts: {
  */
 async function loadAccessibleLeadMeta(
   leadId: number,
-  user: { id: number; username: string; displayName: string; role: "MASTER" | "USER" }
+  user: import("@/lib/auth").CurrentUser
 ): Promise<{
   channel: import("@prisma/client").LeadChannel;
   status: LeadStatus;

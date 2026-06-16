@@ -42,13 +42,18 @@ enum LeadChannel {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  username     String   @unique
+  id           Int         @id @default(autoincrement())
+  username     String      @unique
   passwordHash String
   displayName  String
-  role         Role     @default(USER)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  role         Role        @default(USER)
+  active       Boolean     @default(true)
+  // Which private channel this user belongs to. DEFAULT = regular user
+  // (sees the public pipeline only). AHA / AHB = private-channel user
+  // (sees that channel's leads, hidden from everyone except master).
+  // Master ignores this field — they see everything.
+  channel      LeadChannel @default(DEFAULT)
+  createdAt    DateTime    @default(now())
 
   // Cumulative self-action counters. Incremented atomically by the
   // pickUp / drop actions; never decremented. Survive status changes,

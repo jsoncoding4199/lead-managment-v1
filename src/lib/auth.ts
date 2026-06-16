@@ -8,6 +8,7 @@ export type CurrentUser = {
   username: string;
   displayName: string;
   role: "MASTER" | "USER";
+  channel: "DEFAULT" | "AHA" | "AHB";
 };
 
 /**
@@ -21,7 +22,7 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, username: true, displayName: true, role: true, active: true },
+    select: { id: true, username: true, displayName: true, role: true, active: true, channel: true },
   });
   if (!user || !user.active) return null;
 
@@ -30,6 +31,7 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
     username: user.username,
     displayName: user.displayName,
     role: user.role,
+    channel: user.channel,
   };
 });
 

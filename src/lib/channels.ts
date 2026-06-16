@@ -3,15 +3,6 @@ import type { CurrentUser } from "./auth";
 
 export type ChannelKey = "AHA" | "AHB";
 
-// Private channel "owners". The named user gets access alongside master;
-// everyone else can't see the tab or its leads. Matching is case-insensitive
-// and accepts either displayName or username so the user can be created
-// either way without breaking visibility.
-export const CHANNEL_OWNERS: Record<ChannelKey, string> = {
-  AHA: "AHA Adam",
-  AHB: "AHB Eddie",
-};
-
 export const CHANNEL_LABEL: Record<ChannelKey, string> = {
   AHA: "AHA",
   AHB: "AHB",
@@ -19,17 +10,17 @@ export const CHANNEL_LABEL: Record<ChannelKey, string> = {
 
 export const CHANNEL_KEYS: ChannelKey[] = ["AHA", "AHB"];
 
-function matchesOwner(user: Pick<CurrentUser, "displayName" | "username">, owner: string): boolean {
-  const o = owner.trim().toLowerCase();
-  return (
-    user.displayName.trim().toLowerCase() === o ||
-    user.username.trim().toLowerCase() === o
-  );
-}
+// Legacy: the named owners of each private channel. Kept only so admin
+// UIs can display the canonical channel name. Authorization no longer
+// depends on these strings — it uses the User.channel column instead.
+export const CHANNEL_OWNERS: Record<ChannelKey, string> = {
+  AHA: "AHA Adam",
+  AHB: "AHB Eddie",
+};
 
 export function canSeeChannel(user: CurrentUser, channel: ChannelKey): boolean {
   if (user.role === "MASTER") return true;
-  return matchesOwner(user, CHANNEL_OWNERS[channel]);
+  return user.channel === channel;
 }
 
 export function visibleChannels(user: CurrentUser): ChannelKey[] {
@@ -46,29 +37,26 @@ export const DEFAULT_CHANNEL: LeadChannel = "DEFAULT";
  *
  *   - DEFAULT      → everyone may view (subject to status/assignment rules
  *                    enforced elsewhere)
- *   - AHA / AHB    → only the channel owner (matched by displayName or
- *                    username) and master
+ *   - AHA / AHB    → only users whose User.channel matches, plus master
  *
  * Use this as the *only* check that says "can this user see this lead's
- * channel" — keeps the rule in one place so we can't forget to mirror it
- * in a future query.
+ * channel" — keeps the rule in one place.
  */
 export function canAccessLeadChannel(user: CurrentUser, channel: LeadChannel): boolean {
   if (channel === "DEFAULT") return true;
   if (user.role === "MASTER") return true;
-  // channel is "AHA" | "AHB" here — same as ChannelKey.
-  return matchesOwner(user, CHANNEL_OWNERS[channel as ChannelKey]);
+  return user.channel === channel;
 }
 
 /**
  * Every LeadChannel the user is allowed to read leads from. Always
- * includes DEFAULT; adds AHA / AHB only when they qualify. Use the
- * returned list as a `channel: { in: ... }` Prisma filter to avoid
- * leaking private leads through list queries.
+ * includes DEFAULT; adds the user's assigned private channel if they
+ * have one. Master sees everything.
  */
 export function visibleChannelsAll(user: CurrentUser): LeadChannel[] {
+  if (user.role === "MASTER") return ["DEFAULT", "AHA", "AHB"];
   const list: LeadChannel[] = ["DEFAULT"];
-  if (canAccessLeadChannel(user, "AHA")) list.push("AHA");
-  if (canAccessLeadChannel(user, "AHB")) list.push("AHB");
+  if (user.channel === "AHA") list.push("AHA");
+  if (user.channel === "AHB") list.push("AHB");
   return list;
 }
