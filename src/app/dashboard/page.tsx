@@ -14,7 +14,19 @@ import { parsePrivateChannelTab, privateChannelTabKey } from "@/lib/channels";
 import { LeadComposer } from "@/components/LeadComposer";
 import { LeadCard } from "@/components/LeadCard";
 import { TabBar } from "@/components/TabBar";
+import { LeadSearchBar } from "@/components/LeadSearchBar";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
+
+function leadSearchFilter(q: string): Prisma.LeadWhereInput {
+  if (!q) return {};
+  return {
+    OR: [
+      { content: { contains: q, mode: "insensitive" } },
+      { remark: { contains: q, mode: "insensitive" } },
+      { remarks: { some: { body: { contains: q, mode: "insensitive" } } } },
+    ],
+  };
+}
 
 /**
  * VISIBILITY MODEL
@@ -91,6 +103,8 @@ export default async function DashboardPage({
               : "Private channel — visible only to the channel owner and master.")}
         </p>
       </div>
+
+      <LeadSearchBar activeTab={serializeTab(tab)} q={q} />
 
       <Suspense fallback={<TabBarSkeleton />}>
         <TabBarWithCounts tab={tab} q={q} user={user} />
@@ -184,7 +198,7 @@ async function LeadsSection({
       where: {
         AND: [
           { privateChannelUserId: tab.userId },
-          q ? { content: { contains: q, mode: "insensitive" as const } } : {},
+          leadSearchFilter(q),
         ],
       },
       orderBy: [{ updatedAt: "desc" }],
@@ -223,7 +237,7 @@ async function LeadsSection({
           AND: [
             { privateChannelUserId: null },
             baseWhere,
-            q ? { content: { contains: q, mode: "insensitive" as const } } : {},
+            leadSearchFilter(q),
           ],
         },
         orderBy: [{ updatedAt: "desc" }],
@@ -262,7 +276,7 @@ async function LeadsSection({
           AND: [
             { privateChannelUserId: null },
             { status: { in: ALWAYS_ARCHIVED_STATUSES } },
-            q ? { content: { contains: q, mode: "insensitive" as const } } : {},
+            leadSearchFilter(q),
           ],
         },
         orderBy: [{ updatedAt: "desc" }],
@@ -299,7 +313,7 @@ async function LeadsSection({
           { privateChannelUserId: null },
           dateFilter,
           visibilityFilter,
-          q ? { content: { contains: q, mode: "insensitive" as const } } : {},
+          leadSearchFilter(q),
         ],
       },
       orderBy: [{ updatedAt: "desc" }],

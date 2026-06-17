@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
-  Search,
   Sparkles,
   Store,
   BookmarkCheck,
@@ -77,43 +76,29 @@ export function TabBar({
   const mobileCols = tabs.length <= 4 ? 2 : tabs.length <= 9 ? 3 : 4;
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div
+      className={cn(
+        "w-full",
+        "sticky top-2 z-30",
+        "rounded-xl bg-white/95 backdrop-blur p-1 ring-1 ring-ink-200 shadow-soft"
+      )}
+    >
       <div
-        className={cn(
-          "w-full sm:w-auto",
-          "sticky top-2 sm:static z-30",
-          "rounded-xl bg-white/95 backdrop-blur p-1 ring-1 ring-ink-200 shadow-soft"
-        )}
+        className="grid gap-1 sm:flex sm:flex-wrap sm:gap-1"
+        style={{ gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))` }}
       >
-        <div
-          className="grid gap-1 sm:flex sm:flex-wrap sm:w-max sm:gap-1"
-          style={{ gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))` }}
-        >
-          {tabs.map((t) => (
-            <TabLink
-              key={t.key}
-              href={t.href}
-              label={t.label}
-              short={t.short}
-              count={t.count}
-              icon={t.icon}
-              active={activeTab === t.key}
-            />
-          ))}
-        </div>
+        {tabs.map((t) => (
+          <TabLink
+            key={t.key}
+            href={t.href}
+            label={t.label}
+            short={t.short}
+            count={t.count}
+            icon={t.icon}
+            active={activeTab === t.key}
+          />
+        ))}
       </div>
-
-      <form className="relative w-full sm:w-auto" action="/dashboard">
-        {activeTab !== "fresh" && <input type="hidden" name="tab" value={activeTab} />}
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-        <input
-          type="search"
-          name="q"
-          defaultValue={q}
-          placeholder="Search lead text…"
-          className="input pl-9 w-full sm:w-72"
-        />
-      </form>
     </div>
   );
 }
