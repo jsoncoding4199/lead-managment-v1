@@ -83,7 +83,8 @@ export default async function DashboardPage({
       <div>
         <h2 className="text-2xl md:text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
         <p className="text-ink-500 mt-1 text-xs md:text-sm">
-          {tab.kind === "static" && tab.key === "fresh" &&
+          {q && `Searching all visible leads for “${q}”.`}
+          {!q && tab.kind === "static" && tab.key === "fresh" &&
             (user.role === "MASTER"
               ? "Fresh leads in the active pipeline."
               : "Your picked-up leads, plus leads still available to pick up.")}
@@ -104,24 +105,32 @@ export default async function DashboardPage({
         </p>
       </div>
 
-      <LeadSearchBar activeTab={serializeTab(tab)} q={q} />
+      <LeadSearchBar q={q} />
 
-      <Suspense fallback={<TabBarSkeleton />}>
-        <TabBarWithCounts tab={tab} q={q} user={user} />
-      </Suspense>
+      {!q && (
+        <Suspense fallback={<TabBarSkeleton />}>
+          <TabBarWithCounts tab={tab} q={q} user={user} />
+        </Suspense>
+      )}
 
-      {/* Composer rules */}
-      {tab.kind === "static" && tab.key === "fresh" && <LeadComposer />}
-      {tab.kind === "private" && user.role === "MASTER" && privateUser && (
+      {/* Composer rules — hide while searching globally */}
+      {!q && tab.kind === "static" && tab.key === "fresh" && <LeadComposer />}
+      {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && (
         <LeadComposer
           privateChannelUserId={privateUser.id}
           privateChannelLabel={privateUser.displayName}
         />
       )}
 
-      <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${q}`}>
-        <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} />
-      </Suspense>
+      {q ? (
+        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}`}>
+          <GlobalSearchResults q={q} user={user} />
+        </Suspense>
+      ) : (
+        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${q}`}>
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -170,6 +179,91 @@ function ageBoundaryDate(): Date {
 
 function isArchiveBound(lead: { status: LeadStatus }): boolean {
   return ALWAYS_ARCHIVED_STATUSES.includes(lead.status);
+}
+
+/**
+ * Cross-tab visibility: every lead this user is allowed to see anywhere
+ * in the dashboard (Fresh + Market + Picks + Archive + own private channel).
+ *
+ * Non-master union:
+ *   • assigned to me (covers Picks + Active in Fresh/Market)
+ *   • my own private channel
+ *   • public, non-archived, non-active (NEW + soft-negatives)
+ *
+ * Master sees everything.
+ */
+function globalLeadVisibility(user: CurrentUser): Prisma.LeadWhereInput {
+  if (user.role === "MASTER") return {};
+  return {
+    OR: [
+      { assignments: { some: { userId: user.id } } },
+      { privateChannelUserId: user.id },
+      {
+        AND: [
+          { privateChannelUserId: null },
+          { status: { notIn: ALWAYS_ARCHIVED_STATUSES } },
+          { status: { notIn: ACTIVE_STATUSES } },
+        ],
+      },
+    ],
+  };
+}
+
+async function GlobalSearchResults({ q, user }: { q: string; user: CurrentUser }) {
+  const settings = await getAppSettings();
+
+  const [matches, teamUsers] = await Promise.all([
+    prisma.lead.findMany({
+      where: { AND: [globalLeadVisibility(user), leadSearchFilter(q)] },
+      orderBy: [{ updatedAt: "desc" }],
+      take: 200,
+      select: leadSelect,
+    }),
+    user.role === "MASTER"
+      ? prisma.user.findMany({
+          where: { active: true, role: "USER" },
+          select: { id: true, displayName: true },
+          orderBy: { displayName: "asc" },
+        })
+      : Promise.resolve([] as { id: number; displayName: string }[]),
+  ]);
+
+  if (matches.length === 0) {
+    return (
+      <div className="card p-12 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
+          ✦
+        </div>
+        <h3 className="mt-4 text-base font-semibold text-ink-900">
+          No leads match “{q}”
+        </h3>
+        <p className="mt-1 text-sm text-ink-500">
+          Search covers every tab you can see. Try a different keyword.
+        </p>
+        <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">
+          Clear search
+        </Link>
+      </div>
+    );
+  }
+
+  const leads = matches.map(toLeadView);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-ink-500">
+        {leads.length} match{leads.length === 1 ? "" : "es"} across all tabs
+        {leads.length === 200 && " (showing first 200)"}
+      </p>
+      <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {leads.map((lead) => (
+          <li key={lead.id}>
+            <LeadCard lead={lead} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 async function LeadsSection({
