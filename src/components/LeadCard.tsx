@@ -16,6 +16,7 @@ import {
   Users,
   Check,
   ArrowRight,
+  Send,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ import {
   setLeadAssignmentsAction,
   updateLeadQualityAction,
   resetToOpenMarketAction,
+  reassignPrivateLeadAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -41,6 +43,7 @@ type Lead = {
   updatedAt: string;
   createdBy: { id: number; displayName: string } | null;
   assignees: { id: number; displayName: string }[];
+  privateChannelUserId?: number | null;
 };
 
 type Viewer = { id: number; role: "MASTER" | "USER" };
@@ -50,25 +53,28 @@ type Props = {
   viewer: Viewer;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
+  /** Other active private-channel users — handover targets for reassign. */
+  reassignTargets?: { id: number; displayName: string }[];
 };
 
-export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
+export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   // Lock body scroll while any portal modal is open.
   useEffect(() => {
-    if (!menuOpen && !assignOpen && !qualityOpen && !dropOpen) return;
+    if (!menuOpen && !assignOpen && !qualityOpen && !dropOpen && !reassignOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [menuOpen, assignOpen, qualityOpen, dropOpen]);
+  }, [menuOpen, assignOpen, qualityOpen, dropOpen, reassignOpen]);
 
   const updateStatus = (status: LeadStatus, note?: string) => {
     setError(null);
@@ -139,9 +145,24 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
     });
   };
 
+  const reassign = (targetUserId: number, remark: string) => {
+    setError(null);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    fd.set("targetUserId", String(targetUserId));
+    fd.set("remark", remark);
+    startTransition(async () => {
+      const res = await reassignPrivateLeadAction(fd);
+      if (res?.error) setError(res.error);
+      else setReassignOpen(false);
+    });
+  };
+
   const aging = daysAgo(lead.createdAt);
   const iAmAssigned = lead.assignees.some((a) => a.id === viewer.id);
   const atCapacity = lead.assignees.length >= maxPickup;
+  const iOwnThisChannel =
+    lead.privateChannelUserId != null && lead.privateChannelUserId === viewer.id;
 
   return (
     <article className="card p-4 lg:p-4 hover:shadow-lift transition-shadow group flex flex-col">
@@ -285,6 +306,17 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
               Assign
             </button>
           )}
+
+          {iOwnThisChannel && (
+            <button
+              onClick={() => setReassignOpen(true)}
+              disabled={pending}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
+            >
+              <Send className="h-3 w-3" />
+              Assign
+            </button>
+          )}
         </div>
       </footer>
 
@@ -327,6 +359,16 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup }: Props) {
           currentStatus={lead.status}
           onChoose={dropWithStatus}
           onClose={() => setDropOpen(false)}
+        />
+      )}
+
+      {reassignOpen && iOwnThisChannel && (
+        <ReassignSheet
+          leadId={lead.id}
+          targets={reassignTargets ?? []}
+          onSubmit={reassign}
+          onClose={() => setReassignOpen(false)}
+          pending={pending}
         />
       )}
     </article>
@@ -800,6 +842,125 @@ function AssignSheet({
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Save assignment
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    portalNode
+  );
+}
+
+/* ---------- Private-channel reassign sheet (portal) ---------- */
+
+function ReassignSheet({
+  leadId,
+  targets,
+  onSubmit,
+  onClose,
+  pending,
+}: {
+  leadId: number;
+  targets: { id: number; displayName: string }[];
+  onSubmit: (targetUserId: number, remark: string) => void;
+  onClose: () => void;
+  pending: boolean;
+}) {
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  // 0 = "send to master / public pool"; any positive id = a private user.
+  const [targetId, setTargetId] = useState<number>(0);
+  const [remark, setRemark] = useState<string>("");
+
+  useEffect(() => {
+    setPortalNode(document.body);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!portalNode) return null;
+
+  const canSubmit = remark.trim().length > 0;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
+      <button
+        aria-label="Close reassign menu"
+        onClick={onClose}
+        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-in"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reassign lead"
+        className="relative w-full md:w-[440px] max-h-[85vh] overflow-y-auto bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="md:hidden flex justify-center pt-2">
+          <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
+        </div>
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <div>
+            <h3 className="text-base font-semibold text-ink-900">Reassign lead #{leadId}</h3>
+            <p className="text-xs text-ink-500 mt-0.5">
+              Hand the lead to another private pipeline or back to master. A handover
+              remark is required.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-5 pb-4 space-y-3">
+          <div>
+            <label className="label">Send to</label>
+            <select
+              value={targetId}
+              onChange={(e) => setTargetId(Number(e.target.value))}
+              className="input h-11"
+            >
+              <option value={0}>Master (send back to public pool)</option>
+              {targets.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.displayName} (private)
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Handover remark <span className="text-rose-600">*</span></label>
+            <textarea
+              autoFocus
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              rows={5}
+              maxLength={2000}
+              placeholder="What's the situation? Anything the next person needs to know…"
+              className="input w-full resize-y text-sm"
+            />
+            <div className="flex items-center justify-between text-[10px] text-ink-400 mt-1">
+              <span>{remark.trim().length === 0 ? "Required" : "Looks good"}</span>
+              <span>{remark.length}/2000</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button onClick={onClose} disabled={pending} className="btn btn-ghost h-9 text-xs">
+              Cancel
+            </button>
+            <button
+              onClick={() => onSubmit(targetId, remark.trim())}
+              disabled={!canSubmit || pending}
+              className="btn btn-primary h-9 px-3 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              Reassign
             </button>
           </div>
         </div>

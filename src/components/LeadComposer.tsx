@@ -80,6 +80,19 @@ export function LeadComposer({ privateChannelUserId, privateChannelLabel }: Prop
       {isPrivate && (
         <input type="hidden" name="privateChannelUserId" value={privateChannelUserId} />
       )}
+      {isPrivate && (
+        <div className="mb-3">
+          <label className="label">Initial status</label>
+          <select name="initialNote" defaultValue="" className="input h-11">
+            <option value="">New (no prior contact)</option>
+            <option value="CALLED_BEFORE">Called before</option>
+            <option value="WHATSAPP_BEFORE">WhatsApp before</option>
+          </select>
+          <p className="mt-1 text-[10px] text-ink-500">
+            Saved as the first thread message so the assignee knows what was already tried.
+          </p>
+        </div>
+      )}
       <textarea
         ref={ref}
         name="content"

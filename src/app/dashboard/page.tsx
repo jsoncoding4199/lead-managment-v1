@@ -149,6 +149,7 @@ type LeadView = {
   quality: LeadQuality | null;
   createdAt: string;
   updatedAt: string;
+  privateChannelUserId: number | null;
   createdBy: { id: number; displayName: string };
   assignees: { id: number; displayName: string }[];
 };
@@ -288,17 +289,32 @@ async function LeadsSection({
     if (!privateUser) {
       return <ChannelLockedNotice label="this channel" />;
     }
-    const channelLeads = await prisma.lead.findMany({
-      where: {
-        AND: [
-          { privateChannelUserId: tab.userId },
-          leadSearchFilter(q),
-        ],
-      },
-      orderBy: [{ updatedAt: "desc" }],
-      take: 200,
-      select: leadSelect,
-    });
+    const [channelLeads, otherPrivateUsers] = await Promise.all([
+      prisma.lead.findMany({
+        where: {
+          AND: [
+            { privateChannelUserId: tab.userId },
+            leadSearchFilter(q),
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 200,
+        select: leadSelect,
+      }),
+      // Handover targets for the channel owner's Assign button — other
+      // active private-channel users, excluding self. Master sees this too
+      // but doesn't get the button (uses the regular Assign sheet).
+      prisma.user.findMany({
+        where: {
+          active: true,
+          role: "USER",
+          isPrivateChannel: true,
+          NOT: { id: tab.userId },
+        },
+        select: { id: true, displayName: true },
+        orderBy: { displayName: "asc" },
+      }),
+    ]);
     if (channelLeads.length === 0) {
       return <ChannelEmpty label={privateUser.displayName} hasQuery={!!q} />;
     }
@@ -309,6 +325,7 @@ async function LeadsSection({
         leads={leads}
         viewer={user}
         maxPickup={settings.maxPickup}
+        reassignTargets={otherPrivateUsers}
       />
     );
   }
@@ -453,6 +470,7 @@ const leadSelect = {
   quality: true,
   createdAt: true,
   updatedAt: true,
+  privateChannelUserId: true,
   createdBy: { select: { id: true, displayName: true } },
   assignments: {
     select: { user: { select: { id: true, displayName: true } } },
@@ -468,6 +486,7 @@ type RawLead = {
   quality: LeadQuality | null;
   createdAt: Date;
   updatedAt: Date;
+  privateChannelUserId: number | null;
   createdBy: { id: number; displayName: string };
   assignments: { user: { id: number; displayName: string } }[];
 };
@@ -481,6 +500,7 @@ function toLeadView(l: RawLead): LeadView {
     quality: l.quality,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
+    privateChannelUserId: l.privateChannelUserId,
     createdBy: l.createdBy,
     assignees: l.assignments.map((a) => a.user),
   };
@@ -528,11 +548,13 @@ function ChannelLeadList({
   leads,
   viewer,
   maxPickup,
+  reassignTargets,
 }: {
   label: string;
   leads: LeadView[];
   viewer: CurrentUser;
   maxPickup: number;
+  reassignTargets: { id: number; displayName: string }[];
 }) {
   return (
     <div className="space-y-6">
@@ -557,7 +579,13 @@ function ChannelLeadList({
         <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {leads.map((lead) => (
             <li key={lead.id}>
-              <LeadCard lead={lead} viewer={viewer} teamUsers={[]} maxPickup={maxPickup} />
+              <LeadCard
+                lead={lead}
+                viewer={viewer}
+                teamUsers={[]}
+                maxPickup={maxPickup}
+                reassignTargets={reassignTargets}
+              />
             </li>
           ))}
         </ul>

@@ -97,7 +97,16 @@ const CreateSchema = z.object({
   // Optional pointer to a private channel user. Master-only; everyone
   // else's value is ignored. Empty / 0 means a public lead.
   privateChannelUserId: z.coerce.number().int().positive().optional(),
+  // ponytail: initial contact-history tag stored as a LeadRemark rather
+  // than a new LeadStatus enum value — "Called before" / "WhatsApp before"
+  // aren't pipeline progress, they're notes for the assignee.
+  initialNote: z.enum(["CALLED_BEFORE", "WHATSAPP_BEFORE"]).optional(),
 });
+
+const INITIAL_NOTE_BODY: Record<"CALLED_BEFORE" | "WHATSAPP_BEFORE", string> = {
+  CALLED_BEFORE: "Called before — follow up by phone.",
+  WHATSAPP_BEFORE: "WhatsApp before — follow up on WhatsApp.",
+};
 
 export async function createLeadAction(formData: FormData): Promise<{ error?: string } | void> {
   const user = await requireUser();
@@ -105,6 +114,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   const parsed = CreateSchema.safeParse({
     content: formData.get("content"),
     privateChannelUserId: rawPrivate || undefined,
+    initialNote: formData.get("initialNote") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
@@ -134,6 +144,16 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
       createdById: user.id,
     },
   });
+
+  if (parsed.data.initialNote) {
+    await prisma.leadRemark.create({
+      data: {
+        leadId: lead.id,
+        authorId: user.id,
+        body: INITIAL_NOTE_BODY[parsed.data.initialNote],
+      },
+    });
+  }
 
   revalidatePath("/dashboard");
 
@@ -916,4 +936,114 @@ export async function deleteLeadAction(formData: FormData): Promise<{ error?: st
       },
     });
   });
+}
+
+/**
+ * Reassign a private-channel lead to another private-channel user, or back
+ * to master (= clear privateChannelUserId so the lead returns to the public
+ * pool). Caller must be the current channel owner or master. A handover
+ * remark is mandatory — recorded in the LeadRemark thread.
+ */
+const ReassignSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  // 0 / "master" means "send back to master" → privateChannelUserId = null.
+  targetUserId: z.coerce.number().int().nonnegative(),
+  remark: z.string().trim().min(1, "A handover remark is required.").max(2000),
+});
+
+export async function reassignPrivateLeadAction(
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean } | void> {
+  const me = await requireUser();
+  const parsed = ReassignSchema.safeParse({
+    leadId: formData.get("leadId"),
+    targetUserId: formData.get("targetUserId"),
+    remark: formData.get("remark"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid handover." };
+  }
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: parsed.data.leadId },
+    select: { id: true, privateChannelUserId: true, createdById: true },
+  });
+  if (!lead) return { error: "Lead not found." };
+
+  // Only the current channel owner or master can reassign. Public leads
+  // are not reassignable this way — masters use the existing Assign UI.
+  const isOwner = lead.privateChannelUserId !== null && lead.privateChannelUserId === me.id;
+  if (!isOwner && me.role !== "MASTER") return { error: "Lead not found." };
+  if (lead.privateChannelUserId === null) {
+    return { error: "Only private-channel leads can be reassigned this way." };
+  }
+
+  const targetId = parsed.data.targetUserId;
+  let newOwnerId: number | null;
+  let targetLabel: string;
+  if (targetId === 0) {
+    newOwnerId = null;
+    targetLabel = "master (public pool)";
+  } else {
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, displayName: true, isPrivateChannel: true, active: true },
+    });
+    if (!target || !target.isPrivateChannel || !target.active) {
+      return { error: "Pick a valid private-channel user." };
+    }
+    if (target.id === lead.privateChannelUserId) {
+      return { error: "Lead is already in that pipeline." };
+    }
+    newOwnerId = target.id;
+    targetLabel = target.displayName;
+  }
+
+  // Transaction: flip the channel, drop stale assignments, persist the
+  // handover note in the remark thread.
+  await prisma.$transaction([
+    prisma.lead.update({
+      where: { id: lead.id },
+      data: { privateChannelUserId: newOwnerId },
+    }),
+    prisma.leadAssignment.deleteMany({ where: { leadId: lead.id } }),
+    prisma.leadRemark.create({
+      data: {
+        leadId: lead.id,
+        authorId: me.id,
+        body: `[Reassigned to ${targetLabel}] ${parsed.data.remark}`,
+      },
+    }),
+  ]);
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${lead.id}`);
+
+  after(async () => {
+    const recipients = new Set<number>();
+    if (newOwnerId !== null) recipients.add(newOwnerId);
+    for (const mid of await getMasterIds()) recipients.add(mid);
+    recipients.delete(me.id);
+    if (recipients.size > 0) {
+      await sendPushToUsers({
+        userIds: Array.from(recipients),
+        payload: {
+          title: "Lead reassigned",
+          body: `${me.displayName} handed lead #${lead.id} to ${targetLabel}`,
+          url: `/dashboard/leads/${lead.id}`,
+          kind: "lead",
+          tag: `lead-${lead.id}`,
+        },
+      });
+    }
+    await notifyLeadCreator({
+      leadId: lead.id,
+      creatorId: lead.createdById,
+      actorId: me.id,
+      title: "Your lead was reassigned",
+      body: `${me.displayName} → ${targetLabel}: ${parsed.data.remark.slice(0, 100)}`,
+    });
+  });
+
+  return { ok: true };
 }
