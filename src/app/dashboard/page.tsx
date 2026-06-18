@@ -315,15 +315,13 @@ async function LeadsSection({
 
   /* ---------- My Pick Up tab ---------- */
   if (tab.key === "picks") {
-    const baseWhere: Prisma.LeadWhereInput =
-      user.role === "MASTER"
-        ? { assignments: { some: {} } }
-        : {
-            AND: [
-              { assignments: { some: { userId: user.id } } },
-              { status: { not: "APPROVED" } },
-            ],
-          };
+    // ponytail: master's Picks now mirrors a regular user's — own picks only.
+    const baseWhere: Prisma.LeadWhereInput = {
+      AND: [
+        { assignments: { some: { userId: user.id } } },
+        ...(user.role === "MASTER" ? [] : [{ status: { not: "APPROVED" as const } }]),
+      ],
+    };
 
     const [picked, teamUsers] = await Promise.all([
       prisma.lead.findMany({
@@ -351,11 +349,7 @@ async function LeadsSection({
       return <EmptyState tab="picks" hasQuery={!!q} />;
     }
     const leads = picked.map(toLeadView);
-    return user.role === "MASTER" ? (
-      <PicksByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
-    ) : (
-      <MyPicksByStatus leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
-    );
+    return <MyPicksByStatus leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />;
   }
 
   /* ---------- Archive tab — master only ---------- */
@@ -625,15 +619,11 @@ async function TabBarWithCounts({
         status: true,
         createdAt: true,
         _count: { select: { assignments: true } },
-        ...(user.role === "MASTER"
-          ? {}
-          : {
-              assignments: {
-                where: { userId: user.id },
-                select: { userId: true },
-                take: 1,
-              },
-            }),
+        assignments: {
+          where: { userId: user.id },
+          select: { userId: true },
+          take: 1,
+        },
       },
     }),
     visiblePrivateUsers.length > 0
@@ -659,29 +649,26 @@ async function TabBarWithCounts({
 
   for (const l of allLeads) {
     const count = l._count.assignments;
+    const mine = (l.assignments as { userId: number }[] | undefined)?.length ?? 0;
     const archiveBound = ALWAYS_ARCHIVED_STATUSES.includes(l.status);
 
     if (archiveBound) {
       if (user.role === "MASTER") {
         archiveCount++;
-        if (count > 0) picksCount++;
+        if (mine > 0) picksCount++;
       }
       continue;
     }
 
-    if (user.role !== "MASTER") {
-      const mine = (l.assignments as { userId: number }[] | undefined)?.length ?? 0;
-      if (mine) {
-        picksCount++;
-        continue;
-      }
+    if (mine > 0) {
+      picksCount++;
+      if (user.role !== "MASTER") continue;
+    } else if (user.role !== "MASTER") {
       if (l.status === "NEW") {
         if (count >= settings.maxPickup) continue;
       } else if (ACTIVE_STATUSES.includes(l.status)) {
         continue;
       }
-    } else if (count > 0) {
-      picksCount++;
     }
 
     if (l.createdAt > cutoff) freshCount++;
@@ -990,63 +977,6 @@ function MyPicksByStatus({
           </CollapsibleSection>
         );
       })}
-    </div>
-  );
-}
-
-function PicksByAssignee({
-  leads,
-  viewer,
-  teamUsers,
-  maxPickup,
-}: {
-  leads: LeadView[];
-  viewer: CurrentUser;
-  teamUsers: { id: number; displayName: string }[];
-  maxPickup: number;
-}) {
-  const buckets = new Map<string, { label: string; items: LeadView[] }>();
-  for (const lead of leads) {
-    for (const a of lead.assignees) {
-      const key = `user:${a.id}`;
-      const b = buckets.get(key) ?? { label: a.displayName, items: [] };
-      b.items.push(lead);
-      buckets.set(key, b);
-    }
-  }
-  const entries = Array.from(buckets.entries()).sort((a, b) => a[1].label.localeCompare(b[1].label));
-
-  return (
-    <div className="space-y-6">
-      {entries.map(([key, bucket]) => (
-        <CollapsibleSection
-          key={key}
-          storageKey={`picks:${key}`}
-          count={bucket.items.length}
-          defaultOpen={false}
-          header={
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-                {initials(bucket.label)}
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-ink-900">{bucket.label}</h3>
-                <p className="text-xs text-ink-500">
-                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} picked up
-                </p>
-              </div>
-            </div>
-          }
-        >
-          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {bucket.items.map((lead) => (
-              <li key={lead.id}>
-                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
-              </li>
-            ))}
-          </ul>
-        </CollapsibleSection>
-      ))}
     </div>
   );
 }
