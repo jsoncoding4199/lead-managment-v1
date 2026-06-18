@@ -296,7 +296,17 @@ async function LeadsSection({
       prisma.lead.findMany({
         where: {
           AND: [
-            { privateChannelUserId: tab.userId },
+            // The private tab shows two things side-by-side:
+            //   1. Leads in the user's private channel (assigned by master).
+            //   2. Any lead they've picked up from the public pool.
+            // Same person sees both in one place — matches the "this is my
+            // workload" mental model.
+            {
+              OR: [
+                { privateChannelUserId: tab.userId },
+                { assignments: { some: { userId: tab.userId } } },
+              ],
+            },
             leadSearchFilter(q),
           ],
         },
@@ -672,20 +682,27 @@ async function TabBarWithCounts({
             }),
       },
     }),
-    visiblePrivateUsers.length > 0
-      ? prisma.lead.groupBy({
-          by: ["privateChannelUserId"],
-          where: { privateChannelUserId: { in: visiblePrivateUsers.map((u) => u.id) } },
-          _count: { _all: true },
-        })
-      : Promise.resolve([] as { privateChannelUserId: number | null; _count: { _all: number } }[]),
+    // ponytail: N+1 count, fine because visiblePrivateUsers is bounded
+    // (master + a handful of private users). Matches the OR(channel,
+    // assignment) query used in the private tab body, so the count and the
+    // visible list stay in sync.
+    Promise.all(
+      visiblePrivateUsers.map((u) =>
+        prisma.lead.count({
+          where: {
+            OR: [
+              { privateChannelUserId: u.id },
+              { assignments: { some: { userId: u.id } } },
+            ],
+          },
+        }).then((count) => ({ userId: u.id, count }))
+      )
+    ),
   ]);
 
   const privateCountsMap = new Map<number, number>();
   for (const r of privateCountsRaw) {
-    if (r.privateChannelUserId !== null) {
-      privateCountsMap.set(r.privateChannelUserId, r._count._all);
-    }
+    privateCountsMap.set(r.userId, r.count);
   }
 
   let freshCount = 0;
