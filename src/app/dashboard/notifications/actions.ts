@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -22,6 +23,11 @@ export async function markNotificationsReadAction(): Promise<void> {
 
 const MarkOneSchema = z.object({
   id: z.coerce.number().int().positive(),
+  // Optional. If present, the action redirects there after marking read so
+  // a click on the notification message both clears it AND opens the lead.
+  // ponytail: only same-origin paths allowed — prevents open-redirect abuse
+  // from a forged form post.
+  url: z.string().regex(/^\/[^\s]*$/).optional(),
 });
 
 /**
@@ -31,7 +37,10 @@ const MarkOneSchema = z.object({
  */
 export async function markNotificationReadAction(formData: FormData): Promise<void> {
   const me = await requireUser();
-  const parsed = MarkOneSchema.safeParse({ id: formData.get("id") });
+  const parsed = MarkOneSchema.safeParse({
+    id: formData.get("id"),
+    url: formData.get("url") || undefined,
+  });
   if (!parsed.success) return;
   await prisma.notification.updateMany({
     where: { id: parsed.data.id, userId: me.id, readAt: null },
@@ -39,4 +48,5 @@ export async function markNotificationReadAction(formData: FormData): Promise<vo
   });
   revalidatePath("/dashboard/notifications");
   revalidatePath("/dashboard");
+  if (parsed.data.url) redirect(parsed.data.url);
 }

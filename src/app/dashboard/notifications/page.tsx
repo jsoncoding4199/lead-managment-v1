@@ -71,21 +71,37 @@ export default async function NotificationsPage() {
                   <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-100 text-brand-700">
                     <Bell className="h-4 w-4" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    {n.url ? (
-                      <Link href={n.url} className="block hover:underline">
+                  {n.url ? (
+                    <form
+                      action={markNotificationReadAction}
+                      className="min-w-0 flex-1"
+                    >
+                      <input type="hidden" name="id" value={n.id} />
+                      <input type="hidden" name="url" value={n.url} />
+                      <button
+                        type="submit"
+                        className="block w-full text-left hover:opacity-80"
+                      >
                         <Title title={n.title} />
-                      </Link>
-                    ) : (
+                        <p className="mt-0.5 text-xs text-ink-600 whitespace-pre-wrap break-words">
+                          {n.body}
+                        </p>
+                        <p className="mt-1 text-[11px] text-ink-400">
+                          {formatDateTime(n.createdAt)}
+                        </p>
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="min-w-0 flex-1">
                       <Title title={n.title} />
-                    )}
-                    <p className="mt-0.5 text-xs text-ink-600 whitespace-pre-wrap break-words">
-                      {n.body}
-                    </p>
-                    <p className="mt-1 text-[11px] text-ink-400">
-                      {formatDateTime(n.createdAt)}
-                    </p>
-                  </div>
+                      <p className="mt-0.5 text-xs text-ink-600 whitespace-pre-wrap break-words">
+                        {n.body}
+                      </p>
+                      <p className="mt-1 text-[11px] text-ink-400">
+                        {formatDateTime(n.createdAt)}
+                      </p>
+                    </div>
+                  )}
                   <form action={markNotificationReadAction} className="shrink-0">
                     <input type="hidden" name="id" value={n.id} />
                     <button
