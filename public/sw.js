@@ -21,7 +21,11 @@
  * so old caches get purged on activate.
  */
 
-const CACHE_VERSION = "leadboard-shell-v1";
+const CACHE_VERSION = "leadboard-shell-v2";
+
+// File extensions that are safe to cache long-term. Static assets the user
+// downloaded once shouldn't redownload on every cold start of the TWA.
+const STATIC_EXT_RE = /\.(png|jpg|jpeg|svg|webp|gif|ico|woff2?|ttf|otf|css)$/i;
 
 const PRECACHE_URLS = [
   "/manifest.webmanifest",
@@ -93,6 +97,14 @@ self.addEventListener("fetch", (event) => {
     url.pathname === "/apple-icon.png" ||
     url.pathname === "/favicon.ico"
   ) {
+    event.respondWith(cacheFirst(req));
+    return;
+  }
+
+  // Cache-first for any static asset by extension. Same SWR behavior — the
+  // cached copy paints immediately, the network refreshes it for next time.
+  // Safe because these files are non-personalized and rarely change.
+  if (STATIC_EXT_RE.test(url.pathname)) {
     event.respondWith(cacheFirst(req));
     return;
   }
