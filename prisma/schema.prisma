@@ -145,6 +145,10 @@ model Lead {
   // null = public pipeline (Fresh/Market/Picks/Archive).
   privateChannelUserId Int?
   privateChannelUser   User? @relation("PrivateChannelOwner", fields: [privateChannelUserId], references: [id])
+  // Sub-state used only while the main status is NEW. Tracks whether the
+  // team has already tried to reach the lead. Values: "NEW", "CALLED_BEFORE",
+  // "WHATSAPP_BEFORE". String column (not enum) to skip migration ceremony.
+  contactState String       @default("NEW")
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   createdById  Int

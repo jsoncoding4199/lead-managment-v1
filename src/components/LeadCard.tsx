@@ -30,6 +30,7 @@ import {
   updateLeadQualityAction,
   resetToOpenMarketAction,
   reassignPrivateLeadAction,
+  setContactStateAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -39,12 +40,24 @@ type Lead = {
   remark?: string | null;
   status: LeadStatus;
   quality: LeadQuality | null;
+  contactState?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: { id: number; displayName: string } | null;
   assignees: { id: number; displayName: string }[];
   privateChannelUserId?: number | null;
 };
+
+const CONTACT_STATE_OPTIONS: { value: string; label: string }[] = [
+  { value: "NEW", label: "New" },
+  { value: "CALLED_BEFORE", label: "Called Before" },
+  { value: "WHATSAPP_BEFORE", label: "WhatsApp Before" },
+];
+
+function contactStateLabel(state: string | undefined): string {
+  const hit = CONTACT_STATE_OPTIONS.find((o) => o.value === state);
+  return hit?.label ?? "New";
+}
 
 type Viewer = { id: number; role: "MASTER" | "USER" };
 
@@ -63,6 +76,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const [qualityOpen, setQualityOpen] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [contactStateOpen, setContactStateOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +89,18 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       document.body.style.overflow = prev;
     };
   }, [menuOpen, assignOpen, qualityOpen, dropOpen, reassignOpen]);
+
+  const setContactState = (state: string) => {
+    setError(null);
+    setContactStateOpen(false);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    fd.set("contactState", state);
+    startTransition(async () => {
+      const res = await setContactStateAction(fd);
+      if (res?.error) setError(res.error);
+    });
+  };
 
   const updateStatus = (status: LeadStatus, note?: string) => {
     setError(null);
@@ -167,8 +193,20 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   return (
     <article className="card p-4 lg:p-4 hover:shadow-lift transition-shadow group flex flex-col">
       <header className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0 flex-wrap">
-          <StatusBadge status={lead.status} />
+        <div className="flex items-center gap-2 min-w-0 flex-wrap relative">
+          {lead.status === "NEW" ? (
+            <button
+              onClick={() => setContactStateOpen((v) => !v)}
+              disabled={pending}
+              className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2 py-0.5 text-[11px] font-semibold text-ink-700 ring-1 ring-ink-200 hover:bg-ink-200"
+              aria-label="Change contact state"
+            >
+              {contactStateLabel(lead.contactState)}
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          ) : (
+            <StatusBadge status={lead.status} />
+          )}
           <button
             onClick={() => setQualityOpen(true)}
             disabled={pending}
@@ -178,6 +216,32 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <QualityBadge quality={lead.quality} />
           </button>
           <span className="text-[11px] text-ink-400">#{lead.id}</span>
+
+          {contactStateOpen && lead.status === "NEW" && (
+            <div
+              className="absolute top-7 left-0 z-20 w-44 rounded-lg border border-ink-200 bg-white shadow-lift py-1"
+              onMouseLeave={() => setContactStateOpen(false)}
+            >
+              {CONTACT_STATE_OPTIONS.map((opt) => {
+                const isCurrent = (lead.contactState ?? "NEW") === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => setContactState(opt.value)}
+                    className={cn(
+                      "block w-full px-3 py-2 text-left text-xs",
+                      isCurrent
+                        ? "bg-brand-50 text-brand-700 font-semibold"
+                        : "text-ink-700 hover:bg-ink-50"
+                    )}
+                  >
+                    {opt.label}
+                    {isCurrent && <Check className="inline h-3 w-3 ml-1" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <button

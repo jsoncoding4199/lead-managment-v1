@@ -105,10 +105,34 @@ const CreateSchema = z.object({
   initialNote: z.enum(["CALLED_BEFORE", "WHATSAPP_BEFORE"]).optional(),
 });
 
-const INITIAL_NOTE_BODY: Record<"CALLED_BEFORE" | "WHATSAPP_BEFORE", string> = {
-  CALLED_BEFORE: "Called before — follow up by phone.",
-  WHATSAPP_BEFORE: "WhatsApp before — follow up on WhatsApp.",
-};
+const ContactStateValues = ["NEW", "CALLED_BEFORE", "WHATSAPP_BEFORE"] as const;
+
+const SetContactStateSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  contactState: z.enum(ContactStateValues),
+});
+
+export async function setContactStateAction(
+  formData: FormData
+): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = SetContactStateSchema.safeParse({
+    leadId: formData.get("leadId"),
+    contactState: formData.get("contactState"),
+  });
+  if (!parsed.success) return { error: "Invalid contact state." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
+  if (!meta) return { error: "Lead not found." };
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { contactState: parsed.data.contactState },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
 
 export async function createLeadAction(formData: FormData): Promise<{ error?: string } | void> {
   const user = await requireUser();
@@ -142,20 +166,11 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     data: {
       content: parsed.data.content,
       status: "NEW",
+      contactState: parsed.data.initialNote ?? "NEW",
       privateChannelUserId,
       createdById: user.id,
     },
   });
-
-  if (parsed.data.initialNote) {
-    await prisma.leadRemark.create({
-      data: {
-        leadId: lead.id,
-        authorId: user.id,
-        body: INITIAL_NOTE_BODY[parsed.data.initialNote],
-      },
-    });
-  }
 
   revalidatePath("/dashboard");
 

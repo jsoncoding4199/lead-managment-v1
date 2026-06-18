@@ -150,6 +150,7 @@ type LeadView = {
   remark: string | null;
   status: LeadStatus;
   quality: LeadQuality | null;
+  contactState: string;
   createdAt: string;
   updatedAt: string;
   privateChannelUserId: number | null;
@@ -481,6 +482,7 @@ const leadSelect = {
   remark: true,
   status: true,
   quality: true,
+  contactState: true,
   createdAt: true,
   updatedAt: true,
   privateChannelUserId: true,
@@ -497,6 +499,7 @@ type RawLead = {
   remark: string | null;
   status: LeadStatus;
   quality: LeadQuality | null;
+  contactState: string;
   createdAt: Date;
   updatedAt: Date;
   privateChannelUserId: number | null;
@@ -511,6 +514,7 @@ function toLeadView(l: RawLead): LeadView {
     remark: l.remark,
     status: l.status,
     quality: l.quality,
+    contactState: l.contactState,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     privateChannelUserId: l.privateChannelUserId,
