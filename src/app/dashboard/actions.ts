@@ -28,7 +28,9 @@ function isChannelOwnerActing(
   privateChannelUserId: number | null
 ): boolean {
   if (privateChannelUserId === null) return false;
-  if (actor.role === "MASTER") return false;
+  // ponytail: dropped the role===MASTER short-circuit. Master can now own a
+  // private channel (via reassign), so when master owns it and moves the
+  // lead to Open Market, it should also kick back to the public pool.
   return privateChannelUserId === actor.id;
 }
 
@@ -979,11 +981,19 @@ export async function reassignPrivateLeadAction(
   }
 
   const targetId = parsed.data.targetUserId;
-  let newOwnerId: number | null;
+  let newOwnerId: number;
   let targetLabel: string;
   if (targetId === 0) {
-    newOwnerId = null;
-    targetLabel = "master (public pool)";
+    // "Send to master" means master's private inbox — NOT the public pool.
+    // Other users still can't see it. It only becomes public when status
+    // moves to an Open-Market outcome (NOT_ABLE / SPAM).
+    const [masterId] = await getMasterIds();
+    if (!masterId) return { error: "No master configured." };
+    if (masterId === lead.privateChannelUserId) {
+      return { error: "Lead is already in master's inbox." };
+    }
+    newOwnerId = masterId;
+    targetLabel = "Master (private inbox)";
   } else {
     const target = await prisma.user.findUnique({
       where: { id: targetId },

@@ -113,9 +113,12 @@ export default async function DashboardPage({
         </Suspense>
       )}
 
-      {/* Composer rules — hide while searching globally */}
+      {/* Composer rules — hide while searching globally. Also hide on
+          master's own private inbox: createLeadAction validates the target
+          is isPrivateChannel:true, which master isn't — leads only arrive
+          in master's inbox via reassign. */}
       {!q && tab.kind === "static" && tab.key === "fresh" && <LeadComposer />}
-      {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && (
+      {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && privateUser.id !== user.id && (
         <LeadComposer
           privateChannelUserId={privateUser.id}
           privateChannelLabel={privateUser.displayName}
@@ -631,11 +634,16 @@ async function TabBarWithCounts({
   //   normal   → none
   const visiblePrivateUsers =
     user.role === "MASTER"
-      ? await prisma.user.findMany({
-          where: { active: true, role: "USER", isPrivateChannel: true },
-          select: { id: true, displayName: true },
-          orderBy: { displayName: "asc" },
-        })
+      ? [
+          // Master's own private inbox tab — receives reassigned leads. Label
+          // it explicitly so it doesn't read like just another user channel.
+          { id: user.id, displayName: `${user.displayName} (inbox)` },
+          ...(await prisma.user.findMany({
+            where: { active: true, role: "USER", isPrivateChannel: true },
+            select: { id: true, displayName: true },
+            orderBy: { displayName: "asc" },
+          })),
+        ]
       : user.isPrivateChannel
         ? [{ id: user.id, displayName: user.displayName }]
         : [];

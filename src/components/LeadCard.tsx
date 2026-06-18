@@ -905,8 +905,8 @@ function ReassignSheet({
           <div>
             <h3 className="text-base font-semibold text-ink-900">Reassign lead #{leadId}</h3>
             <p className="text-xs text-ink-500 mt-0.5">
-              Hand the lead to another private pipeline or back to master. A handover
-              remark is required.
+              Hand the lead to another private pipeline or master&apos;s private inbox.
+              A handover remark is required.
             </p>
           </div>
           <button
@@ -926,13 +926,16 @@ function ReassignSheet({
               onChange={(e) => setTargetId(Number(e.target.value))}
               className="input h-11"
             >
-              <option value={0}>Master (send back to public pool)</option>
+              <option value={0}>Master (private inbox)</option>
               {targets.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.displayName} (private)
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-[10px] text-ink-500">
+              Stays private until status moves to Open Market.
+            </p>
           </div>
           <div>
             <label className="label">Handover remark <span className="text-rose-600">*</span></label>
