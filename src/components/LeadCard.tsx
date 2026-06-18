@@ -189,6 +189,8 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const atCapacity = lead.assignees.length >= maxPickup;
   const iOwnThisChannel =
     lead.privateChannelUserId != null && lead.privateChannelUserId === viewer.id;
+  // Master can reassign ANY lead — public or private — to any pipeline.
+  const canReassign = iOwnThisChannel || viewer.role === "MASTER";
 
   return (
     <article className="card p-4 lg:p-4 hover:shadow-lift transition-shadow group flex flex-col">
@@ -371,14 +373,14 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             </button>
           )}
 
-          {iOwnThisChannel && (
+          {canReassign && (
             <button
               onClick={() => setReassignOpen(true)}
               disabled={pending}
               className="inline-flex h-7 items-center gap-1.5 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
             >
               <Send className="h-3 w-3" />
-              Assign
+              {viewer.role === "MASTER" ? "Pipeline" : "Assign"}
             </button>
           )}
         </div>
@@ -426,10 +428,12 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         />
       )}
 
-      {reassignOpen && iOwnThisChannel && (
+      {reassignOpen && canReassign && (
         <ReassignSheet
           leadId={lead.id}
           targets={reassignTargets ?? []}
+          currentChannelUserId={lead.privateChannelUserId ?? null}
+          viewerIsMaster={viewer.role === "MASTER"}
           onSubmit={reassign}
           onClose={() => setReassignOpen(false)}
           pending={pending}
@@ -920,12 +924,16 @@ function AssignSheet({
 function ReassignSheet({
   leadId,
   targets,
+  currentChannelUserId,
+  viewerIsMaster,
   onSubmit,
   onClose,
   pending,
 }: {
   leadId: number;
   targets: { id: number; displayName: string }[];
+  currentChannelUserId: number | null;
+  viewerIsMaster: boolean;
   onSubmit: (targetUserId: number, remark: string) => void;
   onClose: () => void;
   pending: boolean;
@@ -990,6 +998,9 @@ function ReassignSheet({
               onChange={(e) => setTargetId(Number(e.target.value))}
               className="input h-11"
             >
+              {viewerIsMaster && currentChannelUserId !== null && (
+                <option value={-1}>Public pool (everyone sees it)</option>
+              )}
               <option value={0}>Master (private inbox)</option>
               {targets.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -998,7 +1009,9 @@ function ReassignSheet({
               ))}
             </select>
             <p className="mt-1 text-[10px] text-ink-500">
-              Stays private until status moves to Open Market.
+              {viewerIsMaster
+                ? "Master can move a lead to any pipeline."
+                : "Stays private until status moves to Open Market."}
             </p>
           </div>
           <div>

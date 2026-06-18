@@ -963,8 +963,10 @@ export async function deleteLeadAction(formData: FormData): Promise<{ error?: st
  */
 const ReassignSchema = z.object({
   leadId: z.coerce.number().int().positive(),
-  // 0 / "master" means "send back to master" → privateChannelUserId = null.
-  targetUserId: z.coerce.number().int().nonnegative(),
+  //  0 = master's private inbox
+  // -1 = public pool (privateChannelUserId set to null) — master-only
+  //  n = a specific private-channel user's id
+  targetUserId: z.coerce.number().int().min(-1),
   remark: z.string().trim().min(1, "A handover remark is required.").max(2000),
 });
 
@@ -987,21 +989,24 @@ export async function reassignPrivateLeadAction(
   });
   if (!lead) return { error: "Lead not found." };
 
-  // Only the current channel owner or master can reassign. Public leads
-  // are not reassignable this way — masters use the existing Assign UI.
+  // Caller must be the current channel owner OR master. Master can also
+  // reassign public leads (privateChannelUserId === null).
   const isOwner = lead.privateChannelUserId !== null && lead.privateChannelUserId === me.id;
   if (!isOwner && me.role !== "MASTER") return { error: "Lead not found." };
-  if (lead.privateChannelUserId === null) {
-    return { error: "Only private-channel leads can be reassigned this way." };
-  }
 
   const targetId = parsed.data.targetUserId;
-  let newOwnerId: number;
+  let newOwnerId: number | null;
   let targetLabel: string;
-  if (targetId === 0) {
-    // "Send to master" means master's private inbox — NOT the public pool.
-    // Other users still can't see it. It only becomes public when status
-    // moves to an Open-Market outcome (NOT_ABLE / SPAM).
+  if (targetId === -1) {
+    // Master-only: drop privacy entirely, lead returns to public pool.
+    if (me.role !== "MASTER") return { error: "Only master can send to the public pool." };
+    if (lead.privateChannelUserId === null) {
+      return { error: "Lead is already in the public pool." };
+    }
+    newOwnerId = null;
+    targetLabel = "Public pool";
+  } else if (targetId === 0) {
+    // "Send to master" → master's private inbox, NOT public.
     const [masterId] = await getMasterIds();
     if (!masterId) return { error: "No master configured." };
     if (masterId === lead.privateChannelUserId) {
@@ -1047,6 +1052,7 @@ export async function reassignPrivateLeadAction(
   after(async () => {
     const recipients = new Set<number>();
     if (newOwnerId !== null) recipients.add(newOwnerId);
+    else for (const uid of await getAllUserIds()) recipients.add(uid);
     for (const mid of await getMasterIds()) recipients.add(mid);
     recipients.delete(me.id);
     if (recipients.size > 0) {

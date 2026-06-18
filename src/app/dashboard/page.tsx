@@ -217,7 +217,7 @@ function globalLeadVisibility(user: CurrentUser): Prisma.LeadWhereInput {
 async function GlobalSearchResults({ q, user }: { q: string; user: CurrentUser }) {
   const settings = await getAppSettings();
 
-  const [matches, teamUsers] = await Promise.all([
+  const [matches, teamUsers, masterReassignTargets] = await Promise.all([
     prisma.lead.findMany({
       where: { AND: [globalLeadVisibility(user), leadSearchFilter(q)] },
       orderBy: [{ updatedAt: "desc" }],
@@ -227,6 +227,13 @@ async function GlobalSearchResults({ q, user }: { q: string; user: CurrentUser }
     user.role === "MASTER"
       ? prisma.user.findMany({
           where: { active: true, role: "USER" },
+          select: { id: true, displayName: true },
+          orderBy: { displayName: "asc" },
+        })
+      : Promise.resolve([] as { id: number; displayName: string }[]),
+    user.role === "MASTER"
+      ? prisma.user.findMany({
+          where: { active: true, role: "USER", isPrivateChannel: true },
           select: { id: true, displayName: true },
           orderBy: { displayName: "asc" },
         })
@@ -263,7 +270,7 @@ async function GlobalSearchResults({ q, user }: { q: string; user: CurrentUser }
       <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {leads.map((lead) => (
           <li key={lead.id}>
-            <LeadCard lead={lead} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
+            <LeadCard lead={lead} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />
           </li>
         ))}
       </ul>
@@ -284,6 +291,17 @@ async function LeadsSection({
 }) {
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
+  // Master can reassign any lead to any pipeline — fetch the list of
+  // private-channel users once and thread through to every LeadCard.
+  // Non-master callers get the private-branch list inside that branch.
+  const masterReassignTargets =
+    user.role === "MASTER"
+      ? await prisma.user.findMany({
+          where: { active: true, role: "USER", isPrivateChannel: true },
+          select: { id: true, displayName: true },
+          orderBy: { displayName: "asc" },
+        })
+      : [];
 
   /* ---------- Private channel tabs ---------- */
   if (tab.kind === "private") {
@@ -383,9 +401,9 @@ async function LeadsSection({
     }
     const leads = picked.map(toLeadView);
     return user.role === "MASTER" ? (
-      <PicksByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
+      <PicksByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />
     ) : (
-      <MyPicksByStatus leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />
+      <MyPicksByStatus leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />
     );
   }
 
@@ -420,7 +438,7 @@ async function LeadsSection({
       return <EmptyState tab="archive" hasQuery={!!q} />;
     }
     const leads = filtered.map(toLeadView);
-    return <ArchiveByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />;
+    return <ArchiveByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
   }
 
   /* ---------- Fresh + Open Market tabs ---------- */
@@ -471,7 +489,7 @@ async function LeadsSection({
   }
 
   const leads = visibleLeads.map(toLeadView);
-  return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} />;
+  return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
 }
 
 /* ---------- Shared Prisma select + projection ---------- */
@@ -801,11 +819,13 @@ function OpenGrouped({
   viewer,
   teamUsers,
   maxPickup,
+  reassignTargets = [],
 }: {
   leads: LeadView[];
   viewer: CurrentUser;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
+  reassignTargets?: { id: number; displayName: string }[];
 }) {
   const visibleLeads = viewer.role === "MASTER"
     ? leads
@@ -874,7 +894,7 @@ function OpenGrouped({
           <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {bucket.items.map((lead) => (
               <li key={lead.id}>
-                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} reassignTargets={reassignTargets} />
               </li>
             ))}
           </ul>
@@ -889,11 +909,13 @@ function ArchiveByAssignee({
   viewer,
   teamUsers,
   maxPickup,
+  reassignTargets = [],
 }: {
   leads: LeadView[];
   viewer: CurrentUser;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
+  reassignTargets?: { id: number; displayName: string }[];
 }) {
   const buckets = new Map<string, { label: string; items: LeadView[] }>();
   const unassigned: LeadView[] = [];
@@ -934,7 +956,7 @@ function ArchiveByAssignee({
           <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {unassigned.map((lead) => (
               <li key={lead.id}>
-                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} reassignTargets={reassignTargets} />
               </li>
             ))}
           </ul>
@@ -963,7 +985,7 @@ function ArchiveByAssignee({
           <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {bucket.items.map((lead) => (
               <li key={lead.id}>
-                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} reassignTargets={reassignTargets} />
               </li>
             ))}
           </ul>
@@ -978,11 +1000,13 @@ function MyPicksByStatus({
   viewer,
   teamUsers,
   maxPickup,
+  reassignTargets = [],
 }: {
   leads: LeadView[];
   viewer: CurrentUser;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
+  reassignTargets?: { id: number; displayName: string }[];
 }) {
   const byStatus = new Map<LeadStatus, LeadView[]>();
   for (const lead of leads) {
@@ -1040,7 +1064,7 @@ function MyPicksByStatus({
             <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {items.map((lead) => (
                 <li key={lead.id}>
-                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                  <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} reassignTargets={reassignTargets} />
                 </li>
               ))}
             </ul>
@@ -1056,11 +1080,13 @@ function PicksByAssignee({
   viewer,
   teamUsers,
   maxPickup,
+  reassignTargets = [],
 }: {
   leads: LeadView[];
   viewer: CurrentUser;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
+  reassignTargets?: { id: number; displayName: string }[];
 }) {
   const buckets = new Map<string, { label: string; items: LeadView[] }>();
   for (const lead of leads) {
@@ -1098,7 +1124,7 @@ function PicksByAssignee({
           <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {bucket.items.map((lead) => (
               <li key={lead.id}>
-                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} />
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} reassignTargets={reassignTargets} />
               </li>
             ))}
           </ul>
