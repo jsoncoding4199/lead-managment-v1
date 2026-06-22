@@ -11,6 +11,7 @@ export const STATUS_LABEL: Record<LeadStatus, string> = {
   SPAM_OR_MISSING: "Spam / Missing",
   REJECTED: "Rejected",
   APPROVED: "Approved",
+  RECYCLED: "Recycled to Archive",
 };
 
 export const STATUS_SHORT: Record<LeadStatus, string> = {
@@ -24,6 +25,7 @@ export const STATUS_SHORT: Record<LeadStatus, string> = {
   SPAM_OR_MISSING: "Spam/Missing",
   REJECTED: "Rejected",
   APPROVED: "Approved",
+  RECYCLED: "Recycled",
 };
 
 // Open holds NEW (the pickup pool) plus the three "Able" statuses — these
@@ -44,6 +46,7 @@ export const ARCHIVED_STATUSES: LeadStatus[] = [
   "SPAM_OR_MISSING",
   "REJECTED",
   "APPROVED",
+  "RECYCLED",
 ];
 
 // "Active work" — Open statuses other than NEW. Visible only to the lead's
@@ -75,7 +78,7 @@ export const TRANSFER_TO_MARKET_STATUSES: LeadStatus[] = SOFT_NEGATIVE_STATUSES;
 // tab. No more team pickups, no more visibility outside master. APPROVED
 // = successful close; REJECTED = hard rejection (requires a written
 // reason, see changeStatusAction).
-export const ALWAYS_ARCHIVED_STATUSES: LeadStatus[] = ["APPROVED", "REJECTED"];
+export const ALWAYS_ARCHIVED_STATUSES: LeadStatus[] = ["APPROVED", "REJECTED", "RECYCLED"];
 
 // DEPRECATED alias kept for callers we haven't migrated yet. The name no
 // longer reflects behavior (NOT_ABLE statuses don't auto-archive on max
@@ -108,6 +111,7 @@ export const ARCHIVE_SECTIONS: { status: LeadStatus; label: string; tone: "bad" 
   { status: "APPOINTMENT_NOT_ABLE", label: "Appointment · Not Able", tone: "bad" },
   { status: "SPAM_OR_MISSING", label: "Spam or Missing", tone: "terminal" },
   { status: "REJECTED", label: "Rejected", tone: "terminal" },
+  { status: "RECYCLED", label: "Recycled", tone: "terminal" },
   { status: "APPROVED", label: "Approved (master only)", tone: "good" },
 ];
 
@@ -149,6 +153,7 @@ export const STATUS_GROUPS: StatusGroup[] = [
     options: [
       { value: "SPAM_OR_MISSING", label: "Spam or Missing", tone: "terminal" },
       { value: "REJECTED", label: "Reject", tone: "terminal" },
+      { value: "RECYCLED", label: "Recycle to Archive", tone: "terminal" },
       { value: "APPROVED", label: "Approve", tone: "terminal" },
     ],
   },
@@ -166,4 +171,5 @@ export const STATUS_TONE: Record<LeadStatus, string> = {
   SPAM_OR_MISSING: "bg-ink-200 text-ink-700 ring-ink-300",
   REJECTED: "bg-rose-100 text-rose-800 ring-rose-300",
   APPROVED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  RECYCLED: "bg-ink-200 text-ink-700 ring-ink-300",
 };

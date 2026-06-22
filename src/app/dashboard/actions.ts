@@ -214,6 +214,7 @@ const StatusValues = [
   "SPAM_OR_MISSING",
   "REJECTED",
   "APPROVED",
+  "RECYCLED",
 ] as const;
 
 const ChangeStatusSchema = z.object({

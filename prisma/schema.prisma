@@ -23,6 +23,7 @@ enum LeadStatus {
   SPAM_OR_MISSING
   REJECTED
   APPROVED
+  RECYCLED
 }
 
 enum LeadQuality {

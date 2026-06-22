@@ -21,6 +21,7 @@ function emptyStatusCounts(): Record<LeadStatus, number> {
     SPAM_OR_MISSING: 0,
     REJECTED: 0,
     APPROVED: 0,
+    RECYCLED: 0,
   };
 }
 

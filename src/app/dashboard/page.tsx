@@ -1055,6 +1055,7 @@ function MyPicksByStatus({
                       SPAM_OR_MISSING: "Spam or Missing",
                       REJECTED: "Rejected",
                       APPROVED: "Approved",
+                      RECYCLED: "Recycled",
                     }[s]}
                   </h3>
                 </div>
