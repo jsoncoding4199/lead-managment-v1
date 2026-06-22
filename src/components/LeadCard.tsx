@@ -761,12 +761,18 @@ function StatusMenu({
                 </div>
               ))}
 
-              <div className="border-t border-ink-100 mt-4 pt-3 px-1">
+              <div className="border-t border-ink-100 mt-4 pt-3 px-1 space-y-1">
                 <button
                   onClick={onReset}
-                  className="w-full rounded-xl border border-ink-100 px-3 py-3 text-left text-sm text-ink-600 hover:bg-ink-50"
+                  className="w-full rounded-xl border border-brand-200 bg-brand-50 px-3 py-3 text-left text-sm font-bold text-brand-700 hover:bg-brand-100"
                 >
                   Reset to Open Market
+                </button>
+                <button
+                  onClick={() => onChoose("RECYCLED")}
+                  className="w-full rounded-xl border border-brand-200 bg-brand-50 px-3 py-3 text-left text-sm font-bold text-brand-700 hover:bg-brand-100"
+                >
+                  Recycle to Archive
                 </button>
               </div>
             </div>

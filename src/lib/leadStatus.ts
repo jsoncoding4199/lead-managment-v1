@@ -151,7 +151,6 @@ export const STATUS_GROUPS: StatusGroup[] = [
     options: [
       { value: "SPAM_OR_MISSING", label: "Spam or Missing", tone: "terminal" },
       { value: "REJECTED", label: "Reject", tone: "terminal" },
-      { value: "RECYCLED", label: "Recycle to Archive", tone: "terminal" },
       { value: "APPROVED", label: "Approve", tone: "terminal" },
     ],
   },
