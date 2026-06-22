@@ -69,16 +69,14 @@ export const SOFT_NEGATIVE_STATUSES: LeadStatus[] = [
   "SPAM_OR_MISSING",
 ];
 
-// Statuses that auto-transfer the lead into Open Market on transition —
-// backdate Lead.createdAt past the Fresh→Market boundary. Same as the
-// "soft negative" list above; aliased for semantic clarity at call sites.
-export const TRANSFER_TO_MARKET_STATUSES: LeadStatus[] = SOFT_NEGATIVE_STATUSES;
+// ponytail: empty — NOT_ABLE / SPAM / REJECTED no longer auto-transfer
+// anywhere. The lead stays where it is (private channel, public Fresh,
+// wherever) until someone explicitly moves it.
+export const TRANSFER_TO_MARKET_STATUSES: LeadStatus[] = [];
 
 // Terminal statuses that always land the lead in the master-only Archive
-// tab. No more team pickups, no more visibility outside master. APPROVED
-// = successful close; REJECTED = hard rejection (requires a written
-// reason, see changeStatusAction).
-export const ALWAYS_ARCHIVED_STATUSES: LeadStatus[] = ["APPROVED", "REJECTED", "RECYCLED"];
+// tab. Only APPROVED + RECYCLED qualify now — REJECTED stays in place.
+export const ALWAYS_ARCHIVED_STATUSES: LeadStatus[] = ["APPROVED", "RECYCLED"];
 
 // DEPRECATED alias kept for callers we haven't migrated yet. The name no
 // longer reflects behavior (NOT_ABLE statuses don't auto-archive on max
