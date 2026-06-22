@@ -257,8 +257,11 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   // (NOT_ABLE / SPAM / REJECTED / APPROVED) clear privateChannelUserId so
   // the lead lands back in the public Open Market or Archive for the
   // team. Master's actions never auto-clear.
+  // Archived statuses always clear the channel — Archive is master-wide,
+  // so a private-owned RECYCLED/REJECTED/APPROVED would never appear there.
   const clearPrivateChannel =
-    isOutboundFromChannel && isChannelOwnerActing(user, lead.privateChannelUserId);
+    ALWAYS_ARCHIVED_STATUSES.includes(newStatus) ||
+    (transferToMarket && isChannelOwnerActing(user, lead.privateChannelUserId));
   const marketBackdate = transferToMarket
     ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
     : null;
@@ -531,11 +534,10 @@ export async function dropWithStatusAction(input: {
   // owner so the rest of the team can see it (Market for soft-negative,
   // Archive for REJECTED / APPROVED). Runs even if the status didn't
   // change — dropping kicks the lead out of the private pipeline either way.
-  const isOutboundChoice =
-    TRANSFER_TO_MARKET_STATUSES.includes(newStatus) ||
-    ALWAYS_ARCHIVED_STATUSES.includes(newStatus);
   const clearPrivateChannel =
-    isOutboundChoice && isChannelOwnerActing(me, lead.privateChannelUserId);
+    ALWAYS_ARCHIVED_STATUSES.includes(newStatus) ||
+    (TRANSFER_TO_MARKET_STATUSES.includes(newStatus) &&
+      isChannelOwnerActing(me, lead.privateChannelUserId));
   const marketBackdate = transferToMarket
     ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
     : null;
