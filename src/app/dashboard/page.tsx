@@ -333,17 +333,17 @@ async function LeadsSection({
         take: 200,
         select: leadSelect,
       }),
-      // Handover targets for the channel owner's Assign button — other
-      // active private-channel users, excluding self. Master sees this too
-      // but doesn't get the button (uses the regular Assign sheet).
+      // Handover targets for the channel owner's Assign button — every
+      // other active team user (private or regular), excluding self.
+      // Master is reachable via the "Master (private inbox)" option built
+      // into ReassignSheet.
       prisma.user.findMany({
         where: {
           active: true,
           role: "USER",
-          isPrivateChannel: true,
           NOT: { id: tab.userId },
         },
-        select: { id: true, displayName: true },
+        select: { id: true, displayName: true, isPrivateChannel: true },
         orderBy: { displayName: "asc" },
       }),
     ]);

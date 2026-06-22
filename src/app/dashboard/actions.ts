@@ -1000,6 +1000,7 @@ export async function reassignPrivateLeadAction(
   const targetId = parsed.data.targetUserId;
   let newOwnerId: number | null;
   let targetLabel: string;
+  let assignToUserId: number | null = null;
   if (targetId === -1) {
     // Master-only: drop privacy entirely, lead returns to public pool.
     if (me.role !== "MASTER") return { error: "Only master can send to the public pool." };
@@ -1020,16 +1021,24 @@ export async function reassignPrivateLeadAction(
   } else {
     const target = await prisma.user.findUnique({
       where: { id: targetId },
-      select: { id: true, displayName: true, isPrivateChannel: true, active: true },
+      select: { id: true, displayName: true, isPrivateChannel: true, active: true, role: true },
     });
-    if (!target || !target.isPrivateChannel || !target.active) {
-      return { error: "Pick a valid private-channel user." };
+    if (!target || !target.active || target.role !== "USER") {
+      return { error: "Pick a valid user." };
     }
-    if (target.id === lead.privateChannelUserId) {
-      return { error: "Lead is already in that pipeline." };
+    if (target.isPrivateChannel) {
+      if (target.id === lead.privateChannelUserId) {
+        return { error: "Lead is already in that pipeline." };
+      }
+      newOwnerId = target.id;
+      targetLabel = target.displayName;
+    } else {
+      // Regular user — clear privacy and add them as the assignee so the
+      // lead shows up in their My Pick Up / Fresh view.
+      newOwnerId = null;
+      assignToUserId = target.id;
+      targetLabel = `${target.displayName} (assigned)`;
     }
-    newOwnerId = target.id;
-    targetLabel = target.displayName;
   }
 
   // Transaction: flip the channel, drop stale assignments, persist the
@@ -1040,6 +1049,13 @@ export async function reassignPrivateLeadAction(
       data: { privateChannelUserId: newOwnerId },
     }),
     prisma.leadAssignment.deleteMany({ where: { leadId: lead.id } }),
+    ...(assignToUserId !== null
+      ? [
+          prisma.leadAssignment.create({
+            data: { leadId: lead.id, userId: assignToUserId, assignedById: me.id },
+          }),
+        ]
+      : []),
     prisma.leadRemark.create({
       data: {
         leadId: lead.id,
@@ -1055,6 +1071,7 @@ export async function reassignPrivateLeadAction(
   after(async () => {
     const recipients = new Set<number>();
     if (newOwnerId !== null) recipients.add(newOwnerId);
+    else if (assignToUserId !== null) recipients.add(assignToUserId);
     else for (const uid of await getAllUserIds()) recipients.add(uid);
     for (const mid of await getMasterIds()) recipients.add(mid);
     recipients.delete(me.id);

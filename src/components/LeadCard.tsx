@@ -66,8 +66,8 @@ type Props = {
   viewer: Viewer;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
-  /** Other active private-channel users — handover targets for reassign. */
-  reassignTargets?: { id: number; displayName: string }[];
+  /** Other active team users — handover targets for reassign. */
+  reassignTargets?: { id: number; displayName: string; isPrivateChannel?: boolean }[];
 };
 
 export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }: Props) {
@@ -937,7 +937,7 @@ function ReassignSheet({
   pending,
 }: {
   leadId: number;
-  targets: { id: number; displayName: string }[];
+  targets: { id: number; displayName: string; isPrivateChannel?: boolean }[];
   currentChannelUserId: number | null;
   viewerIsMaster: boolean;
   onSubmit: (targetUserId: number, remark: string) => void;
@@ -1010,7 +1010,7 @@ function ReassignSheet({
               <option value={0}>Master (private inbox)</option>
               {targets.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.displayName} (private)
+                  {u.displayName} {u.isPrivateChannel ? "(private)" : "(team)"}
                 </option>
               ))}
             </select>
