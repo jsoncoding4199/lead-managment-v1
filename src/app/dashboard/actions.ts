@@ -840,9 +840,10 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
         ? { status: "NEW", createdAt: boundary, privateChannelUserId: null }
         : { status: "NEW", createdAt: boundary },
     });
-    if (user.role === "MASTER") {
-      await tx.leadAssignment.deleteMany({ where: { leadId: lead.id } });
-    }
+    // Reset = lead becomes available to the team. Always drop assignments,
+    // not just for master — otherwise the resetter stays the assignee and
+    // OpenGrouped filters the lead out of their own Market view.
+    await tx.leadAssignment.deleteMany({ where: { leadId: lead.id } });
     if (lead.status !== "NEW") {
       await tx.leadStatusChange.create({
         data: {
