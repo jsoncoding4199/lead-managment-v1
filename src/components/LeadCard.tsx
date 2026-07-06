@@ -49,6 +49,8 @@ type Lead = {
   createdBy: { id: number; displayName: string } | null;
   assignees: { id: number; displayName: string }[];
   privateChannelUserId?: number | null;
+  ackedAt?: string | null;
+  ackedBy?: { id: number; displayName: string } | null;
 };
 
 const CONTACT_STATE_OPTIONS: { value: string; label: string }[] = [
@@ -414,22 +416,47 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           )}
 
           {viewer.role === "MASTER" ? (
-            <button
-              onClick={ping}
-              disabled={pending || pinged}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
-            >
-              <BellRing className="h-3 w-3" />
-              {pinged ? "Pinged ✓" : "Ping"}
-            </button>
+            <>
+              <button
+                onClick={ping}
+                disabled={pending || pinged}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+              >
+                <BellRing className="h-3 w-3" />
+                {pinged ? "Pinged ✓" : "Ping"}
+              </button>
+              {/* Read-only OK indicator for master — fills green once any
+                  user has acknowledged the lead. */}
+              <span
+                title={
+                  lead.ackedBy
+                    ? `Acknowledged by ${lead.ackedBy.displayName}`
+                    : "Not acknowledged yet"
+                }
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold",
+                  lead.ackedAt
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "border border-ink-200 bg-white text-ink-400"
+                )}
+              >
+                <Check className="h-3 w-3" />
+                {lead.ackedBy ? `OK · ${lead.ackedBy.displayName}` : "OK"}
+              </span>
+            </>
           ) : (
             <button
               onClick={acknowledge}
-              disabled={pending || acked}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-emerald-200 bg-white px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+              disabled={pending || acked || lead.ackedBy?.id === viewer.id}
+              className={cn(
+                "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium",
+                acked || lead.ackedBy?.id === viewer.id
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+              )}
             >
               <Check className="h-3 w-3" />
-              {acked ? "Seen ✓" : "OK"}
+              {acked || lead.ackedBy?.id === viewer.id ? "Seen ✓" : "OK"}
             </button>
           )}
         </div>

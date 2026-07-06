@@ -75,6 +75,7 @@ model User {
   notifications       Notification[]
   remarks             LeadRemark[]
   privateChannelLeads Lead[]                 @relation("PrivateChannelOwner")
+  acknowledgedLeads   Lead[]                 @relation("LeadAckedBy")
 }
 
 // Per-user remark on a lead. Replaces the single Lead.remark string with a
@@ -150,6 +151,11 @@ model Lead {
   // team has already tried to reach the lead. Values: "NEW", "CALLED_BEFORE",
   // "WHATSAPP_BEFORE". String column (not enum) to skip migration ceremony.
   contactState String       @default("NEW")
+  // Latest "OK, seen it" acknowledgement. One slot is enough — master just
+  // needs to see that somebody confirmed receipt (and who, most recently).
+  ackedAt      DateTime?
+  ackedById    Int?
+  ackedBy      User?        @relation("LeadAckedBy", fields: [ackedById], references: [id])
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   createdById  Int

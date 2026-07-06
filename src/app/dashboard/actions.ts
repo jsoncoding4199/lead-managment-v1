@@ -1080,6 +1080,14 @@ export async function ackLeadAction(formData: FormData): Promise<{ error?: strin
   const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
   if (!meta) return { error: "Lead not found." };
 
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { ackedAt: new Date(), ackedById: me.id },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+
   after(async () => {
     const masterIds = (await getMasterIds()).filter((id) => id !== me.id);
     await sendPushToUsers({

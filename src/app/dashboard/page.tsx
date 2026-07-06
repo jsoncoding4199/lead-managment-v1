@@ -179,6 +179,8 @@ type LeadView = {
   createdAt: string;
   updatedAt: string;
   privateChannelUserId: number | null;
+  ackedAt: string | null;
+  ackedBy: { id: number; displayName: string } | null;
   createdBy: { id: number; displayName: string };
   assignees: { id: number; displayName: string }[];
 };
@@ -560,6 +562,8 @@ const leadSelect = {
   createdAt: true,
   updatedAt: true,
   privateChannelUserId: true,
+  ackedAt: true,
+  ackedBy: { select: { id: true, displayName: true } },
   createdBy: { select: { id: true, displayName: true } },
   assignments: {
     select: { user: { select: { id: true, displayName: true } } },
@@ -577,6 +581,8 @@ type RawLead = {
   createdAt: Date;
   updatedAt: Date;
   privateChannelUserId: number | null;
+  ackedAt: Date | null;
+  ackedBy: { id: number; displayName: string } | null;
   createdBy: { id: number; displayName: string };
   assignments: { user: { id: number; displayName: string } }[];
 };
@@ -592,6 +598,8 @@ function toLeadView(l: RawLead): LeadView {
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     privateChannelUserId: l.privateChannelUserId,
+    ackedAt: l.ackedAt ? l.ackedAt.toISOString() : null,
+    ackedBy: l.ackedBy,
     createdBy: l.createdBy,
     assignees: l.assignments.map((a) => a.user),
   };
