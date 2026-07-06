@@ -37,7 +37,27 @@ function leadSearchFilter(q: string): Prisma.LeadWhereInput {
  *     their displayName.
  */
 
-type DashStaticTab = "fresh" | "market" | "picks" | "archive";
+type DashStaticTab =
+  | "fresh"
+  | "market"
+  | "picks"
+  | "archive"
+  | "not_contact"
+  | "not_docs"
+  | "not_appt"
+  | "spam"
+  | "reject";
+
+// One-status tabs → status enum they filter on. Order matches display order.
+const STATUS_TAB_TO_STATUS = {
+  not_contact: "CONTACT_NOT_ABLE",
+  not_docs: "DOCUMENTS_NOT_ABLE",
+  not_appt: "APPOINTMENT_NOT_ABLE",
+  spam: "SPAM_OR_MISSING",
+  reject: "REJECTED",
+} as const satisfies Record<string, LeadStatus>;
+
+type StatusTabKey = keyof typeof STATUS_TAB_TO_STATUS;
 
 type DashTab =
   | { kind: "static"; key: DashStaticTab }
@@ -52,6 +72,11 @@ function parseTab(raw: string | undefined): DashTab {
     case "market":
     case "picks":
     case "archive":
+    case "not_contact":
+    case "not_docs":
+    case "not_appt":
+    case "spam":
+    case "reject":
       return { kind: "static", key: raw };
     default:
       return { kind: "static", key: "fresh" };
@@ -407,6 +432,37 @@ async function LeadsSection({
     );
   }
 
+  /* ---------- Single-status tabs (visible to all) ---------- */
+  if (tab.key in STATUS_TAB_TO_STATUS) {
+    const status = STATUS_TAB_TO_STATUS[tab.key as StatusTabKey];
+    const [statusLeads, teamUsers] = await Promise.all([
+      prisma.lead.findMany({
+        where: {
+          AND: [
+            { privateChannelUserId: null },
+            { status },
+            leadSearchFilter(q),
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 200,
+        select: leadSelect,
+      }),
+      user.role === "MASTER"
+        ? prisma.user.findMany({
+            where: { active: true, role: "USER" },
+            select: { id: true, displayName: true },
+            orderBy: { displayName: "asc" },
+          })
+        : Promise.resolve([] as { id: number; displayName: string }[]),
+    ]);
+    if (statusLeads.length === 0) {
+      return <EmptyState tab={tab.key} hasQuery={!!q} />;
+    }
+    const leads = statusLeads.map(toLeadView);
+    return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
+  }
+
   /* ---------- Archive tab — master only ---------- */
   if (tab.key === "archive") {
     if (user.role !== "MASTER") {
@@ -731,10 +787,25 @@ async function TabBarWithCounts({
   let marketCount = 0;
   let picksCount = 0;
   let archiveCount = 0;
+  const statusCounts: Record<StatusTabKey, number> = {
+    not_contact: 0,
+    not_docs: 0,
+    not_appt: 0,
+    spam: 0,
+    reject: 0,
+  };
 
   for (const l of allLeads) {
     const count = l._count.assignments;
     const archiveBound = ALWAYS_ARCHIVED_STATUSES.includes(l.status);
+
+    // Status tabs count against the same public pool. Master + non-master
+    // alike see per-status buckets.
+    if (l.status === "CONTACT_NOT_ABLE") statusCounts.not_contact++;
+    else if (l.status === "DOCUMENTS_NOT_ABLE") statusCounts.not_docs++;
+    else if (l.status === "APPOINTMENT_NOT_ABLE") statusCounts.not_appt++;
+    else if (l.status === "SPAM_OR_MISSING") statusCounts.spam++;
+    else if (l.status === "REJECTED") statusCounts.reject++;
 
     if (archiveBound) {
       if (user.role === "MASTER") {
@@ -773,6 +844,7 @@ async function TabBarWithCounts({
       picksCount={picksCount}
       archiveCount={archiveCount}
       showArchive={showArchive}
+      statusCounts={statusCounts}
       privateChannels={visiblePrivateUsers.map((u) => ({
         key: privateChannelTabKey(u.id),
         label: u.displayName,
@@ -1135,7 +1207,7 @@ function PicksByAssignee({
   );
 }
 
-function EmptyState({ tab, hasQuery }: { tab: "fresh" | "market" | "picks" | "archive"; hasQuery: boolean }) {
+function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }) {
   const title = hasQuery
     ? "No leads match your search"
     : tab === "fresh"
@@ -1144,7 +1216,9 @@ function EmptyState({ tab, hasQuery }: { tab: "fresh" | "market" | "picks" | "ar
         ? "Open Market is empty"
         : tab === "picks"
           ? "Nothing picked up yet"
-          : "Archive is empty";
+          : tab === "archive"
+            ? "Archive is empty"
+            : "No leads with this status yet";
   const body = hasQuery
     ? "Try a different search term."
     : tab === "fresh"
@@ -1153,7 +1227,9 @@ function EmptyState({ tab, hasQuery }: { tab: "fresh" | "market" | "picks" | "ar
         ? "Closed leads will appear here once the team starts moving them out of New."
         : tab === "picks"
           ? "Pick up a lead from Fresh or Open Market and it'll show up here."
-          : "Nothing has been moved to the long-term archive yet.";
+          : tab === "archive"
+            ? "Nothing has been moved to the long-term archive yet."
+            : "Leads set to this status will land here.";
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">

@@ -6,12 +6,25 @@ import {
   BookmarkCheck,
   Archive,
   Crown,
+  PhoneOff,
+  FileX,
+  CalendarX,
+  Ban,
+  XCircle,
 } from "lucide-react";
 
 type PrivateChannel = {
   key: string;
   label: string;
   count: number;
+};
+
+type StatusCounts = {
+  not_contact: number;
+  not_docs: number;
+  not_appt: number;
+  spam: number;
+  reject: number;
 };
 
 type Props = {
@@ -21,6 +34,7 @@ type Props = {
   picksCount: number;
   archiveCount: number;
   showArchive?: boolean;
+  statusCounts: StatusCounts;
   privateChannels: PrivateChannel[];
   q: string;
 };
@@ -41,6 +55,7 @@ export function TabBar({
   picksCount,
   archiveCount,
   showArchive,
+  statusCounts,
   privateChannels,
   q,
 }: Props) {
@@ -59,6 +74,14 @@ export function TabBar({
       icon: <Archive className="h-4 w-4" />,
     });
   }
+  // Per-status tabs — visible to everyone. APPROVED stays hidden from all.
+  tabs.push(
+    { key: "not_contact", href: "/dashboard?tab=not_contact", label: "Contact · Not Able", short: "No Contact", count: statusCounts.not_contact, icon: <PhoneOff className="h-4 w-4" /> },
+    { key: "not_docs",    href: "/dashboard?tab=not_docs",    label: "Documents · Not Able", short: "No Docs",   count: statusCounts.not_docs,    icon: <FileX className="h-4 w-4" /> },
+    { key: "not_appt",    href: "/dashboard?tab=not_appt",    label: "Appointment · Not Able", short: "No Appt", count: statusCounts.not_appt,    icon: <CalendarX className="h-4 w-4" /> },
+    { key: "spam",        href: "/dashboard?tab=spam",        label: "Spam / Missing",       short: "Spam",     count: statusCounts.spam,        icon: <Ban className="h-4 w-4" /> },
+    { key: "reject",      href: "/dashboard?tab=reject",      label: "Rejected",             short: "Reject",   count: statusCounts.reject,      icon: <XCircle className="h-4 w-4" /> },
+  );
   for (const ch of privateChannels) {
     tabs.push({
       key: ch.key,
