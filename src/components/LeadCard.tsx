@@ -17,6 +17,7 @@ import {
   Check,
   ArrowRight,
   Send,
+  BellRing,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
@@ -31,6 +32,8 @@ import {
   resetToOpenMarketAction,
   reassignPrivateLeadAction,
   setContactStateAction,
+  pingLeadAction,
+  ackLeadAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -77,6 +80,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const [dropOpen, setDropOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [contactStateOpen, setContactStateOpen] = useState(false);
+  // ponytail: per-mount only — a page refresh re-enables Ping/OK. Fine;
+  // these are stateless notifications, not tracked acknowledgements.
+  const [pinged, setPinged] = useState(false);
+  const [acked, setAcked] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -168,6 +175,28 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     startTransition(async () => {
       const res = await updateLeadQualityAction(fd);
       if (res?.error) setError(res.error);
+    });
+  };
+
+  const ping = () => {
+    setError(null);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    startTransition(async () => {
+      const res = await pingLeadAction(fd);
+      if (res?.error) setError(res.error);
+      else setPinged(true);
+    });
+  };
+
+  const acknowledge = () => {
+    setError(null);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    startTransition(async () => {
+      const res = await ackLeadAction(fd);
+      if (res?.error) setError(res.error);
+      else setAcked(true);
     });
   };
 
@@ -381,6 +410,26 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             >
               <Send className="h-3 w-3" />
               {viewer.role === "MASTER" ? "Pipeline" : "Assign"}
+            </button>
+          )}
+
+          {viewer.role === "MASTER" ? (
+            <button
+              onClick={ping}
+              disabled={pending || pinged}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+            >
+              <BellRing className="h-3 w-3" />
+              {pinged ? "Pinged ✓" : "Ping"}
+            </button>
+          ) : (
+            <button
+              onClick={acknowledge}
+              disabled={pending || acked}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-emerald-200 bg-white px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+            >
+              <Check className="h-3 w-3" />
+              {acked ? "Seen ✓" : "OK"}
             </button>
           )}
         </div>

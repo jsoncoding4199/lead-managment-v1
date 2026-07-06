@@ -1027,3 +1027,70 @@ export async function reassignPrivateLeadAction(
 
   return { ok: true };
 }
+
+/**
+ * Master pings the people responsible for a lead: the private-channel
+ * owner if it's a private lead, otherwise the assignees, otherwise the
+ * whole team (public unclaimed lead). Pure notification — no state.
+ */
+const PingSchema = z.object({ leadId: z.coerce.number().int().positive() });
+
+export async function pingLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+  const master = await requireMaster();
+  const parsed = PingSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: parsed.data.leadId },
+    select: {
+      id: true,
+      privateChannelUserId: true,
+      assignments: { select: { userId: true } },
+    },
+  });
+  if (!lead) return { error: "Lead not found." };
+
+  const recipients =
+    lead.privateChannelUserId !== null
+      ? [lead.privateChannelUserId]
+      : lead.assignments.length > 0
+        ? lead.assignments.map((a) => a.userId)
+        : await getAllUserIds();
+
+  after(async () => {
+    await sendPushToUsers({
+      userIds: recipients.filter((id) => id !== master.id),
+      payload: {
+        title: "Ping from master",
+        body: `${master.displayName} wants your attention on lead #${lead.id}`,
+        url: `/dashboard/leads/${lead.id}`,
+        kind: "lead",
+        tag: `lead-${lead.id}-ping`,
+      },
+    });
+  });
+}
+
+/** Any user taps OK on a lead → master gets "seen it" confirmation. */
+export async function ackLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+  const me = await requireUser();
+  const parsed = PingSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
+  if (!meta) return { error: "Lead not found." };
+
+  after(async () => {
+    const masterIds = (await getMasterIds()).filter((id) => id !== me.id);
+    await sendPushToUsers({
+      userIds: masterIds,
+      payload: {
+        title: "Lead acknowledged",
+        body: `${me.displayName} has seen lead #${parsed.data.leadId}`,
+        url: `/dashboard/leads/${parsed.data.leadId}`,
+        kind: "lead",
+        tag: `lead-${parsed.data.leadId}-ack`,
+      },
+    });
+  });
+}
