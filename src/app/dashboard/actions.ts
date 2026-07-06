@@ -6,33 +6,9 @@ import { z } from "zod";
 import type { LeadStatus, LeadQuality } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, requireMaster } from "@/lib/auth";
-import {
-  STATUS_LABEL,
-  TRANSFER_TO_MARKET_STATUSES,
-  ALWAYS_ARCHIVED_STATUSES,
-} from "@/lib/leadStatus";
+import { STATUS_LABEL } from "@/lib/leadStatus";
 import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
 import { canAccessLead } from "@/lib/channels";
-
-/**
- * True when the actor is the owner of the private channel this lead
- * belongs to (and not master) working on their own lead. Used to decide
- * whether an outbound transition (NOT_ABLE / SPAM / REJECTED / APPROVED
- * / Reset) should also kick the lead back to the public pipeline by
- * clearing privateChannelUserId.
- *
- * Master never auto-clears — they manage explicitly.
- */
-function isChannelOwnerActing(
-  actor: import("@/lib/auth").CurrentUser,
-  privateChannelUserId: number | null
-): boolean {
-  if (privateChannelUserId === null) return false;
-  // ponytail: dropped the role===MASTER short-circuit. Master can now own a
-  // private channel (via reassign), so when master owns it and moves the
-  // lead to Open Market, it should also kick back to the public pool.
-  return privateChannelUserId === actor.id;
-}
 
 /**
  * Focused push to the lead's original creator about a change to their
@@ -246,34 +222,11 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
     return { error: "A rejection reason is required." };
   }
 
-  // When a lead moves to a "transfer-to-Market" status, backdate createdAt
-  // past the Fresh/Open-Market boundary so it lands directly in Open Market
-  // (regardless of its original age). The team can then re-pick it up.
+  // Status changes NEVER move a lead between pipelines. A private lead
+  // stays in its private pipeline through every status (including
+  // RECYCLED/APPROVED). Only "Reset to Open Market" relocates it.
   const newStatus = parsed.data.status as LeadStatus;
-  const transferToMarket = TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
-  const isOutboundFromChannel =
-    transferToMarket || ALWAYS_ARCHIVED_STATUSES.includes(newStatus);
-  // Private-channel user working on their own lead: outbound transitions
-  // (NOT_ABLE / SPAM / REJECTED / APPROVED) clear privateChannelUserId so
-  // the lead lands back in the public Open Market or Archive for the
-  // team. Master's actions never auto-clear.
-  // Archived statuses always clear the channel — Archive is master-wide,
-  // so a private-owned RECYCLED/REJECTED/APPROVED would never appear there.
-  const clearPrivateChannel =
-    ALWAYS_ARCHIVED_STATUSES.includes(newStatus) ||
-    (transferToMarket && isChannelOwnerActing(user, lead.privateChannelUserId));
-  const marketBackdate = transferToMarket
-    ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
-    : null;
-
-  type LeadUpdate = {
-    status: LeadStatus;
-    createdAt?: Date;
-    privateChannelUserId?: null;
-  };
-  const leadUpdate: LeadUpdate = { status: newStatus };
-  if (marketBackdate) leadUpdate.createdAt = marketBackdate;
-  if (clearPrivateChannel) leadUpdate.privateChannelUserId = null;
+  const leadUpdate: { status: LeadStatus } = { status: newStatus };
 
   await prisma.$transaction([
     prisma.lead.update({
@@ -529,35 +482,14 @@ export async function dropWithStatusAction(input: {
   if (statusChanged && newStatus === "REJECTED" && !parsed.data.note?.trim()) {
     return { error: "A rejection reason is required." };
   }
-  const transferToMarket = statusChanged && TRANSFER_TO_MARKET_STATUSES.includes(newStatus);
-  // Channel-owner drop with an outbound status clears the lead's private
-  // owner so the rest of the team can see it (Market for soft-negative,
-  // Archive for REJECTED / APPROVED). Runs even if the status didn't
-  // change — dropping kicks the lead out of the private pipeline either way.
-  const clearPrivateChannel =
-    ALWAYS_ARCHIVED_STATUSES.includes(newStatus) ||
-    (TRANSFER_TO_MARKET_STATUSES.includes(newStatus) &&
-      isChannelOwnerActing(me, lead.privateChannelUserId));
-  const marketBackdate = transferToMarket
-    ? new Date(Date.now() - (2 * 86_400_000 + 3_600_000))
-    : null;
-  const needsLeadUpdate = statusChanged || clearPrivateChannel;
-
-  type LeadUpdate = {
-    status?: LeadStatus;
-    createdAt?: Date;
-    privateChannelUserId?: null;
-  };
-
+  // Drop never moves the lead between pipelines — a private lead stays in
+  // its private pipeline whatever the chosen status. Only "Reset to Open
+  // Market" relocates it.
   await prisma.$transaction(async (tx) => {
-    if (needsLeadUpdate) {
-      const leadUpdate: LeadUpdate = {};
-      if (statusChanged) leadUpdate.status = newStatus;
-      if (marketBackdate) leadUpdate.createdAt = marketBackdate;
-      if (clearPrivateChannel) leadUpdate.privateChannelUserId = null;
+    if (statusChanged) {
       await tx.lead.update({
         where: { id: lead.id },
-        data: leadUpdate,
+        data: { status: newStatus },
       });
     }
     if (statusChanged) {
@@ -829,16 +761,12 @@ export async function resetToOpenMarketAction(formData: FormData): Promise<{ err
   const boundary = new Date(Date.now() - (2 * 86_400_000 + 3_600_000));
   const noteSuffix = user.role === "MASTER" ? " (master cleared assignments)" : "";
 
-  // Channel owner resetting their own private lead: clear privateChannelUserId
-  // so the lead lands in the public Open Market for the whole team.
-  const clearPrivateChannel = isChannelOwnerActing(user, lead.privateChannelUserId);
-
+  // Reset is THE one action that moves a lead to the public Open Market —
+  // always clear the private channel, whoever clicks it.
   await prisma.$transaction(async (tx) => {
     await tx.lead.update({
       where: { id: lead.id },
-      data: clearPrivateChannel
-        ? { status: "NEW", createdAt: boundary, privateChannelUserId: null }
-        : { status: "NEW", createdAt: boundary },
+      data: { status: "NEW", createdAt: boundary, privateChannelUserId: null },
     });
     // Reset = lead becomes available to the team. Always drop assignments,
     // not just for master — otherwise the resetter stays the assignee and
