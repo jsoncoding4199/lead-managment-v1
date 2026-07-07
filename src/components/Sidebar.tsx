@@ -20,6 +20,9 @@ import {
   CalendarX,
   Ban,
   XCircle,
+  PhoneCall,
+  FileCheck,
+  CalendarCheck,
 } from "lucide-react";
 
 type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
@@ -153,6 +156,27 @@ function SidebarInner({
           active={onDashboardRoot && tab === "picks"}
         >
           My Pick Up
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=able_contact"
+          icon={PhoneCall}
+          active={onDashboardRoot && tab === "able_contact"}
+        >
+          Contact · Able
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=able_docs"
+          icon={FileCheck}
+          active={onDashboardRoot && tab === "able_docs"}
+        >
+          Documents · Able
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=able_appt"
+          icon={CalendarCheck}
+          active={onDashboardRoot && tab === "able_appt"}
+        >
+          Appointment · Able
         </NavLink>
         <NavLink
           href="/dashboard?tab=not_contact"

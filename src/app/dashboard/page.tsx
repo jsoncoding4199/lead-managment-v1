@@ -42,6 +42,9 @@ type DashStaticTab =
   | "market"
   | "picks"
   | "archive"
+  | "able_contact"
+  | "able_docs"
+  | "able_appt"
   | "not_contact"
   | "not_docs"
   | "not_appt"
@@ -50,6 +53,9 @@ type DashStaticTab =
 
 // One-status tabs → status enum they filter on. Order matches display order.
 const STATUS_TAB_TO_STATUS = {
+  able_contact: "CONTACT_ABLE",
+  able_docs: "DOCUMENTS_ABLE",
+  able_appt: "APPOINTMENT_ABLE",
   not_contact: "CONTACT_NOT_ABLE",
   not_docs: "DOCUMENTS_NOT_ABLE",
   not_appt: "APPOINTMENT_NOT_ABLE",
@@ -72,6 +78,9 @@ function parseTab(raw: string | undefined): DashTab {
     case "market":
     case "picks":
     case "archive":
+    case "able_contact":
+    case "able_docs":
+    case "able_appt":
     case "not_contact":
     case "not_docs":
     case "not_appt":
@@ -434,7 +443,7 @@ async function LeadsSection({
     );
   }
 
-  /* ---------- Single-status tabs (visible to all) ---------- */
+  /* ---------- Single-status tabs ---------- */
   if (tab.key in STATUS_TAB_TO_STATUS) {
     const status = STATUS_TAB_TO_STATUS[tab.key as StatusTabKey];
     const [statusLeads, teamUsers] = await Promise.all([
@@ -443,6 +452,11 @@ async function LeadsSection({
           AND: [
             { privateChannelUserId: null },
             { status },
+            // The "Able" statuses are active work — visible only to the
+            // assignee (or master). freshOrMarketVisibility encodes that and
+            // is a no-op ({}) for master. Not-Able / Spam / Reject stay
+            // visible to everyone.
+            freshOrMarketVisibility(user),
             leadSearchFilter(q),
           ],
         },
