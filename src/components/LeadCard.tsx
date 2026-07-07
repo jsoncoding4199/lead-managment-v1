@@ -34,6 +34,7 @@ import {
   setContactStateAction,
   pingLeadAction,
   ackLeadAction,
+  masterOkLeadAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -86,6 +87,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   // these are stateless notifications, not tracked acknowledgements.
   const [pinged, setPinged] = useState(false);
   const [acked, setAcked] = useState(false);
+  const [masterOkSent, setMasterOkSent] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -191,6 +193,21 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         // Flash "Pinged ✓" for a moment, then re-arm so master can ping again.
         setPinged(true);
         setTimeout(() => setPinged(false), 1500);
+      }
+    });
+  };
+
+  const masterOk = () => {
+    setError(null);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    startTransition(async () => {
+      const res = await masterOkLeadAction(fd);
+      if (res?.error) setError(res.error);
+      else {
+        // Flash "OK sent ✓" then re-arm — master can confirm again anytime.
+        setMasterOkSent(true);
+        setTimeout(() => setMasterOkSent(false), 1500);
       }
     });
   };
@@ -429,24 +446,31 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
                 <BellRing className="h-3 w-3" />
                 {pinged ? "Pinged ✓" : "Ping"}
               </button>
-              {/* Read-only OK indicator for master — fills green once any
-                  user has acknowledged the lead. */}
-              <span
+              {/* Master OK — notifies the user who put in the lead. Turns
+                  green when a picker has already acknowledged it, and shows
+                  who; still clickable so master can send a fresh confirm. */}
+              <button
+                onClick={masterOk}
+                disabled={pending}
                 title={
                   lead.ackedBy
-                    ? `Acknowledged by ${lead.ackedBy.displayName}`
-                    : "Not acknowledged yet"
+                    ? `Acknowledged by ${lead.ackedBy.displayName} — tap to confirm to the creator`
+                    : "Tap to confirm this lead to its creator"
                 }
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold",
+                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold disabled:opacity-60",
                   lead.ackedAt
-                    ? "bg-emerald-600 text-white shadow-sm"
-                    : "border border-ink-200 bg-white text-ink-400"
+                    ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                    : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
                 )}
               >
                 <Check className="h-3 w-3" />
-                {lead.ackedBy ? `OK · ${lead.ackedBy.displayName}` : "OK"}
-              </span>
+                {masterOkSent
+                  ? "OK sent ✓"
+                  : lead.ackedBy
+                    ? `OK · ${lead.ackedBy.displayName}`
+                    : "OK"}
+              </button>
             </>
           ) : (
             <button

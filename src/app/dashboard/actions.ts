@@ -1102,3 +1102,26 @@ export async function ackLeadAction(formData: FormData): Promise<{ error?: strin
     });
   });
 }
+
+/** Master taps OK → the user who put in the lead gets a confirmation. */
+export async function masterOkLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+  const master = await requireMaster();
+  const parsed = PingSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: parsed.data.leadId },
+    select: { id: true, createdById: true },
+  });
+  if (!lead) return { error: "Lead not found." };
+
+  after(async () => {
+    await notifyLeadCreator({
+      leadId: lead.id,
+      creatorId: lead.createdById,
+      actorId: master.id,
+      title: "Lead confirmed",
+      body: `${master.displayName} marked your lead #${lead.id} as OK`,
+    });
+  });
+}
