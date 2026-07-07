@@ -187,7 +187,11 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     startTransition(async () => {
       const res = await pingLeadAction(fd);
       if (res?.error) setError(res.error);
-      else setPinged(true);
+      else {
+        // Flash "Pinged ✓" for a moment, then re-arm so master can ping again.
+        setPinged(true);
+        setTimeout(() => setPinged(false), 1500);
+      }
     });
   };
 
@@ -419,7 +423,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <>
               <button
                 onClick={ping}
-                disabled={pending || pinged}
+                disabled={pending}
                 className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
               >
                 <BellRing className="h-3 w-3" />
