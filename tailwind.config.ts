@@ -42,14 +42,9 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(4px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
-        "in-right": {
-          from: { opacity: "0", transform: "translateX(100%)" },
-          to: { opacity: "1", transform: "translateX(0)" },
-        },
       },
       animation: {
         in: "in .18s ease-out both",
-        "in-right": "in-right .22s ease-out both",
       },
     },
   },

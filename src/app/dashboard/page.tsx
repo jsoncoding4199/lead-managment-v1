@@ -791,74 +791,40 @@ async function TabBarWithCounts({
     privateCountsMap.set(r.userId, r.count);
   }
 
+  // Only Fresh + Open Market keep live counts in the tab bar now — the
+  // status buckets moved to the sidebar (no counts), so their per-status
+  // tallies aren't needed here.
   let freshCount = 0;
   let marketCount = 0;
-  let picksCount = 0;
-  let archiveCount = 0;
-  const statusCounts: Record<StatusTabKey, number> = {
-    not_contact: 0,
-    not_docs: 0,
-    not_appt: 0,
-    spam: 0,
-    reject: 0,
-  };
 
   for (const l of allLeads) {
     const count = l._count.assignments;
-    const archiveBound = ALWAYS_ARCHIVED_STATUSES.includes(l.status);
-
-    // Status tabs count against the same public pool. Master + non-master
-    // alike see per-status buckets.
-    if (l.status === "CONTACT_NOT_ABLE") statusCounts.not_contact++;
-    else if (l.status === "DOCUMENTS_NOT_ABLE") statusCounts.not_docs++;
-    else if (l.status === "APPOINTMENT_NOT_ABLE") statusCounts.not_appt++;
-    else if (l.status === "SPAM_OR_MISSING") statusCounts.spam++;
-    else if (l.status === "REJECTED") statusCounts.reject++;
-
-    if (archiveBound) {
-      if (user.role === "MASTER") {
-        archiveCount++;
-        if (count > 0) picksCount++;
-      }
-      continue;
-    }
+    if (ALWAYS_ARCHIVED_STATUSES.includes(l.status)) continue;
 
     if (user.role !== "MASTER") {
       const mine = (l.assignments as { userId: number }[] | undefined)?.length ?? 0;
-      if (mine) {
-        picksCount++;
-        continue;
-      }
+      if (mine) continue;
       if (l.status === "NEW") {
         if (count >= settings.maxPickup) continue;
       } else if (ACTIVE_STATUSES.includes(l.status)) {
         continue;
       }
-    } else if (count > 0) {
-      picksCount++;
     }
 
     if (l.createdAt > cutoff) freshCount++;
     else marketCount++;
   }
 
-  const showArchive = user.role === "MASTER";
-
   return (
     <TabBar
       activeTab={serializeTab(tab)}
       freshCount={freshCount}
       marketCount={marketCount}
-      picksCount={picksCount}
-      archiveCount={archiveCount}
-      showArchive={showArchive}
-      statusCounts={statusCounts}
       privateChannels={visiblePrivateUsers.map((u) => ({
         key: privateChannelTabKey(u.id),
         label: u.displayName,
         count: privateCountsMap.get(u.id) ?? 0,
       }))}
-      q={q}
     />
   );
 }

@@ -15,6 +15,11 @@ import {
   X,
   Hand,
   Settings,
+  PhoneOff,
+  FileX,
+  CalendarX,
+  Ban,
+  XCircle,
 } from "lucide-react";
 
 type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
@@ -131,7 +136,7 @@ function SidebarInner({
         <NavLink
           href="/dashboard"
           icon={LayoutGrid}
-          active={onDashboardRoot && tab !== "market" && tab !== "archive" && tab !== "picks"}
+          active={onDashboardRoot && tab === "fresh"}
         >
           Fresh
         </NavLink>
@@ -148,6 +153,41 @@ function SidebarInner({
           active={onDashboardRoot && tab === "picks"}
         >
           My Pick Up
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=not_contact"
+          icon={PhoneOff}
+          active={onDashboardRoot && tab === "not_contact"}
+        >
+          Contact · Not Able
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=not_docs"
+          icon={FileX}
+          active={onDashboardRoot && tab === "not_docs"}
+        >
+          Documents · Not Able
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=not_appt"
+          icon={CalendarX}
+          active={onDashboardRoot && tab === "not_appt"}
+        >
+          Appointment · Not Able
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=spam"
+          icon={Ban}
+          active={onDashboardRoot && tab === "spam"}
+        >
+          Spam / Missing
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=reject"
+          icon={XCircle}
+          active={onDashboardRoot && tab === "reject"}
+        >
+          Rejected
         </NavLink>
         <NavLink
           href="/dashboard?tab=archive"
