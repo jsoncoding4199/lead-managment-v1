@@ -27,17 +27,6 @@ export function canAccessLead(
 }
 
 /**
- * Convenience for actions that have a full Lead-like object. Same rule
- * as canAccessLead — just unwraps the field.
- */
-export function canAccessLeadObj(
-  user: CurrentUser,
-  lead: { privateChannelUserId: number | null }
-): boolean {
-  return canAccessLead(user, lead.privateChannelUserId);
-}
-
-/**
  * Tab key used in URLs (`?tab=private-42`). Encodes a private channel
  * user's id so we can show that user's pipeline tab without a hardcoded
  * AHA/AHB scheme.

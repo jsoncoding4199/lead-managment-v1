@@ -134,7 +134,7 @@ export default async function DashboardPage({
 
       {!q && (
         <Suspense fallback={<TabBarSkeleton />}>
-          <TabBarWithCounts tab={tab} q={q} user={user} />
+          <TabBarWithCounts tab={tab} user={user} />
         </Suspense>
       )}
 
@@ -714,11 +714,9 @@ function ArchiveLockedNotice() {
 
 async function TabBarWithCounts({
   tab,
-  q,
   user,
 }: {
   tab: DashTab;
-  q: string;
   user: CurrentUser;
 }) {
   const settings = await getAppSettings();
