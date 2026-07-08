@@ -147,11 +147,14 @@ export default async function DashboardPage({
         </Suspense>
       )}
 
-      {/* Composer rules — hide while searching globally. Also hide on
-          master's own private inbox: createLeadAction validates the target
-          is isPrivateChannel:true, which master isn't — leads only arrive
-          in master's inbox via reassign. */}
+      {/* Composer rules — hide while searching globally. Non-masters only
+          see it on Fresh (public composer). Master can drop a lead from
+          any tab: on a private tab the lead lands in that channel, on any
+          static tab it goes into the public Fresh pipeline. */}
       {!q && tab.kind === "static" && tab.key === "fresh" && <LeadComposer />}
+      {!q && tab.kind === "static" && tab.key !== "fresh" && user.role === "MASTER" && (
+        <LeadComposer />
+      )}
       {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && (
         <LeadComposer
           privateChannelUserId={privateUser.id}
