@@ -342,10 +342,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         </button>
       </header>
 
-      {(lead.name || lead.phone) && (
+      {(lead.name || lead.phone || extractPhone(lead.content)) && (
         <ContactRows
           name={lead.name ?? null}
-          phone={lead.phone ?? null}
+          phone={lead.phone || extractPhone(lead.content)}
         />
       )}
 
@@ -1379,6 +1379,17 @@ function ReminderSheet({
  * Only rows with a value render. Every value has a Copy button; phone
  * additionally gets Call (tel:) and WhatsApp (wa.me) buttons.
  */
+/**
+ * Best-effort phone extraction from a free-text blob (Gmail body, etc.).
+ * Matches common Malaysian mobile shapes with country code or leading 0.
+ * Returns null when nothing convincing turns up so the ContactRows band
+ * doesn't render an empty phone row.
+ */
+function extractPhone(text: string): string | null {
+  const m = text.match(/(?:\+?60|0)[\s-]?\d{1,2}[\s-]?\d{3,4}[\s-]?\d{4}/);
+  return m?.[0] ?? null;
+}
+
 function ContactRows({
   name,
   phone,
