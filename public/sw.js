@@ -21,7 +21,7 @@
  * so old caches get purged on activate.
  */
 
-const CACHE_VERSION = "leadboard-shell-v3";
+const CACHE_VERSION = "leadboard-shell-v4";
 
 // File extensions that are safe to cache long-term. Static assets the user
 // downloaded once shouldn't redownload on every cold start of the TWA.
