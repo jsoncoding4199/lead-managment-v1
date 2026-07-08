@@ -1124,7 +1124,9 @@ export async function ackLeadAction(formData: FormData): Promise<{ error?: strin
  */
 const ReminderSchema = z.object({
   leadId: z.coerce.number().int().positive(),
-  hours: z.coerce.number().int().min(0).max(4),
+  // Total minutes from now. 0 = clear. Cap at a day so a fat-finger can't
+  // schedule something a year out.
+  minutes: z.coerce.number().int().min(0).max(24 * 60),
 });
 
 export async function setReminderAction(
@@ -1133,19 +1135,19 @@ export async function setReminderAction(
   const user = await requireUser();
   const parsed = ReminderSchema.safeParse({
     leadId: formData.get("leadId"),
-    hours: formData.get("hours"),
+    minutes: formData.get("minutes"),
   });
   if (!parsed.success) return { error: "Invalid reminder." };
 
   const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
   if (!meta) return { error: "Lead not found." };
 
-  if (parsed.data.hours === 0) {
+  if (parsed.data.minutes === 0) {
     await prisma.leadReminder.deleteMany({
       where: { leadId: parsed.data.leadId, userId: user.id },
     });
   } else {
-    const remindAt = new Date(Date.now() + parsed.data.hours * 3_600_000);
+    const remindAt = new Date(Date.now() + parsed.data.minutes * 60_000);
     await prisma.leadReminder.upsert({
       where: {
         leadId_userId: { leadId: parsed.data.leadId, userId: user.id },
