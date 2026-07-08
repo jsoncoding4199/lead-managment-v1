@@ -29,8 +29,60 @@ export function LeadComposer({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [assignees, setAssignees] = useState<Set<number>>(new Set());
+  const [name, setName] = useState("");
+  const [ic, setIc] = useState("");
+  const [phone, setPhone] = useState("");
+  const [autofilled, setAutofilled] = useState<null | string[]>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  /**
+   * Best-effort parser: given a chunk of pasted text (e.g. a Gmail lead
+   * summary), extract Name / IC / Phone. Prefers labelled lines
+   * ("Name: Jane Doe"); falls back to generic regexes for IC + phone.
+   */
+  const parseContactFromText = (text: string) => {
+    const line = (labels: string[]) => {
+      const re = new RegExp(
+        `^\\s*(?:${labels.join("|")})\\s*[:：\\-]\\s*(.+?)\\s*$`,
+        "im"
+      );
+      const m = text.match(re);
+      return m?.[1]?.trim();
+    };
+    const parsedName =
+      line(["name", "nama", "full name", "customer"]) ?? undefined;
+    const parsedIc =
+      line(["ic", "nric", "ic number", "no ic", "identity"]) ??
+      text.match(/\b\d{6}[-\s]?\d{2}[-\s]?\d{4}\b/)?.[0] ??
+      undefined;
+    const parsedPhone =
+      line(["phone", "tel", "mobile", "hp", "no telefon", "no", "contact"]) ??
+      text.match(/(?:\+?60|0)[\s-]?\d{1,2}[\s-]?\d{3,4}[\s-]?\d{4}/)?.[0] ??
+      undefined;
+    return { parsedName, parsedIc, parsedPhone };
+  };
+
+  const autofillFromText = (text: string) => {
+    const { parsedName, parsedIc, parsedPhone } = parseContactFromText(text);
+    const filled: string[] = [];
+    if (parsedName && !name) {
+      setName(parsedName);
+      filled.push("Name");
+    }
+    if (parsedIc && !ic) {
+      setIc(parsedIc);
+      filled.push("IC");
+    }
+    if (parsedPhone && !phone) {
+      setPhone(parsedPhone);
+      filled.push("Phone");
+    }
+    if (filled.length > 0) {
+      setAutofilled(filled);
+      setTimeout(() => setAutofilled(null), 2500);
+    }
+  };
 
   const toggleAssignee = (id: number) => {
     setAssignees((prev) => {
@@ -80,6 +132,10 @@ export function LeadComposer({
       else {
         formRef.current?.reset();
         setAssignees(new Set());
+        setName("");
+        setIc("");
+        setPhone("");
+        setAutofilled(null);
         setOpen(false);
       }
     });
@@ -126,6 +182,8 @@ export function LeadComposer({
           <input
             type="text"
             name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             autoComplete="off"
             placeholder="Jane Doe"
             className="input h-11"
@@ -136,6 +194,8 @@ export function LeadComposer({
           <input
             type="text"
             name="ic"
+            value={ic}
+            onChange={(e) => setIc(e.target.value)}
             autoComplete="off"
             placeholder="880101-14-5566"
             className="input h-11"
@@ -146,23 +206,41 @@ export function LeadComposer({
           <input
             type="tel"
             name="phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             autoComplete="off"
             placeholder="+60 12-345 6789"
             className="input h-11"
           />
         </label>
       </div>
-      <label className="block mb-1">
-        <span className="label">Notes / other details</span>
-      </label>
+      <div className="flex items-center justify-between mb-1">
+        <label>
+          <span className="label">Notes / other details</span>
+        </label>
+        <span className="text-[10px] text-ink-400">
+          Paste a Gmail chunk — Name / IC / Phone auto-fill.
+        </span>
+      </div>
       <textarea
         ref={ref}
         name="content"
         rows={5}
         required
-        placeholder={"Anything else — source, preferences, follow-up context…"}
+        placeholder={
+          "Paste the lead here (from Gmail, WhatsApp, etc.). Any Name / IC / Phone we spot fills the boxes above."
+        }
+        onPaste={(e) => {
+          const text = e.clipboardData.getData("text");
+          if (text) autofillFromText(text);
+        }}
         className="input resize-y font-mono text-sm leading-relaxed"
       />
+      {autofilled && autofilled.length > 0 && (
+        <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
+          Auto-filled from paste: <strong>{autofilled.join(", ")}</strong>. Review and adjust if needed.
+        </div>
+      )}
       {assignableUsers.length > 0 && (
         <div className="mt-3">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
