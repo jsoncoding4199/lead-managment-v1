@@ -23,6 +23,10 @@ import {
   PhoneCall,
   FileCheck,
   CalendarCheck,
+  Phone,
+  FileText,
+  CalendarDays,
+  ChevronDown,
 } from "lucide-react";
 
 type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
@@ -157,48 +161,72 @@ function SidebarInner({
         >
           My Pick Up
         </NavLink>
-        <NavLink
-          href="/dashboard?tab=able_contact"
-          icon={PhoneCall}
-          active={onDashboardRoot && tab === "able_contact"}
+        <NavGroup
+          label="Contact"
+          icon={Phone}
+          activeChild={
+            onDashboardRoot && (tab === "able_contact" || tab === "not_contact")
+          }
         >
-          Contact · Able
-        </NavLink>
-        <NavLink
-          href="/dashboard?tab=able_docs"
-          icon={FileCheck}
-          active={onDashboardRoot && tab === "able_docs"}
+          <NavLink
+            href="/dashboard?tab=able_contact"
+            icon={PhoneCall}
+            active={onDashboardRoot && tab === "able_contact"}
+          >
+            Able
+          </NavLink>
+          <NavLink
+            href="/dashboard?tab=not_contact"
+            icon={PhoneOff}
+            active={onDashboardRoot && tab === "not_contact"}
+          >
+            Not Able
+          </NavLink>
+        </NavGroup>
+        <NavGroup
+          label="Documents"
+          icon={FileText}
+          activeChild={
+            onDashboardRoot && (tab === "able_docs" || tab === "not_docs")
+          }
         >
-          Documents · Able
-        </NavLink>
-        <NavLink
-          href="/dashboard?tab=able_appt"
-          icon={CalendarCheck}
-          active={onDashboardRoot && tab === "able_appt"}
+          <NavLink
+            href="/dashboard?tab=able_docs"
+            icon={FileCheck}
+            active={onDashboardRoot && tab === "able_docs"}
+          >
+            Able
+          </NavLink>
+          <NavLink
+            href="/dashboard?tab=not_docs"
+            icon={FileX}
+            active={onDashboardRoot && tab === "not_docs"}
+          >
+            Not Able
+          </NavLink>
+        </NavGroup>
+        <NavGroup
+          label="Appointment"
+          icon={CalendarDays}
+          activeChild={
+            onDashboardRoot && (tab === "able_appt" || tab === "not_appt")
+          }
         >
-          Appointment · Able
-        </NavLink>
-        <NavLink
-          href="/dashboard?tab=not_contact"
-          icon={PhoneOff}
-          active={onDashboardRoot && tab === "not_contact"}
-        >
-          Contact · Not Able
-        </NavLink>
-        <NavLink
-          href="/dashboard?tab=not_docs"
-          icon={FileX}
-          active={onDashboardRoot && tab === "not_docs"}
-        >
-          Documents · Not Able
-        </NavLink>
-        <NavLink
-          href="/dashboard?tab=not_appt"
-          icon={CalendarX}
-          active={onDashboardRoot && tab === "not_appt"}
-        >
-          Appointment · Not Able
-        </NavLink>
+          <NavLink
+            href="/dashboard?tab=able_appt"
+            icon={CalendarCheck}
+            active={onDashboardRoot && tab === "able_appt"}
+          >
+            Able
+          </NavLink>
+          <NavLink
+            href="/dashboard?tab=not_appt"
+            icon={CalendarX}
+            active={onDashboardRoot && tab === "not_appt"}
+          >
+            Not Able
+          </NavLink>
+        </NavGroup>
         <NavLink
           href="/dashboard?tab=spam"
           icon={Ban}
@@ -256,6 +284,45 @@ function SidebarInner({
       </nav>
       <div className="p-4 text-xs text-white/40">© {new Date().getFullYear()} Leadboard</div>
     </>
+  );
+}
+
+function NavGroup({
+  label,
+  icon: Icon,
+  activeChild,
+  children,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  activeChild: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(activeChild);
+  useEffect(() => {
+    if (activeChild) setOpen(true);
+  }, [activeChild]);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+          activeChild
+            ? "bg-white/10 text-white"
+            : "text-white/70 hover:bg-white/5 hover:text-white"
+        )}
+        aria-expanded={open}
+      >
+        <Icon className="h-4 w-4" />
+        <span className="flex-1 text-left">{label}</span>
+        <ChevronDown
+          className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && <div className="mt-1 ml-4 space-y-1">{children}</div>}
+    </div>
   );
 }
 
