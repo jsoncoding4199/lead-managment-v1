@@ -137,6 +137,12 @@ model PushSubscription {
 model Lead {
   id           Int          @id @default(autoincrement())
   content      String
+  // Optional structured contact fields — captured at intake so the card
+  // can show tap-to-copy / tap-to-call / tap-to-WhatsApp rows without
+  // regex-parsing the free-text content blob.
+  name         String?
+  ic           String?
+  phone        String?
   remark       String?
   status       LeadStatus   @default(NEW)
   quality      LeadQuality?

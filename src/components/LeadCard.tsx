@@ -18,6 +18,9 @@ import {
   ArrowRight,
   Send,
   BellRing,
+  Copy,
+  Phone,
+  MessageCircle,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
@@ -42,6 +45,9 @@ import Link from "next/link";
 type Lead = {
   id: number;
   content: string;
+  name?: string | null;
+  ic?: string | null;
+  phone?: string | null;
   remark?: string | null;
   status: LeadStatus;
   quality: LeadQuality | null;
@@ -336,6 +342,14 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           <ChevronDown className="h-3 w-3" />
         </button>
       </header>
+
+      {(lead.name || lead.ic || lead.phone) && (
+        <ContactRows
+          name={lead.name ?? null}
+          ic={lead.ic ?? null}
+          phone={lead.phone ?? null}
+        />
+      )}
 
       <div className="mt-3 relative group/content">
         <pre
@@ -1359,5 +1373,95 @@ function ReminderSheet({
       </div>
     </div>,
     portalNode
+  );
+}
+
+/**
+ * Structured contact rows at the top of a lead card: Name / IC / Phone.
+ * Only rows with a value render. Every value has a Copy button; phone
+ * additionally gets Call (tel:) and WhatsApp (wa.me) buttons.
+ */
+function ContactRows({
+  name,
+  ic,
+  phone,
+}: {
+  name: string | null;
+  ic: string | null;
+  phone: string | null;
+}) {
+  return (
+    <div className="mt-3 rounded-lg border border-ink-100 bg-white divide-y divide-ink-100 text-[12px]">
+      {name && <ContactRow label="Name" value={name} />}
+      {ic && <ContactRow label="IC" value={ic} />}
+      {phone && <ContactRow label="Phone" value={phone} phone />}
+    </div>
+  );
+}
+
+function ContactRow({
+  label,
+  value,
+  phone,
+}: {
+  label: string;
+  value: string;
+  phone?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard unavailable — ignore */
+    }
+  };
+  // Digits-only phone for tel: and wa.me. wa.me needs no + prefix.
+  const digits = phone ? value.replace(/\D+/g, "") : "";
+  return (
+    <div className="flex items-center gap-2 px-2.5 py-1.5">
+      <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+        {label}
+      </span>
+      <span className="flex-1 truncate text-ink-800">{value}</span>
+      <button
+        type="button"
+        onClick={copy}
+        className={cn(
+          "grid h-7 w-7 place-items-center rounded-md border text-[11px] transition-colors",
+          copied
+            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+            : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+        )}
+        title={copied ? "Copied ✓" : `Copy ${label.toLowerCase()}`}
+        aria-label={`Copy ${label}`}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+      {phone && digits && (
+        <>
+          <a
+            href={`tel:${digits}`}
+            className="grid h-7 w-7 place-items-center rounded-md border border-brand-200 bg-white text-brand-700 hover:bg-brand-50"
+            title="Call"
+            aria-label="Call this number"
+          >
+            <Phone className="h-3.5 w-3.5" />
+          </a>
+          <a
+            href={`https://wa.me/${digits}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="grid h-7 w-7 place-items-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+            title="Open in WhatsApp"
+            aria-label="WhatsApp this number"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+          </a>
+        </>
+      )}
+    </div>
   );
 }

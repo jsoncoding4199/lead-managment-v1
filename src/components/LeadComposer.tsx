@@ -120,12 +120,47 @@ export function LeadComposer({
           </p>
         </div>
       )}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+        <label className="block">
+          <span className="label">Name</span>
+          <input
+            type="text"
+            name="name"
+            autoComplete="off"
+            placeholder="Jane Doe"
+            className="input h-11"
+          />
+        </label>
+        <label className="block">
+          <span className="label">IC</span>
+          <input
+            type="text"
+            name="ic"
+            autoComplete="off"
+            placeholder="880101-14-5566"
+            className="input h-11"
+          />
+        </label>
+        <label className="block">
+          <span className="label">Phone</span>
+          <input
+            type="tel"
+            name="phone"
+            autoComplete="off"
+            placeholder="+60 12-345 6789"
+            className="input h-11"
+          />
+        </label>
+      </div>
+      <label className="block mb-1">
+        <span className="label">Notes / other details</span>
+      </label>
       <textarea
         ref={ref}
         name="content"
-        rows={6}
+        rows={5}
         required
-        placeholder={"Paste lead content here…\n\ne.g.\nName: Jane Doe\nPhone: +60 12-345 6789\nNote: interested in policy A, prefers WhatsApp"}
+        placeholder={"Anything else — source, preferences, follow-up context…"}
         className="input resize-y font-mono text-sm leading-relaxed"
       />
       {assignableUsers.length > 0 && (

@@ -72,6 +72,11 @@ async function loadAccessibleLeadMeta(
 
 const CreateSchema = z.object({
   content: z.string().trim().min(1, "Paste something into the lead.").max(8000),
+  // Optional structured contact fields — surfaced as tap-to-copy /
+  // tap-to-call / tap-to-WhatsApp rows on the lead card.
+  name: z.string().trim().max(200).optional(),
+  ic: z.string().trim().max(50).optional(),
+  phone: z.string().trim().max(50).optional(),
   // Optional pointer to a private channel user. Master-only; everyone
   // else's value is ignored. Empty / 0 means a public lead.
   privateChannelUserId: z.coerce.number().int().positive().optional(),
@@ -119,6 +124,9 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   const rawPrivate = formData.get("privateChannelUserId");
   const parsed = CreateSchema.safeParse({
     content: formData.get("content"),
+    name: formData.get("name") || undefined,
+    ic: formData.get("ic") || undefined,
+    phone: formData.get("phone") || undefined,
     privateChannelUserId: rawPrivate || undefined,
     initialNote: formData.get("initialNote") || undefined,
     assignedUserIds: formData.getAll("assignedUserIds").filter(Boolean),
@@ -163,6 +171,9 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     const created = await tx.lead.create({
       data: {
         content: parsed.data.content,
+        name: parsed.data.name || null,
+        ic: parsed.data.ic || null,
+        phone: parsed.data.phone || null,
         status: "NEW",
         contactState: parsed.data.initialNote ?? "NEW",
         privateChannelUserId,
