@@ -21,7 +21,7 @@
  * so old caches get purged on activate.
  */
 
-const CACHE_VERSION = "leadboard-shell-v2";
+const CACHE_VERSION = "leadboard-shell-v3";
 
 // File extensions that are safe to cache long-term. Static assets the user
 // downloaded once shouldn't redownload on every cold start of the TWA.
@@ -155,7 +155,9 @@ self.addEventListener("push", (event) => {
 
   const title = data.title || "Leadboard";
   const options = {
-    body: data.body || "",
+    // Android drops notifications with an empty body on some builds — a
+    // single space is enough to keep the OS happy and still look empty.
+    body: data.body || " ",
     icon: data.icon || "/icon.png",
     badge: data.badge || "/icon.png",
     data: {

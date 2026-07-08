@@ -94,7 +94,15 @@ export async function sendPushToUsers(opts: {
             keys: { p256dh: s.p256dh, auth: s.auth },
           },
           body,
-          { TTL: 60 }
+          {
+            TTL: 60,
+            // "high" urgency tells FCM / APNS to deliver immediately and
+            // wake the device — that's what makes the notification pop
+            // down as a heads-up banner on Android instead of silently
+            // landing in the tray. Combined with silent:false + vibrate
+            // in the SW, the OS treats it as a full "alerting" event.
+            urgency: "high",
+          }
         );
       } catch (err: unknown) {
         const e = err as { statusCode?: number };
