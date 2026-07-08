@@ -21,7 +21,7 @@
  * so old caches get purged on activate.
  */
 
-const CACHE_VERSION = "leadboard-shell-v4";
+const CACHE_VERSION = "leadboard-shell-v5";
 
 // File extensions that are safe to cache long-term. Static assets the user
 // downloaded once shouldn't redownload on every cold start of the TWA.
@@ -53,6 +53,15 @@ self.addEventListener("install", (event) => {
       await self.skipWaiting();
     })()
   );
+});
+
+// Let a page force this SW to skip the "waiting" state and take control
+// immediately after a deploy. The registrar posts this message right after
+// register().update() so the new SW never has to wait for a navigation.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {
