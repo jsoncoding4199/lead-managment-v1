@@ -1512,62 +1512,90 @@ function ContactRow({
     );
   }
 
+  const copyBtn = (
+    <button
+      type="button"
+      onClick={copy}
+      className={cn(
+        "grid h-7 w-7 place-items-center rounded-md border text-[11px] transition-colors",
+        copied
+          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+          : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+      )}
+      title={copied ? "Copied ✓" : `Copy ${label.toLowerCase()}`}
+      aria-label={`Copy ${label}`}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+
+  const phoneBtns = phone && digits && (
+    <>
+      <a
+        href={`tel:${digits}`}
+        className="grid h-7 w-7 place-items-center rounded-md border border-brand-200 bg-white text-brand-700 hover:bg-brand-50"
+        title="Call"
+        aria-label="Call this number"
+      >
+        <Phone className="h-3.5 w-3.5" />
+      </a>
+      <a
+        href={`https://wa.me/${digits}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="grid h-7 w-7 place-items-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+        title="Open in WhatsApp"
+        aria-label="WhatsApp this number"
+      >
+        <MessageCircle className="h-3.5 w-3.5" />
+      </a>
+    </>
+  );
+
+  const editBtn = editable && (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(value);
+        setEditing(true);
+      }}
+      className="grid h-7 w-7 place-items-center rounded-md border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+      title={`Edit ${label.toLowerCase()}`}
+      aria-label={`Edit ${label}`}
+    >
+      <Pencil className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  // Phone row: stack the buttons on their own line below the number so the
+  // full value is always readable, no matter the length. Name row keeps the
+  // single-line layout (label + value + Copy).
+  if (phone) {
+    return (
+      <div className="px-2.5 py-1.5">
+        <div className="flex items-center gap-2">
+          <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+            {label}
+          </span>
+          <span className="flex-1 break-all text-ink-800 font-medium">{value}</span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1.5">
+          {copyBtn}
+          {phoneBtns}
+          {editBtn}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 px-2.5 py-1.5">
       <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
         {label}
       </span>
       <span className="flex-1 truncate text-ink-800">{value}</span>
-      <button
-        type="button"
-        onClick={copy}
-        className={cn(
-          "grid h-7 w-7 place-items-center rounded-md border text-[11px] transition-colors",
-          copied
-            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-            : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
-        )}
-        title={copied ? "Copied ✓" : `Copy ${label.toLowerCase()}`}
-        aria-label={`Copy ${label}`}
-      >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-      </button>
-      {phone && digits && (
-        <>
-          <a
-            href={`tel:${digits}`}
-            className="grid h-7 w-7 place-items-center rounded-md border border-brand-200 bg-white text-brand-700 hover:bg-brand-50"
-            title="Call"
-            aria-label="Call this number"
-          >
-            <Phone className="h-3.5 w-3.5" />
-          </a>
-          <a
-            href={`https://wa.me/${digits}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="grid h-7 w-7 place-items-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
-            title="Open in WhatsApp"
-            aria-label="WhatsApp this number"
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-          </a>
-        </>
-      )}
-      {editable && (
-        <button
-          type="button"
-          onClick={() => {
-            setDraft(value);
-            setEditing(true);
-          }}
-          className="grid h-7 w-7 place-items-center rounded-md border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
-          title={`Edit ${label.toLowerCase()}`}
-          aria-label={`Edit ${label}`}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-      )}
+      {copyBtn}
+      {editBtn}
     </div>
   );
 }
