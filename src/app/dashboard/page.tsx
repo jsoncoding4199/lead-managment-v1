@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { LeadStatus, LeadQuality, Prisma } from "@prisma/client";
 import { requireUser, type CurrentUser } from "@/lib/auth";
@@ -99,8 +100,35 @@ export default async function DashboardPage({
 }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const tab: DashTab = parseTab(sp.tab);
   const q = (sp.q ?? "").trim();
+
+  // Master's default landing = the "AH" private tab (first-available
+  // fallback: any active private-channel user). Runs only when master
+  // hits /dashboard with no explicit tab param and no search — so once
+  // they navigate to any other tab, this doesn't fight them.
+  if (user.role === "MASTER" && !sp.tab && !q) {
+    const ah = await prisma.user.findFirst({
+      where: {
+        active: true,
+        role: "USER",
+        isPrivateChannel: true,
+        displayName: { equals: "AH", mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+    const preferred =
+      ah ??
+      (await prisma.user.findFirst({
+        where: { active: true, role: "USER", isPrivateChannel: true },
+        select: { id: true },
+        orderBy: { displayName: "asc" },
+      }));
+    if (preferred) {
+      redirect(`/dashboard?tab=${privateChannelTabKey(preferred.id)}`);
+    }
+  }
+
+  const tab: DashTab = parseTab(sp.tab);
 
   // Resolve private-channel user (if any) up front so we can label the
   // header subtitle and gate the composer.
@@ -111,6 +139,14 @@ export default async function DashboardPage({
       select: { id: true, displayName: true },
     });
   }
+
+  // Every active user — creator can assign the fresh lead to anyone,
+  // including master. Fetched once, threaded into every composer instance.
+  const assignableUsers = await prisma.user.findMany({
+    where: { active: true },
+    select: { id: true, displayName: true, role: true },
+    orderBy: [{ role: "asc" }, { displayName: "asc" }],
+  });
 
   return (
     <div className="space-y-5 md:space-y-8 max-w-6xl">
@@ -151,12 +187,15 @@ export default async function DashboardPage({
           see it on Fresh (public composer). Master can drop a lead from
           any tab: on a private tab the lead lands in that channel, on any
           static tab it goes into the public Fresh pipeline. */}
-      {!q && tab.kind === "static" && tab.key === "fresh" && <LeadComposer />}
+      {!q && tab.kind === "static" && tab.key === "fresh" && (
+        <LeadComposer assignableUsers={assignableUsers} />
+      )}
       {!q && tab.kind === "static" && tab.key !== "fresh" && user.role === "MASTER" && (
-        <LeadComposer />
+        <LeadComposer assignableUsers={assignableUsers} />
       )}
       {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && (
         <LeadComposer
+          assignableUsers={assignableUsers}
           privateChannelUserId={privateUser.id}
           privateChannelLabel={
             privateUser.id === user.id ? "my inbox" : privateUser.displayName

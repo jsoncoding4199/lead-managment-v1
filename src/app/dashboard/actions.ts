@@ -79,6 +79,10 @@ const CreateSchema = z.object({
   // than a new LeadStatus enum value — "Called before" / "WhatsApp before"
   // aren't pipeline progress, they're notes for the assignee.
   initialNote: z.enum(["CALLED_BEFORE", "WHATSAPP_BEFORE"]).optional(),
+  // Optional list of userIds to assign to the lead right at creation. Any
+  // active user (including master) is a valid target. Caps at 8 to guard
+  // against a broken client posting an unbounded list.
+  assignedUserIds: z.array(z.coerce.number().int().positive()).max(8).optional(),
 });
 
 const ContactStateValues = ["NEW", "CALLED_BEFORE", "WHATSAPP_BEFORE"] as const;
@@ -117,6 +121,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     content: formData.get("content"),
     privateChannelUserId: rawPrivate || undefined,
     initialNote: formData.get("initialNote") || undefined,
+    assignedUserIds: formData.getAll("assignedUserIds").filter(Boolean),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
@@ -140,14 +145,41 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     }
   }
 
-  const lead = await prisma.lead.create({
-    data: {
-      content: parsed.data.content,
-      status: "NEW",
-      contactState: parsed.data.initialNote ?? "NEW",
-      privateChannelUserId,
-      createdById: user.id,
-    },
+  // Dedupe + validate assignee list. Ignore silently rather than 400 —
+  // the composer picker only shows active users, so anything bogus is a
+  // stale client cache.
+  const requestedAssignees = Array.from(new Set(parsed.data.assignedUserIds ?? []));
+  const validAssignees =
+    requestedAssignees.length === 0
+      ? []
+      : (
+          await prisma.user.findMany({
+            where: { id: { in: requestedAssignees }, active: true },
+            select: { id: true },
+          })
+        ).map((u) => u.id);
+
+  const lead = await prisma.$transaction(async (tx) => {
+    const created = await tx.lead.create({
+      data: {
+        content: parsed.data.content,
+        status: "NEW",
+        contactState: parsed.data.initialNote ?? "NEW",
+        privateChannelUserId,
+        createdById: user.id,
+      },
+    });
+    if (validAssignees.length > 0) {
+      await tx.leadAssignment.createMany({
+        data: validAssignees.map((uid) => ({
+          leadId: created.id,
+          userId: uid,
+          assignedById: user.id,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    return created;
   });
 
   revalidatePath("/dashboard");
@@ -165,19 +197,33 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
           tag: `lead-${lead.id}`,
         },
       });
-      return;
+    } else {
+      await sendPushToUsers({
+        userIds: await getAllUserIds(),
+        excludeUserId: user.id,
+        payload: {
+          title: "New lead",
+          body: `${user.displayName} added lead #${lead.id} in Fresh`,
+          url: `/dashboard/leads/${lead.id}`,
+          kind: "lead",
+          tag: `lead-${lead.id}`,
+        },
+      });
     }
-    await sendPushToUsers({
-      userIds: await getAllUserIds(),
-      excludeUserId: user.id,
-      payload: {
-        title: "New lead",
-        body: `${user.displayName} added lead #${lead.id} in Fresh`,
-        url: `/dashboard/leads/${lead.id}`,
-        kind: "lead",
-        tag: `lead-${lead.id}`,
-      },
-    });
+    // Focused push to each assignee: "you were assigned lead #N".
+    if (validAssignees.length > 0) {
+      await sendPushToUsers({
+        userIds: validAssignees,
+        excludeUserId: user.id,
+        payload: {
+          title: "Lead assigned to you",
+          body: `${user.displayName} assigned you lead #${lead.id}`,
+          url: `/dashboard/leads/${lead.id}`,
+          kind: "lead",
+          tag: `lead-${lead.id}-assign`,
+        },
+      });
+    }
   });
 }
 
