@@ -126,18 +126,17 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   if (privateChannelUserId !== null && user.role !== "MASTER") {
     return { error: "Only the master can create leads in private channels." };
   }
-  if (privateChannelUserId !== null) {
-    // Master can drop a lead into their own inbox; otherwise verify the
-    // target is actually a private-channel user — defends against
-    // arbitrary userIds posted from the client.
-    if (privateChannelUserId !== user.id) {
-      const target = await prisma.user.findUnique({
-        where: { id: privateChannelUserId },
-        select: { id: true, isPrivateChannel: true, active: true },
-      });
-      if (!target || !target.isPrivateChannel || !target.active) {
-        return { error: "Pick a valid private-channel user." };
-      }
+  if (privateChannelUserId !== null && privateChannelUserId !== user.id) {
+    // Master can drop a lead into their own inbox unconditionally. For any
+    // other target, just require an active user — trust master's routing
+    // rather than gating on isPrivateChannel (which may be off for AH-style
+    // pipelines managed manually).
+    const target = await prisma.user.findUnique({
+      where: { id: privateChannelUserId },
+      select: { id: true, active: true },
+    });
+    if (!target || !target.active) {
+      return { error: "Pick a valid user." };
     }
   }
 
