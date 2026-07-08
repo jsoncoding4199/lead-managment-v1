@@ -30,7 +30,6 @@ export function LeadComposer({
   const [pending, startTransition] = useTransition();
   const [assignees, setAssignees] = useState<Set<number>>(new Set());
   const [name, setName] = useState("");
-  const [ic, setIc] = useState("");
   const [phone, setPhone] = useState("");
   const [autofilled, setAutofilled] = useState<null | string[]>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -52,27 +51,19 @@ export function LeadComposer({
     };
     const parsedName =
       line(["name", "nama", "full name", "customer"]) ?? undefined;
-    const parsedIc =
-      line(["ic", "nric", "ic number", "no ic", "identity"]) ??
-      text.match(/\b\d{6}[-\s]?\d{2}[-\s]?\d{4}\b/)?.[0] ??
-      undefined;
     const parsedPhone =
       line(["phone", "tel", "mobile", "hp", "no telefon", "no", "contact"]) ??
       text.match(/(?:\+?60|0)[\s-]?\d{1,2}[\s-]?\d{3,4}[\s-]?\d{4}/)?.[0] ??
       undefined;
-    return { parsedName, parsedIc, parsedPhone };
+    return { parsedName, parsedPhone };
   };
 
   const autofillFromText = (text: string) => {
-    const { parsedName, parsedIc, parsedPhone } = parseContactFromText(text);
+    const { parsedName, parsedPhone } = parseContactFromText(text);
     const filled: string[] = [];
     if (parsedName && !name) {
       setName(parsedName);
       filled.push("Name");
-    }
-    if (parsedIc && !ic) {
-      setIc(parsedIc);
-      filled.push("IC");
     }
     if (parsedPhone && !phone) {
       setPhone(parsedPhone);
@@ -133,7 +124,6 @@ export function LeadComposer({
         formRef.current?.reset();
         setAssignees(new Set());
         setName("");
-        setIc("");
         setPhone("");
         setAutofilled(null);
         setOpen(false);
@@ -176,7 +166,7 @@ export function LeadComposer({
           </p>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
         <label className="block">
           <span className="label">Name</span>
           <input
@@ -186,18 +176,6 @@ export function LeadComposer({
             onChange={(e) => setName(e.target.value)}
             autoComplete="off"
             placeholder="Jane Doe"
-            className="input h-11"
-          />
-        </label>
-        <label className="block">
-          <span className="label">IC</span>
-          <input
-            type="text"
-            name="ic"
-            value={ic}
-            onChange={(e) => setIc(e.target.value)}
-            autoComplete="off"
-            placeholder="880101-14-5566"
             className="input h-11"
           />
         </label>

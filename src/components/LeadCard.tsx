@@ -46,7 +46,6 @@ type Lead = {
   id: number;
   content: string;
   name?: string | null;
-  ic?: string | null;
   phone?: string | null;
   remark?: string | null;
   status: LeadStatus;
@@ -343,10 +342,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         </button>
       </header>
 
-      {(lead.name || lead.ic || lead.phone) && (
+      {(lead.name || lead.phone) && (
         <ContactRows
           name={lead.name ?? null}
-          ic={lead.ic ?? null}
           phone={lead.phone ?? null}
         />
       )}
@@ -1383,17 +1381,14 @@ function ReminderSheet({
  */
 function ContactRows({
   name,
-  ic,
   phone,
 }: {
   name: string | null;
-  ic: string | null;
   phone: string | null;
 }) {
   return (
     <div className="mt-3 rounded-lg border border-ink-100 bg-white divide-y divide-ink-100 text-[12px]">
       {name && <ContactRow label="Name" value={name} />}
-      {ic && <ContactRow label="IC" value={ic} />}
       {phone && <ContactRow label="Phone" value={phone} phone />}
     </div>
   );
