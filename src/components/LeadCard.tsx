@@ -110,13 +110,13 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
 
   // Lock body scroll while any portal modal is open.
   useEffect(() => {
-    if (!menuOpen && !assignOpen && !qualityOpen && !dropOpen && !reassignOpen) return;
+    if (!menuOpen && !assignOpen && !qualityOpen && !dropOpen && !reassignOpen && !reminderOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [menuOpen, assignOpen, qualityOpen, dropOpen, reassignOpen]);
+  }, [menuOpen, assignOpen, qualityOpen, dropOpen, reassignOpen, reminderOpen]);
 
   const setContactState = (state: string) => {
     setError(null);
@@ -519,85 +519,43 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
 
           {/* Personal follow-up reminder. Any user w/ access sets their own; */}
           {/* cron sweeps due rows every 5 min and pushes to the owner. */}
-          <div className="relative">
-            <button
-              onClick={() => setReminderOpen((v) => !v)}
-              disabled={pending}
-              className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium disabled:opacity-60",
-                lead.myReminderAt
-                  ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
-                  : "border border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
-              )}
-              title={
-                lead.myReminderAt
-                  ? `Reminder set for ${formatDateTime(lead.myReminderAt)}`
-                  : "Set a follow-up reminder"
-              }
-            >
-              <BellRing className="h-3 w-3" />
-              {lead.myReminderAt
-                ? `In ${remindersRemainingLabel(lead.myReminderAt)}`
-                : "Remind"}
-            </button>
-            {reminderOpen && (
-              <div
-                className="absolute right-0 top-8 z-20 w-56 rounded-lg border border-ink-200 bg-white p-3 shadow-lift"
-                onMouseLeave={() => setReminderOpen(false)}
-              >
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
-                  Remind me in
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <select
-                    value={reminderHours}
-                    onChange={(e) => setReminderHours(Number(e.target.value))}
-                    className="flex-1 rounded-md border border-ink-200 bg-white px-2 py-1 text-xs text-ink-800"
-                  >
-                    {[0, 1, 2, 3, 4].map((h) => (
-                      <option key={h} value={h}>
-                        {h} h
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={reminderMinutes}
-                    onChange={(e) => setReminderMinutes(Number(e.target.value))}
-                    className="flex-1 rounded-md border border-ink-200 bg-white px-2 py-1 text-xs text-ink-800"
-                  >
-                    {[0, 15, 30, 45].map((m) => (
-                      <option key={m} value={m}>
-                        {m} m
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={() => {
-                    const total = reminderHours * 60 + reminderMinutes;
-                    if (total <= 0) return;
-                    setReminder(total);
-                  }}
-                  disabled={reminderHours * 60 + reminderMinutes <= 0}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-md bg-brand-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-                >
-                  <BellRing className="h-3 w-3" />
-                  Set reminder
-                </button>
-                {lead.myReminderAt && (
-                  <button
-                    onClick={() => setReminder(0)}
-                    className="mt-1 flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 bg-white px-2 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                  >
-                    <X className="h-3 w-3" />
-                    Clear reminder
-                  </button>
-                )}
-              </div>
+          {/* Panel is portaled to <body> so it can't hide behind another */}
+          {/* card in the grid. */}
+          <button
+            onClick={() => setReminderOpen(true)}
+            disabled={pending}
+            className={cn(
+              "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium disabled:opacity-60",
+              lead.myReminderAt
+                ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
+                : "border border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
             )}
-          </div>
+            title={
+              lead.myReminderAt
+                ? `Reminder set for ${formatDateTime(lead.myReminderAt)}`
+                : "Set a follow-up reminder"
+            }
+          >
+            <BellRing className="h-3 w-3" />
+            {lead.myReminderAt
+              ? `In ${remindersRemainingLabel(lead.myReminderAt)}`
+              : "Remind"}
+          </button>
         </div>
       </footer>
+
+      {reminderOpen && (
+        <ReminderSheet
+          leadId={lead.id}
+          currentAt={lead.myReminderAt ?? null}
+          hours={reminderHours}
+          minutes={reminderMinutes}
+          onHoursChange={setReminderHours}
+          onMinutesChange={setReminderMinutes}
+          onSave={(total) => setReminder(total)}
+          onClose={() => setReminderOpen(false)}
+        />
+      )}
 
       {error && (
         <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -1262,6 +1220,141 @@ function ReassignSheet({
               Reassign
             </button>
           </div>
+        </div>
+      </div>
+    </div>,
+    portalNode
+  );
+}
+
+/**
+ * Compact mini-modal for setting a personal follow-up reminder.
+ * Rendered via createPortal at document.body so nothing in the lead-card
+ * grid can ever occlude it.
+ */
+function ReminderSheet({
+  leadId,
+  currentAt,
+  hours,
+  minutes,
+  onHoursChange,
+  onMinutesChange,
+  onSave,
+  onClose,
+}: {
+  leadId: number;
+  currentAt: string | null;
+  hours: number;
+  minutes: number;
+  onHoursChange: (h: number) => void;
+  onMinutesChange: (m: number) => void;
+  onSave: (totalMinutes: number) => void;
+  onClose: () => void;
+}) {
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setPortalNode(document.body);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  if (!portalNode) return null;
+
+  const total = hours * 60 + minutes;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
+      <button
+        aria-label="Close reminder menu"
+        onClick={onClose}
+        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-in"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Set reminder"
+        className="relative w-full md:w-[360px] bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="md:hidden flex justify-center pt-2">
+          <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
+        </div>
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <div>
+            <h3 className="text-base font-semibold text-ink-900">
+              Remind me — lead #{leadId}
+            </h3>
+            <p className="text-xs text-ink-500 mt-0.5">
+              You&apos;ll get a push when the time is up.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-5 pb-5">
+          <div className="flex items-center gap-3">
+            <label className="flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-500 mb-1">
+                Hours
+              </span>
+              <select
+                value={hours}
+                onChange={(e) => onHoursChange(Number(e.target.value))}
+                className="w-full h-11 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-800"
+              >
+                {[0, 1, 2, 3, 4].map((h) => (
+                  <option key={h} value={h}>
+                    {h} h
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-500 mb-1">
+                Minutes
+              </span>
+              <select
+                value={minutes}
+                onChange={(e) => onMinutesChange(Number(e.target.value))}
+                className="w-full h-11 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-800"
+              >
+                {[0, 15, 30, 45].map((m) => (
+                  <option key={m} value={m}>
+                    {m} m
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <button
+            onClick={() => {
+              if (total <= 0) return;
+              onSave(total);
+            }}
+            disabled={total <= 0}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            <BellRing className="h-4 w-4" />
+            Set reminder
+          </button>
+          {currentAt && (
+            <button
+              onClick={() => onSave(0)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
+            >
+              <X className="h-4 w-4" />
+              Clear reminder
+            </button>
+          )}
         </div>
       </div>
     </div>,
