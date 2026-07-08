@@ -76,6 +76,7 @@ model User {
   remarks             LeadRemark[]
   privateChannelLeads Lead[]                 @relation("PrivateChannelOwner")
   acknowledgedLeads   Lead[]                 @relation("LeadAckedBy")
+  leadReminders       LeadReminder[]
 }
 
 // Per-user remark on a lead. Replaces the single Lead.remark string with a
@@ -169,6 +170,7 @@ model Lead {
   history     LeadStatusChange[]
   assignments LeadAssignment[]
   remarks     LeadRemark[]
+  reminders   LeadReminder[]
 
   @@index([status])
   @@index([createdById])
@@ -196,6 +198,23 @@ model LeadAssignment {
 model AppSettings {
   id        Int @id @default(1)
   maxPickup Int @default(2)
+}
+
+// Per-user "remind me to follow up this lead in N hours" alarm. Cron sweeps
+// LeadReminder rows every 5 minutes: rows with remindAt <= now trigger a
+// push notification to the owning user, then get deleted.
+model LeadReminder {
+  id        Int      @id @default(autoincrement())
+  leadId    Int
+  userId    Int
+  remindAt  DateTime
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, userId])
+  @@index([remindAt])
 }
 
 model LeadStatusChange {

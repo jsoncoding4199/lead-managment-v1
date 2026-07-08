@@ -35,6 +35,7 @@ import {
   pingLeadAction,
   ackLeadAction,
   masterOkLeadAction,
+  setReminderAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -52,6 +53,7 @@ type Lead = {
   privateChannelUserId?: number | null;
   ackedAt?: string | null;
   ackedBy?: { id: number; displayName: string } | null;
+  myReminderAt?: string | null;
 };
 
 const CONTACT_STATE_OPTIONS: { value: string; label: string }[] = [
@@ -63,6 +65,18 @@ const CONTACT_STATE_OPTIONS: { value: string; label: string }[] = [
 function contactStateLabel(state: string | undefined): string {
   const hit = CONTACT_STATE_OPTIONS.find((o) => o.value === state);
   return hit?.label ?? "New";
+}
+
+/** "45m", "2h", "3h 10m" — best-effort short label of time until remindAt. */
+function remindersRemainingLabel(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return "now";
+  const totalMinutes = Math.floor(ms / 60_000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }
 
 type Viewer = { id: number; role: "MASTER" | "USER" };
@@ -83,6 +97,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const [dropOpen, setDropOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [contactStateOpen, setContactStateOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   // ponytail: per-mount only — a page refresh re-enables Ping/OK. Fine;
   // these are stateless notifications, not tracked acknowledgements.
   const [pinged, setPinged] = useState(false);
@@ -220,6 +235,18 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       const res = await ackLeadAction(fd);
       if (res?.error) setError(res.error);
       else setAcked(true);
+    });
+  };
+
+  const setReminder = (hours: 0 | 1 | 2 | 3 | 4) => {
+    setError(null);
+    setReminderOpen(false);
+    const fd = new FormData();
+    fd.set("leadId", String(lead.id));
+    fd.set("hours", String(hours));
+    startTransition(async () => {
+      const res = await setReminderAction(fd);
+      if (res?.error) setError(res.error);
     });
   };
 
@@ -487,6 +514,57 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
               {acked || lead.ackedBy?.id === viewer.id ? "Seen ✓" : "OK"}
             </button>
           )}
+
+          {/* Personal follow-up reminder. Any user w/ access sets their own; */}
+          {/* cron sweeps due rows every 5 min and pushes to the owner. */}
+          <div className="relative">
+            <button
+              onClick={() => setReminderOpen((v) => !v)}
+              disabled={pending}
+              className={cn(
+                "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium disabled:opacity-60",
+                lead.myReminderAt
+                  ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
+                  : "border border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
+              )}
+              title={
+                lead.myReminderAt
+                  ? `Reminder set for ${formatDateTime(lead.myReminderAt)}`
+                  : "Set a follow-up reminder"
+              }
+            >
+              <BellRing className="h-3 w-3" />
+              {lead.myReminderAt
+                ? `In ${remindersRemainingLabel(lead.myReminderAt)}`
+                : "Remind"}
+            </button>
+            {reminderOpen && (
+              <div
+                className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-ink-200 bg-white p-1 shadow-lift"
+                onMouseLeave={() => setReminderOpen(false)}
+              >
+                {([1, 2, 3, 4] as const).map((h) => (
+                  <button
+                    key={h}
+                    onClick={() => setReminder(h)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-800 hover:bg-brand-50"
+                  >
+                    <BellRing className="h-3 w-3 text-brand-600" />
+                    In {h} hour{h > 1 ? "s" : ""}
+                  </button>
+                ))}
+                {lead.myReminderAt && (
+                  <button
+                    onClick={() => setReminder(0)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50"
+                  >
+                    <X className="h-3 w-3" />
+                    Clear reminder
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </footer>
 

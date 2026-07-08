@@ -152,10 +152,12 @@ export default async function DashboardPage({
           is isPrivateChannel:true, which master isn't — leads only arrive
           in master's inbox via reassign. */}
       {!q && tab.kind === "static" && tab.key === "fresh" && <LeadComposer />}
-      {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && privateUser.id !== user.id && (
+      {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && (
         <LeadComposer
           privateChannelUserId={privateUser.id}
-          privateChannelLabel={privateUser.displayName}
+          privateChannelLabel={
+            privateUser.id === user.id ? "my inbox" : privateUser.displayName
+          }
         />
       )}
 
@@ -192,6 +194,7 @@ type LeadView = {
   ackedBy: { id: number; displayName: string } | null;
   createdBy: { id: number; displayName: string };
   assignees: { id: number; displayName: string }[];
+  myReminderAt: string | null;
 };
 
 function freshOrMarketVisibility(user: CurrentUser): Prisma.LeadWhereInput {
@@ -295,7 +298,7 @@ async function GlobalSearchResults({ q, user }: { q: string; user: CurrentUser }
     );
   }
 
-  const leads = matches.map(toLeadView);
+  const leads = await toLeadViewsForUser(matches, user.id);
 
   return (
     <div className="space-y-3">
@@ -386,7 +389,7 @@ async function LeadsSection({
     if (channelLeads.length === 0) {
       return <ChannelEmpty label={privateUser.displayName} hasQuery={!!q} />;
     }
-    const leads = channelLeads.map(toLeadView);
+    const leads = await toLeadViewsForUser(channelLeads, user.id);
     return (
       <ChannelLeadList
         label={privateUser.displayName}
@@ -435,7 +438,7 @@ async function LeadsSection({
     if (picked.length === 0) {
       return <EmptyState tab="picks" hasQuery={!!q} />;
     }
-    const leads = picked.map(toLeadView);
+    const leads = await toLeadViewsForUser(picked, user.id);
     return user.role === "MASTER" ? (
       <PicksByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />
     ) : (
@@ -475,7 +478,7 @@ async function LeadsSection({
     if (statusLeads.length === 0) {
       return <EmptyState tab={tab.key} hasQuery={!!q} />;
     }
-    const leads = statusLeads.map(toLeadView);
+    const leads = await toLeadViewsForUser(statusLeads, user.id);
     return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
   }
 
@@ -509,7 +512,7 @@ async function LeadsSection({
     if (filtered.length === 0) {
       return <EmptyState tab="archive" hasQuery={!!q} />;
     }
-    const leads = filtered.map(toLeadView);
+    const leads = await toLeadViewsForUser(filtered, user.id);
     return <ArchiveByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
   }
 
@@ -560,7 +563,7 @@ async function LeadsSection({
     return <EmptyState tab={tab.key} hasQuery={!!q} />;
   }
 
-  const leads = visibleLeads.map(toLeadView);
+  const leads = await toLeadViewsForUser(visibleLeads, user.id);
   return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
 }
 
@@ -601,7 +604,7 @@ type RawLead = {
   assignments: { user: { id: number; displayName: string } }[];
 };
 
-function toLeadView(l: RawLead): LeadView {
+function toLeadView(l: RawLead, myReminderAt: Date | null = null): LeadView {
   return {
     id: l.id,
     content: l.content,
@@ -616,7 +619,33 @@ function toLeadView(l: RawLead): LeadView {
     ackedBy: l.ackedBy,
     createdBy: l.createdBy,
     assignees: l.assignments.map((a) => a.user),
+    myReminderAt: myReminderAt ? myReminderAt.toISOString() : null,
   };
+}
+
+/**
+ * Batch-fetch the current user's reminders for a set of leads, return
+ * a lookup map. Ponytail: one query per rendered lead list, keyed by leadId.
+ */
+async function loadMyReminders(
+  leadIds: number[],
+  userId: number
+): Promise<Map<number, Date>> {
+  if (leadIds.length === 0) return new Map();
+  const rows = await prisma.leadReminder.findMany({
+    where: { leadId: { in: leadIds }, userId },
+    select: { leadId: true, remindAt: true },
+  });
+  return new Map(rows.map((r) => [r.leadId, r.remindAt]));
+}
+
+/** Attach `myReminderAt` to each lead by looking up the map from loadMyReminders. */
+async function toLeadViewsForUser(
+  raws: RawLead[],
+  userId: number
+): Promise<LeadView[]> {
+  const map = await loadMyReminders(raws.map((r) => r.id), userId);
+  return raws.map((r) => toLeadView(r, map.get(r.id) ?? null));
 }
 
 function ChannelLockedNotice({ label }: { label: string }) {

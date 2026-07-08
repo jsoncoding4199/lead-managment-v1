@@ -127,14 +127,17 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     return { error: "Only the master can create leads in private channels." };
   }
   if (privateChannelUserId !== null) {
-    // Verify the target is actually a private-channel user — defends
-    // against arbitrary userIds posted from the client.
-    const target = await prisma.user.findUnique({
-      where: { id: privateChannelUserId },
-      select: { id: true, isPrivateChannel: true, active: true },
-    });
-    if (!target || !target.isPrivateChannel || !target.active) {
-      return { error: "Pick a valid private-channel user." };
+    // Master can drop a lead into their own inbox; otherwise verify the
+    // target is actually a private-channel user — defends against
+    // arbitrary userIds posted from the client.
+    if (privateChannelUserId !== user.id) {
+      const target = await prisma.user.findUnique({
+        where: { id: privateChannelUserId },
+        select: { id: true, isPrivateChannel: true, active: true },
+      });
+      if (!target || !target.isPrivateChannel || !target.active) {
+        return { error: "Pick a valid private-channel user." };
+      }
     }
   }
 
@@ -1111,6 +1114,49 @@ export async function ackLeadAction(formData: FormData): Promise<{ error?: strin
       },
     });
   });
+}
+
+/**
+ * Set (or clear) a personal follow-up reminder on a lead. `hours` must be
+ * one of 1|2|3|4, or 0 to clear. Anyone with access to the lead can set
+ * their own reminder — it's per-user (unique on leadId,userId), so users
+ * don't stomp on each other's alarms.
+ */
+const ReminderSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  hours: z.coerce.number().int().min(0).max(4),
+});
+
+export async function setReminderAction(
+  formData: FormData
+): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = ReminderSchema.safeParse({
+    leadId: formData.get("leadId"),
+    hours: formData.get("hours"),
+  });
+  if (!parsed.success) return { error: "Invalid reminder." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
+  if (!meta) return { error: "Lead not found." };
+
+  if (parsed.data.hours === 0) {
+    await prisma.leadReminder.deleteMany({
+      where: { leadId: parsed.data.leadId, userId: user.id },
+    });
+  } else {
+    const remindAt = new Date(Date.now() + parsed.data.hours * 3_600_000);
+    await prisma.leadReminder.upsert({
+      where: {
+        leadId_userId: { leadId: parsed.data.leadId, userId: user.id },
+      },
+      update: { remindAt },
+      create: { leadId: parsed.data.leadId, userId: user.id, remindAt },
+    });
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
 
 /** Master taps OK → the user who put in the lead gets a confirmation. */
