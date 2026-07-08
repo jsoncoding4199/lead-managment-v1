@@ -119,6 +119,39 @@ export async function setContactStateAction(
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
 
+/**
+ * Inline edit of the structured phone field on an existing lead. Any user
+ * with access to the lead can fix a wrong number without opening the
+ * detail page. Empty string clears the field (falls back to phone extracted
+ * from the free-text content).
+ */
+const SetPhoneSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  phone: z.string().trim().max(50),
+});
+
+export async function setLeadPhoneAction(
+  formData: FormData
+): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = SetPhoneSchema.safeParse({
+    leadId: formData.get("leadId"),
+    phone: formData.get("phone") ?? "",
+  });
+  if (!parsed.success) return { error: "Invalid phone." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
+  if (!meta) return { error: "Lead not found." };
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { phone: parsed.data.phone || null },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
 export async function createLeadAction(formData: FormData): Promise<{ error?: string } | void> {
   const user = await requireUser();
   const rawPrivate = formData.get("privateChannelUserId");

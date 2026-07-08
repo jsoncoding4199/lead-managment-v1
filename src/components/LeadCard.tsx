@@ -21,6 +21,7 @@ import {
   Copy,
   Phone,
   MessageCircle,
+  Pencil,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
@@ -39,6 +40,7 @@ import {
   ackLeadAction,
   masterOkLeadAction,
   setReminderAction,
+  setLeadPhoneAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -344,6 +346,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
 
       {(lead.name || lead.phone || extractPhone(lead.content)) && (
         <ContactRows
+          leadId={lead.id}
           name={lead.name ?? null}
           phone={lead.phone || extractPhone(lead.content)}
         />
@@ -1391,30 +1394,43 @@ function extractPhone(text: string): string | null {
 }
 
 function ContactRows({
+  leadId,
   name,
   phone,
 }: {
+  leadId: number;
   name: string | null;
   phone: string | null;
 }) {
   return (
     <div className="mt-3 rounded-lg border border-ink-100 bg-white divide-y divide-ink-100 text-[12px]">
-      {name && <ContactRow label="Name" value={name} />}
-      {phone && <ContactRow label="Phone" value={phone} phone />}
+      {name && <ContactRow leadId={leadId} label="Name" value={name} />}
+      {phone && (
+        <ContactRow leadId={leadId} label="Phone" value={phone} phone editable />
+      )}
     </div>
   );
 }
 
 function ContactRow({
+  leadId,
   label,
   value,
   phone,
+  editable,
 }: {
+  leadId: number;
   label: string;
   value: string;
   phone?: boolean;
+  editable?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, startSave] = useTransition();
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(value);
@@ -1426,6 +1442,76 @@ function ContactRow({
   };
   // Digits-only phone for tel: and wa.me. wa.me needs no + prefix.
   const digits = phone ? value.replace(/\D+/g, "") : "";
+
+  const save = () => {
+    setSaveError(null);
+    const fd = new FormData();
+    fd.set("leadId", String(leadId));
+    fd.set("phone", draft.trim());
+    startSave(async () => {
+      const res = await setLeadPhoneAction(fd);
+      if (res?.error) {
+        setSaveError(res.error);
+        return;
+      }
+      setEditing(false);
+    });
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 px-2.5 py-1.5">
+        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+          {label}
+        </span>
+        <input
+          type="tel"
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+            if (e.key === "Escape") {
+              setDraft(value);
+              setEditing(false);
+              setSaveError(null);
+            }
+          }}
+          disabled={saving}
+          className="flex-1 min-w-0 rounded-md border border-ink-200 bg-white px-2 py-1 text-[12px] text-ink-800"
+          placeholder="+60 12-345 6789"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="grid h-7 w-7 place-items-center rounded-md border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+          title="Save"
+          aria-label="Save phone"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(value);
+            setEditing(false);
+            setSaveError(null);
+          }}
+          disabled={saving}
+          className="grid h-7 w-7 place-items-center rounded-md border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 disabled:opacity-60"
+          title="Cancel"
+          aria-label="Cancel edit"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+        {saveError && (
+          <span className="w-full text-[11px] text-rose-600">{saveError}</span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 px-2.5 py-1.5">
       <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
@@ -1467,6 +1553,20 @@ function ContactRow({
             <MessageCircle className="h-3.5 w-3.5" />
           </a>
         </>
+      )}
+      {editable && (
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(value);
+            setEditing(true);
+          }}
+          className="grid h-7 w-7 place-items-center rounded-md border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+          title={`Edit ${label.toLowerCase()}`}
+          aria-label={`Edit ${label}`}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
       )}
     </div>
   );
