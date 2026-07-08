@@ -2,8 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "prisma generate && next build",
   "framework": "nextjs",
-  "regions": ["sin1"],
-  "crons": [
-    { "path": "/api/cron/reminders", "schedule": "*/5 * * * *" }
-  ]
+  "regions": ["sin1"]
 }
