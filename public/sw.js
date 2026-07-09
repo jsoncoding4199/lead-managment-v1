@@ -21,7 +21,8 @@
  * so old caches get purged on activate.
  */
 
-const CACHE_VERSION = "leadboard-shell-v5";
+const CACHE_VERSION = "leadboard-shell-v6";
+const OFFLINE_URL = "/offline";
 
 // File extensions that are safe to cache long-term. Static assets the user
 // downloaded once shouldn't redownload on every cold start of the TWA.
@@ -31,6 +32,7 @@ const PRECACHE_URLS = [
   "/manifest.webmanifest",
   "/icon.png",
   "/apple-icon.png",
+  OFFLINE_URL,
 ];
 
 self.addEventListener("install", (event) => {
@@ -118,8 +120,30 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else (HTML, server actions, etc.) → straight to network.
-  // We intentionally do NOT cache HTML to avoid cross-session staleness.
+  // Navigation requests (top-level document fetches): go straight to the
+  // network for freshness, but fall back to the precached /offline shell
+  // when the network is unreachable. Non-nav GETs (RSC payloads, etc.)
+  // fall through with no SW interception.
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req).catch(async () => {
+        const cache = await caches.open(CACHE_VERSION);
+        const cached = await cache.match(OFFLINE_URL);
+        return (
+          cached ??
+          new Response("Offline", {
+            status: 503,
+            headers: { "Content-Type": "text/plain" },
+          })
+        );
+      })
+    );
+    return;
+  }
+
+  // Everything else (RSC payloads, server actions, etc.) → straight to
+  // network. We intentionally do NOT cache HTML to avoid cross-session
+  // staleness.
 });
 
 async function cacheFirst(req) {
