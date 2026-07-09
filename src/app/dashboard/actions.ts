@@ -205,6 +205,37 @@ export async function setLeadSourceAction(
 }
 
 /**
+ * Inline edit of the structured name field on an existing lead. Any user
+ * with access can fix a mis-parsed name from the card. Empty string clears.
+ */
+const SetNameSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  name: z.string().trim().max(200),
+});
+
+export async function setLeadNameAction(
+  formData: FormData
+): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = SetNameSchema.safeParse({
+    leadId: formData.get("leadId"),
+    name: formData.get("name") ?? "",
+  });
+  if (!parsed.success) return { error: "Invalid name." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
+  if (!meta) return { error: "Lead not found." };
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { name: parsed.data.name || null },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
+/**
  * Inline edit of the structured phone field on an existing lead. Any user
  * with access to the lead can fix a wrong number without opening the
  * detail page. Empty string clears the field (falls back to phone extracted

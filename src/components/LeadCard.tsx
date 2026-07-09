@@ -43,6 +43,7 @@ import {
   masterOkLeadAction,
   setReminderAction,
   setLeadPhoneAction,
+  setLeadNameAction,
   setLeadSourceAction,
   addLeadSourceAction,
   listLeadSourcesAction,
@@ -354,7 +355,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           set it on leads that have no source yet. */}
       <div className="mt-3 rounded-lg border border-ink-100 bg-white divide-y divide-ink-100 text-[12px]">
         <SourceRow leadId={lead.id} source={lead.source ?? null} />
-        {lead.name && <ContactRow leadId={lead.id} label="Name" value={lead.name} />}
+        {lead.name && <ContactRow leadId={lead.id} label="Name" value={lead.name} editable />}
         {(lead.phone || extractPhone(lead.content)) && (
           <ContactRow
             leadId={lead.id}
@@ -1442,9 +1443,12 @@ function ContactRow({
     setSaveError(null);
     const fd = new FormData();
     fd.set("leadId", String(leadId));
-    fd.set("phone", draft.trim());
+    const isName = label === "Name";
+    fd.set(isName ? "name" : "phone", draft.trim());
     startSave(async () => {
-      const res = await setLeadPhoneAction(fd);
+      const res = isName
+        ? await setLeadNameAction(fd)
+        : await setLeadPhoneAction(fd);
       if (res?.error) {
         setSaveError(res.error);
         return;
@@ -1460,7 +1464,7 @@ function ContactRow({
           {label}
         </span>
         <input
-          type="tel"
+          type={label === "Phone" ? "tel" : "text"}
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -1474,7 +1478,7 @@ function ContactRow({
           }}
           disabled={saving}
           className="flex-1 min-w-0 rounded-md border border-ink-200 bg-white px-2 py-1 text-[12px] text-ink-800"
-          placeholder="+60 12-345 6789"
+          placeholder={label === "Phone" ? "+60 12-345 6789" : "Full name"}
         />
         <button
           type="button"

@@ -59,8 +59,24 @@ export function LeadComposer({
       const m = text.match(re);
       return m?.[1]?.trim();
     };
+    // Prefer a "Name: ..." labelled line; fall back to the first
+     // non-empty line of the paste, since Gmail leads usually have the
+     // customer's name as the very first line. Skip email addresses and
+     // lines that look like phone numbers so we don't misfire.
+    const firstLineName = (() => {
+      for (const raw of text.split(/\r?\n/)) {
+        const s = raw.trim();
+        if (!s) continue;
+        if (s.length > 60) return undefined;
+        if (/@/.test(s)) return undefined;
+        if (/^\+?\d[\d\s\-()]{5,}$/.test(s)) return undefined;
+        if (/[:：]/.test(s)) return undefined;
+        return s;
+      }
+      return undefined;
+    })();
     const parsedName =
-      line(["name", "nama", "full name", "customer"]) ?? undefined;
+      line(["name", "nama", "full name", "customer"]) ?? firstLineName ?? undefined;
     const parsedPhone =
       line(["phone", "tel", "mobile", "hp", "no telefon", "no", "contact"]) ??
       text.match(/(?:\+?60|0)[\s-]?\d{1,2}[\s-]?\d{3,4}[\s-]?\d{4}/)?.[0] ??
