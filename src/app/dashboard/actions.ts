@@ -356,6 +356,23 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
 
   revalidatePath("/dashboard");
 
+  // Build a multi-line body so Android's notification banner shows the
+  // one-line summary collapsed AND expands into the full detail block
+  // when the user drags the notification down.
+  const detailLines: string[] = [];
+  if (parsed.data.name) detailLines.push(`👤 ${parsed.data.name}`);
+  if (parsed.data.phone) detailLines.push(`📞 ${parsed.data.phone}`);
+  const contentSnippet = parsed.data.content
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+  if (contentSnippet && detailLines.length === 0) {
+    // Only fall back to the raw content blob when there are no structured
+    // fields — otherwise the snippet would duplicate the same info.
+    detailLines.push(contentSnippet);
+  }
+  const detailBlock = detailLines.length > 0 ? `\n\n${detailLines.join("\n")}` : "";
+
   after(async () => {
     if (privateChannelUserId !== null) {
       await sendPushToUsers({
@@ -363,7 +380,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         excludeUserId: user.id,
         payload: {
           title: "New private-channel lead",
-          body: `Master added lead #${lead.id} to your private pipeline`,
+          body: `Master added lead #${lead.id} to your private pipeline${detailBlock}`,
           url: `/dashboard/leads/${lead.id}`,
           kind: "lead",
           tag: `lead-${lead.id}`,
@@ -375,7 +392,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         excludeUserId: user.id,
         payload: {
           title: "New lead",
-          body: `${user.displayName} added lead #${lead.id} in Fresh`,
+          body: `${user.displayName} added lead #${lead.id} in Fresh${detailBlock}`,
           url: `/dashboard/leads/${lead.id}`,
           kind: "lead",
           tag: `lead-${lead.id}`,
@@ -389,7 +406,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         excludeUserId: user.id,
         payload: {
           title: "Lead assigned to you",
-          body: `${user.displayName} assigned you lead #${lead.id}`,
+          body: `${user.displayName} assigned you lead #${lead.id}${detailBlock}`,
           url: `/dashboard/leads/${lead.id}`,
           kind: "lead",
           tag: `lead-${lead.id}-assign`,
