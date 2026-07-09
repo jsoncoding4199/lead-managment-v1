@@ -77,6 +77,8 @@ const CreateSchema = z.object({
   name: z.string().trim().max(200).optional(),
   ic: z.string().trim().max(50).optional(),
   phone: z.string().trim().max(50).optional(),
+  // Optional LeadSource pointer. Any positive id must exist in LeadSource.
+  sourceId: z.coerce.number().int().positive().optional(),
   // Optional pointer to a private channel user. Master-only; everyone
   // else's value is ignored. Empty / 0 means a public lead.
   privateChannelUserId: z.coerce.number().int().positive().optional(),
@@ -243,6 +245,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     name: formData.get("name") || undefined,
     ic: formData.get("ic") || undefined,
     phone: formData.get("phone") || undefined,
+    sourceId: formData.get("sourceId") || undefined,
     privateChannelUserId: rawPrivate || undefined,
     initialNote: formData.get("initialNote") || undefined,
     assignedUserIds: formData.getAll("assignedUserIds").filter(Boolean),
@@ -284,12 +287,23 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         ).map((u) => u.id);
 
   const lead = await prisma.$transaction(async (tx) => {
+    // If sourceId was posted, verify it exists (defends against a stale
+     // picker client posting a deleted id — unlikely but cheap).
+    let sourceId: number | null = null;
+    if (parsed.data.sourceId) {
+      const s = await tx.leadSource.findUnique({
+        where: { id: parsed.data.sourceId },
+        select: { id: true },
+      });
+      if (s) sourceId = s.id;
+    }
     const created = await tx.lead.create({
       data: {
         content: parsed.data.content,
         name: parsed.data.name || null,
         ic: parsed.data.ic || null,
         phone: parsed.data.phone || null,
+        sourceId,
         status: "NEW",
         contactState: parsed.data.initialNote ?? "NEW",
         privateChannelUserId,

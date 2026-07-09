@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Plus, ClipboardPaste, Loader2, Check, Users } from "lucide-react";
-import { createLeadAction } from "@/app/dashboard/actions";
+import { Plus, ClipboardPaste, Loader2, Check, Users, Tag, X } from "lucide-react";
+import { createLeadAction, addLeadSourceAction } from "@/app/dashboard/actions";
 import { cn } from "@/lib/utils";
 
 type Assignable = {
@@ -11,6 +11,8 @@ type Assignable = {
   role?: "MASTER" | "USER";
 };
 
+type SourceOption = { id: number; name: string };
+
 type Props = {
   /** Private-channel user id to drop the lead into. Omitted = public pipeline. */
   privateChannelUserId?: number;
@@ -18,12 +20,15 @@ type Props = {
   privateChannelLabel?: string;
   /** Users the creator can assign to. Everyone active, master included. */
   assignableUsers?: Assignable[];
+  /** Team-wide lead sources shown in the picker. */
+  sources?: SourceOption[];
 };
 
 export function LeadComposer({
   privateChannelUserId,
   privateChannelLabel,
   assignableUsers = [],
+  sources = [],
 }: Props = {}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +36,11 @@ export function LeadComposer({
   const [assignees, setAssignees] = useState<Set<number>>(new Set());
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [localSources, setLocalSources] = useState<SourceOption[]>(sources);
+  const [sourceId, setSourceId] = useState<number | null>(null);
+  const [addingSource, setAddingSource] = useState(false);
+  const [newSourceName, setNewSourceName] = useState("");
+  const [sourceError, setSourceError] = useState<string | null>(null);
   const [autofilled, setAutofilled] = useState<null | string[]>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -117,6 +127,7 @@ export function LeadComposer({
     // FormData.set stomps, so use append to send multiple values under the
     // same key (matches formData.getAll on the server).
     for (const uid of assignees) fd.append("assignedUserIds", String(uid));
+    if (sourceId !== null) fd.set("sourceId", String(sourceId));
     startTransition(async () => {
       const res = await createLeadAction(fd);
       if (res?.error) setError(res.error);
@@ -126,8 +137,34 @@ export function LeadComposer({
         setName("");
         setPhone("");
         setAutofilled(null);
+        setSourceId(null);
+        setAddingSource(false);
+        setNewSourceName("");
+        setSourceError(null);
         setOpen(false);
       }
+    });
+  };
+
+  const addSource = () => {
+    const trimmed = newSourceName.trim();
+    if (!trimmed) return;
+    setSourceError(null);
+    const fd = new FormData();
+    fd.set("name", trimmed);
+    startTransition(async () => {
+      const res = await addLeadSourceAction(fd);
+      if (!res || res.error || !res.sourceId) {
+        setSourceError(res?.error ?? "Could not add source.");
+        return;
+      }
+      const id = res.sourceId;
+      setLocalSources((prev) =>
+        prev.some((s) => s.id === id) ? prev : [...prev, { id, name: trimmed }]
+      );
+      setSourceId(id);
+      setAddingSource(false);
+      setNewSourceName("");
     });
   };
 
@@ -166,6 +203,93 @@ export function LeadComposer({
           </p>
         </div>
       )}
+      <div className="mb-3">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
+          <Tag className="h-3.5 w-3.5 text-brand-600" />
+          Source
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {localSources.map((s) => {
+            const active = sourceId === s.id;
+            return (
+              <button
+                type="button"
+                key={s.id}
+                onClick={() => setSourceId(active ? null : s.id)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold border transition-colors",
+                  active
+                    ? "border-brand-500 bg-brand-500 text-white"
+                    : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
+                )}
+              >
+                {active && <Check className="h-3 w-3" />}
+                <Tag className="h-3 w-3" />
+                {s.name}
+              </button>
+            );
+          })}
+          {addingSource ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={newSourceName}
+                onChange={(e) => setNewSourceName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSource();
+                  }
+                  if (e.key === "Escape") {
+                    setAddingSource(false);
+                    setNewSourceName("");
+                  }
+                }}
+                maxLength={30}
+                placeholder="e.g. Instagram"
+                disabled={pending}
+                className="rounded-full border border-ink-300 bg-white px-2.5 py-1 text-[11px] text-ink-800"
+              />
+              <button
+                type="button"
+                onClick={addSource}
+                disabled={pending || !newSourceName.trim()}
+                className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingSource(false);
+                  setNewSourceName("");
+                  setSourceError(null);
+                }}
+                disabled={pending}
+                className="grid h-6 w-6 place-items-center rounded-full border border-ink-200 bg-white text-ink-500 hover:bg-ink-50"
+                aria-label="Cancel new source"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddingSource(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink-300 bg-white px-2.5 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50"
+            >
+              <Plus className="h-3 w-3" />
+              Add new
+            </button>
+          )}
+        </div>
+        {sourceError && (
+          <div className="mt-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
+            {sourceError}
+          </div>
+        )}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
         <label className="block">
           <span className="label">Name</span>

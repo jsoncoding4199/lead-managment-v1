@@ -147,6 +147,13 @@ export default async function DashboardPage({
     select: { id: true, displayName: true, role: true },
     orderBy: [{ role: "asc" }, { displayName: "asc" }],
   });
+  // Every LeadSource, so the composer's source picker renders the chips
+  // without a client roundtrip. Any Add-new done in the picker calls
+  // listLeadSourcesAction (revalidatePath refreshes this SSR list).
+  const leadSources = await prisma.leadSource.findMany({
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <div className="space-y-5 md:space-y-8 max-w-6xl">
@@ -188,14 +195,15 @@ export default async function DashboardPage({
           any tab: on a private tab the lead lands in that channel, on any
           static tab it goes into the public Fresh pipeline. */}
       {!q && tab.kind === "static" && tab.key === "fresh" && (
-        <LeadComposer assignableUsers={assignableUsers} />
+        <LeadComposer assignableUsers={assignableUsers} sources={leadSources} />
       )}
       {!q && tab.kind === "static" && tab.key !== "fresh" && user.role === "MASTER" && (
-        <LeadComposer assignableUsers={assignableUsers} />
+        <LeadComposer assignableUsers={assignableUsers} sources={leadSources} />
       )}
       {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && (
         <LeadComposer
           assignableUsers={assignableUsers}
+          sources={leadSources}
           privateChannelUserId={privateUser.id}
           privateChannelLabel={
             privateUser.id === user.id ? "my inbox" : privateUser.displayName
