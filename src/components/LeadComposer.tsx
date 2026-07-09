@@ -42,6 +42,9 @@ export function LeadComposer({
   const [newSourceName, setNewSourceName] = useState("");
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [autofilled, setAutofilled] = useState<null | string[]>(null);
+  const [pendingParse, setPendingParse] = useState<
+    { parsedName?: string; parsedPhone?: string } | null
+  >(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -84,17 +87,38 @@ export function LeadComposer({
     return { parsedName, parsedPhone };
   };
 
+  /**
+   * On paste we don't stomp fields — instead surface a preview banner so
+   * the user can approve or dismiss before Name/Phone get overwritten. If
+   * nothing new was detected (both target fields already filled or parse
+   * failed), we skip the banner entirely.
+   */
   const autofillFromText = (text: string) => {
     const { parsedName, parsedPhone } = parseContactFromText(text);
+    const willFillName = !!parsedName && !name;
+    const willFillPhone = !!parsedPhone && !phone;
+    if (!willFillName && !willFillPhone) {
+      setPendingParse(null);
+      return;
+    }
+    setPendingParse({
+      parsedName: willFillName ? parsedName : undefined,
+      parsedPhone: willFillPhone ? parsedPhone : undefined,
+    });
+  };
+
+  const applyPendingParse = () => {
+    if (!pendingParse) return;
     const filled: string[] = [];
-    if (parsedName && !name) {
-      setName(parsedName);
+    if (pendingParse.parsedName && !name) {
+      setName(pendingParse.parsedName);
       filled.push("Name");
     }
-    if (parsedPhone && !phone) {
-      setPhone(parsedPhone);
+    if (pendingParse.parsedPhone && !phone) {
+      setPhone(pendingParse.parsedPhone);
       filled.push("Phone");
     }
+    setPendingParse(null);
     if (filled.length > 0) {
       setAutofilled(filled);
       setTimeout(() => setAutofilled(null), 2500);
@@ -153,6 +177,7 @@ export function LeadComposer({
         setName("");
         setPhone("");
         setAutofilled(null);
+        setPendingParse(null);
         setSourceId(null);
         setAddingSource(false);
         setNewSourceName("");
@@ -354,6 +379,45 @@ export function LeadComposer({
         }}
         className="input resize-y font-mono text-sm leading-relaxed"
       />
+      {pendingParse && (
+        <div className="mt-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-[11px] text-ink-800">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-700">
+            Detected from paste — review before applying
+          </div>
+          <ul className="mt-1 space-y-0.5">
+            {pendingParse.parsedName && (
+              <li>
+                <span className="text-ink-500">Name → </span>
+                <strong className="text-ink-900">{pendingParse.parsedName}</strong>
+              </li>
+            )}
+            {pendingParse.parsedPhone && (
+              <li>
+                <span className="text-ink-500">Phone → </span>
+                <strong className="text-ink-900">{pendingParse.parsedPhone}</strong>
+              </li>
+            )}
+          </ul>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={applyPendingParse}
+              className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-700"
+            >
+              <Check className="h-3 w-3" />
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingParse(null)}
+              className="inline-flex items-center gap-1 rounded-md border border-ink-200 bg-white px-2.5 py-1 text-[11px] font-medium text-ink-600 hover:bg-ink-50"
+            >
+              <X className="h-3 w-3" />
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
       {autofilled && autofilled.length > 0 && (
         <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
           Auto-filled from paste: <strong>{autofilled.join(", ")}</strong>. Review and adjust if needed.
