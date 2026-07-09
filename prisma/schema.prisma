@@ -143,6 +143,10 @@ model Lead {
   name         String?
   ic           String?
   phone        String?
+  // Where the lead came from (Ezy, FB, etc). Any user can add a new source
+  // via the picker on a lead card — new sources persist for everyone.
+  sourceId     Int?
+  source       LeadSource?  @relation(fields: [sourceId], references: [id])
   remark       String?
   status       LeadStatus   @default(NEW)
   quality      LeadQuality?
@@ -204,6 +208,17 @@ model LeadAssignment {
 model AppSettings {
   id        Int @id @default(1)
   maxPickup Int @default(2)
+}
+
+// Lead source registry (Ezy, FB, walk-in, etc). Team-wide list: any user
+// can add a new source from the picker and it becomes a permanent option
+// for everyone. Rows are never deleted from the UI — orphan rows would
+// break existing leads' `sourceId` FKs.
+model LeadSource {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  leads     Lead[]
 }
 
 // Per-user "remind me to follow up this lead in N hours" alarm. Cron sweeps

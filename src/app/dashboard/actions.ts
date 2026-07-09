@@ -119,6 +119,89 @@ export async function setContactStateAction(
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
 
+/** Return all LeadSource rows for the picker. Alphabetical. */
+export async function listLeadSourcesAction(): Promise<
+  { id: number; name: string }[]
+> {
+  await requireUser();
+  return prisma.leadSource.findMany({
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+/**
+ * Add a new LeadSource (Ezy / FB / etc). Unique on name (case-insensitive
+ * via a lookup pre-check). Any user can add — sources are team-wide.
+ * Returns the resulting source id so the caller can assign it right away.
+ */
+const AddSourceSchema = z.object({
+  name: z.string().trim().min(1, "Source name is required.").max(30),
+});
+
+export async function addLeadSourceAction(
+  formData: FormData
+): Promise<{ error?: string; sourceId?: number } | void> {
+  await requireUser();
+  const parsed = AddSourceSchema.safeParse({ name: formData.get("name") });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid name." };
+  }
+  const name = parsed.data.name;
+  const existing = await prisma.leadSource.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (existing) {
+    revalidatePath("/dashboard");
+    return { sourceId: existing.id };
+  }
+  const created = await prisma.leadSource.create({
+    data: { name },
+    select: { id: true },
+  });
+  revalidatePath("/dashboard");
+  return { sourceId: created.id };
+}
+
+/**
+ * Set (or clear) the source on an existing lead. `sourceId=0` clears it.
+ */
+const SetSourceSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  sourceId: z.coerce.number().int().min(0),
+});
+
+export async function setLeadSourceAction(
+  formData: FormData
+): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = SetSourceSchema.safeParse({
+    leadId: formData.get("leadId"),
+    sourceId: formData.get("sourceId"),
+  });
+  if (!parsed.success) return { error: "Invalid source." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
+  if (!meta) return { error: "Lead not found." };
+
+  if (parsed.data.sourceId > 0) {
+    const exists = await prisma.leadSource.findUnique({
+      where: { id: parsed.data.sourceId },
+      select: { id: true },
+    });
+    if (!exists) return { error: "Unknown source." };
+  }
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { sourceId: parsed.data.sourceId || null },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
 /**
  * Inline edit of the structured phone field on an existing lead. Any user
  * with access to the lead can fix a wrong number without opening the
