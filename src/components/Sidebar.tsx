@@ -29,7 +29,11 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
+type Props = {
+  user: { displayName: string; role: "MASTER" | "USER" };
+  /** Per-status lead counts keyed by tab key (able_contact, spam, archive…). */
+  statusCounts?: Record<string, number>;
+};
 
 /**
  * Responsive sidebar:
@@ -40,7 +44,7 @@ type Props = { user: { displayName: string; role: "MASTER" | "USER" } };
  * The drawer auto-closes whenever the route or `?tab=` query param changes
  * so tapping a link feels immediate.
  */
-export function Sidebar({ user }: Props) {
+export function Sidebar({ user, statusCounts = {} }: Props) {
   const pathname = usePathname() ?? "";
   const params = useSearchParams();
   const tab = params.get("tab") ?? "fresh";
@@ -87,7 +91,7 @@ export function Sidebar({ user }: Props) {
 
       {/* Desktop sidebar */}
       <aside className="hidden md:flex w-64 shrink-0 flex-col bg-ink-900 text-white">
-        <SidebarInner user={user} pathname={pathname} tab={tab} onDashboardRoot={onDashboardRoot} />
+        <SidebarInner user={user} pathname={pathname} tab={tab} onDashboardRoot={onDashboardRoot} statusCounts={statusCounts} />
       </aside>
 
       {/* Mobile drawer */}
@@ -111,6 +115,7 @@ export function Sidebar({ user }: Props) {
               pathname={pathname}
               tab={tab}
               onDashboardRoot={onDashboardRoot}
+              statusCounts={statusCounts}
             />
           </aside>
         </div>
@@ -124,12 +129,15 @@ function SidebarInner({
   pathname,
   tab,
   onDashboardRoot,
+  statusCounts,
 }: {
   user: { displayName: string; role: "MASTER" | "USER" };
   pathname: string;
   tab: string;
   onDashboardRoot: boolean;
+  statusCounts: Record<string, number>;
 }) {
+  const n = (key: string) => statusCounts[key] ?? 0;
   return (
     <>
       <div className="px-5 py-5 flex items-center gap-2 text-lg font-semibold">
@@ -164,6 +172,7 @@ function SidebarInner({
         <NavGroup
           label="Contact"
           icon={Phone}
+          count={n("able_contact") + n("not_contact")}
           activeChild={
             onDashboardRoot && (tab === "able_contact" || tab === "not_contact")
           }
@@ -172,6 +181,7 @@ function SidebarInner({
             href="/dashboard?tab=able_contact"
             icon={PhoneCall}
             active={onDashboardRoot && tab === "able_contact"}
+            count={n("able_contact")}
           >
             Able
           </NavLink>
@@ -179,6 +189,7 @@ function SidebarInner({
             href="/dashboard?tab=not_contact"
             icon={PhoneOff}
             active={onDashboardRoot && tab === "not_contact"}
+            count={n("not_contact")}
           >
             Not Able
           </NavLink>
@@ -186,6 +197,7 @@ function SidebarInner({
         <NavGroup
           label="Documents"
           icon={FileText}
+          count={n("able_docs") + n("not_docs")}
           activeChild={
             onDashboardRoot && (tab === "able_docs" || tab === "not_docs")
           }
@@ -194,6 +206,7 @@ function SidebarInner({
             href="/dashboard?tab=able_docs"
             icon={FileCheck}
             active={onDashboardRoot && tab === "able_docs"}
+            count={n("able_docs")}
           >
             Able
           </NavLink>
@@ -201,6 +214,7 @@ function SidebarInner({
             href="/dashboard?tab=not_docs"
             icon={FileX}
             active={onDashboardRoot && tab === "not_docs"}
+            count={n("not_docs")}
           >
             Not Able
           </NavLink>
@@ -208,6 +222,7 @@ function SidebarInner({
         <NavGroup
           label="Appointment"
           icon={CalendarDays}
+          count={n("able_appt") + n("not_appt")}
           activeChild={
             onDashboardRoot && (tab === "able_appt" || tab === "not_appt")
           }
@@ -216,6 +231,7 @@ function SidebarInner({
             href="/dashboard?tab=able_appt"
             icon={CalendarCheck}
             active={onDashboardRoot && tab === "able_appt"}
+            count={n("able_appt")}
           >
             Able
           </NavLink>
@@ -223,6 +239,7 @@ function SidebarInner({
             href="/dashboard?tab=not_appt"
             icon={CalendarX}
             active={onDashboardRoot && tab === "not_appt"}
+            count={n("not_appt")}
           >
             Not Able
           </NavLink>
@@ -231,6 +248,7 @@ function SidebarInner({
           href="/dashboard?tab=spam"
           icon={Ban}
           active={onDashboardRoot && tab === "spam"}
+          count={n("spam")}
         >
           Spam / Missing
         </NavLink>
@@ -238,6 +256,7 @@ function SidebarInner({
           href="/dashboard?tab=reject"
           icon={XCircle}
           active={onDashboardRoot && tab === "reject"}
+          count={n("reject")}
         >
           Rejected
         </NavLink>
@@ -245,6 +264,7 @@ function SidebarInner({
           href="/dashboard?tab=archive"
           icon={Archive}
           active={onDashboardRoot && tab === "archive"}
+          count={n("archive")}
         >
           Archive
         </NavLink>
@@ -291,11 +311,13 @@ function NavGroup({
   label,
   icon: Icon,
   activeChild,
+  count,
   children,
 }: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   activeChild: boolean;
+  count?: number;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(activeChild);
@@ -317,6 +339,7 @@ function NavGroup({
       >
         <Icon className="h-4 w-4" />
         <span className="flex-1 text-left">{label}</span>
+        <CountBadge count={count} />
         <ChevronDown
           className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
         />
@@ -330,11 +353,13 @@ function NavLink({
   href,
   icon: Icon,
   active,
+  count,
   children,
 }: {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   active: boolean;
+  count?: number;
   children: React.ReactNode;
 }) {
   return (
@@ -346,7 +371,23 @@ function NavLink({
       )}
     >
       <Icon className="h-4 w-4" />
-      {children}
+      <span className="flex-1">{children}</span>
+      <CountBadge count={count} />
     </Link>
+  );
+}
+
+/** Right-aligned lead-count pill. Hidden when count is undefined; zero renders dimmed. */
+function CountBadge({ count }: { count?: number }) {
+  if (count === undefined) return null;
+  return (
+    <span
+      className={cn(
+        "min-w-[1.5rem] rounded-full px-1.5 py-0.5 text-center text-[10px] font-semibold tabular-nums",
+        count > 0 ? "bg-white/15 text-white" : "bg-white/5 text-white/40"
+      )}
+    >
+      {count}
+    </span>
   );
 }

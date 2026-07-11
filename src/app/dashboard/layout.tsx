@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ACTIVE_STATUSES } from "@/lib/leadStatus";
 import { logoutAction } from "@/app/login/actions";
 import { Sidebar } from "@/components/Sidebar";
 import { Notifier } from "@/components/Notifier";
@@ -16,16 +17,53 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Two tiny indexed counts run in parallel: one for the nudge banner,
   // one for the bell badge. Both are ~1ms; running them with the layout
   // means every navigation refreshes both without any client polling.
-  const [pushSubCount, unreadCount] = await Promise.all([
+  const [pushSubCount, unreadCount, publicByStatus, myActiveByStatus] = await Promise.all([
     prisma.pushSubscription.count({ where: { userId: user.id } }),
     prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+    // Per-status counts for the sidebar badges. Public leads only —
+    // mirrors the status-tab queries in the dashboard page.
+    prisma.lead.groupBy({
+      by: ["status"],
+      where: { privateChannelUserId: null },
+      _count: { _all: true },
+    }),
+    // Non-master only sees "Able" (active) leads they're assigned to, so
+    // their badges for those statuses use the assignee-restricted numbers.
+    user.role === "MASTER"
+      ? Promise.resolve(null)
+      : prisma.lead.groupBy({
+          by: ["status"],
+          where: {
+            privateChannelUserId: null,
+            status: { in: ACTIVE_STATUSES },
+            assignments: { some: { userId: user.id } },
+          },
+          _count: { _all: true },
+        }),
   ]);
   const hasPush = pushSubCount > 0;
+
+  const byStatus = new Map(publicByStatus.map((r) => [r.status, r._count._all]));
+  if (myActiveByStatus) {
+    for (const s of ACTIVE_STATUSES) byStatus.set(s, 0);
+    for (const r of myActiveByStatus) byStatus.set(r.status, r._count._all);
+  }
+  const statusCounts: Record<string, number> = {
+    able_contact: byStatus.get("CONTACT_ABLE") ?? 0,
+    able_docs: byStatus.get("DOCUMENTS_ABLE") ?? 0,
+    able_appt: byStatus.get("APPOINTMENT_ABLE") ?? 0,
+    not_contact: byStatus.get("CONTACT_NOT_ABLE") ?? 0,
+    not_docs: byStatus.get("DOCUMENTS_NOT_ABLE") ?? 0,
+    not_appt: byStatus.get("APPOINTMENT_NOT_ABLE") ?? 0,
+    spam: byStatus.get("SPAM_OR_MISSING") ?? 0,
+    reject: byStatus.get("REJECTED") ?? 0,
+    archive: (byStatus.get("APPROVED") ?? 0) + (byStatus.get("RECYCLED") ?? 0),
+  };
 
   return (
     <div className="min-h-screen flex">
       <Suspense fallback={<aside className="hidden md:block w-64 shrink-0 bg-ink-900" />}>
-        <Sidebar user={user} />
+        <Sidebar user={user} statusCounts={statusCounts} />
       </Suspense>
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-20 h-14 md:h-16 border-b border-ink-200/70 bg-white/80 backdrop-blur flex items-center justify-between gap-2 pl-16 md:pl-6 pr-3 md:pr-6">
