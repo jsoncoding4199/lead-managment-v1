@@ -194,10 +194,10 @@ export default async function DashboardPage({
           see it on Fresh (public composer). Master can drop a lead from
           any tab: on a private tab the lead lands in that channel, on any
           static tab it goes into the public Fresh pipeline. */}
-      {!q && tab.kind === "static" && tab.key === "fresh" && (
-        <LeadComposer assignableUsers={assignableUsers} sources={leadSources} />
-      )}
-      {!q && tab.kind === "static" && tab.key !== "fresh" && user.role === "MASTER" && (
+      {/* Static tabs: every user gets the composer (paste auto-detect,
+          source picker, assign chips). The lead always lands in the public
+          Fresh pipeline regardless of which tab it was composed from. */}
+      {!q && tab.kind === "static" && (
         <LeadComposer assignableUsers={assignableUsers} sources={leadSources} />
       )}
       {/* Private tab composer: master anywhere, or the channel owner on
