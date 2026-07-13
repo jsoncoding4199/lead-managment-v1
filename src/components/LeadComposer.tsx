@@ -54,22 +54,63 @@ export function LeadComposer({
    * ("Name: Jane Doe"); falls back to generic regexes for IC + phone.
    */
   const parseContactFromText = (text: string) => {
-    const line = (labels: string[]) => {
+    const NAME_LABELS = ["name", "nama", "full name", "customer"];
+    const PHONE_LABELS = [
+      "phone",
+      "phone number",
+      "tel",
+      "mobile",
+      "hp",
+      "no telefon",
+      "no",
+      "contact",
+    ];
+    // All label words we know — used to skip label-only lines in the
+    // first-line fallback so a paste starting with "Name" on its own line
+    // doesn't detect the literal word "Name" as the customer's name.
+    const ALL_LABELS = new Set(
+      [
+        ...NAME_LABELS,
+        ...PHONE_LABELS,
+        "email",
+        "employment type",
+        "job title",
+        "loan amount (myr)",
+        "loan amount",
+        "salary amount (myr)",
+        "salary amount",
+        "salary",
+        "ic",
+        "nric",
+      ].map((l) => l.toLowerCase())
+    );
+    const lines = text.split(/\r?\n/).map((l) => l.trim());
+
+    // Form 1: "Name: Jane Doe" — label + separator + value on one line.
+    const sameLine = (labels: string[]) => {
       const re = new RegExp(
         `^\\s*(?:${labels.join("|")})\\s*[:：\\-]\\s*(.+?)\\s*$`,
         "im"
       );
-      const m = text.match(re);
-      return m?.[1]?.trim();
+      return text.match(re)?.[1]?.trim();
     };
-    // Prefer a "Name: ..." labelled line; fall back to the first
-     // non-empty line of the paste, since Gmail leads usually have the
-     // customer's name as the very first line. Skip email addresses and
-     // lines that look like phone numbers so we don't misfire.
+    // Form 2 (Gmail form exports): label alone on a line, value on the
+    // NEXT non-empty line:  "Name\nmuhammad fadzrin".
+    const nextLine = (labels: string[]) => {
+      const wanted = labels.map((l) => l.toLowerCase());
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (!wanted.includes(lines[i].toLowerCase())) continue;
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j]) return lines[j];
+        }
+      }
+      return undefined;
+    };
+    // Form 3 fallback for name: first non-empty, non-label line.
     const firstLineName = (() => {
-      for (const raw of text.split(/\r?\n/)) {
-        const s = raw.trim();
+      for (const s of lines) {
         if (!s) continue;
+        if (ALL_LABELS.has(s.toLowerCase())) continue;
         if (s.length > 60) return undefined;
         if (/@/.test(s)) return undefined;
         if (/^\+?\d[\d\s\-()]{5,}$/.test(s)) return undefined;
@@ -78,10 +119,12 @@ export function LeadComposer({
       }
       return undefined;
     })();
+
     const parsedName =
-      line(["name", "nama", "full name", "customer"]) ?? firstLineName ?? undefined;
+      sameLine(NAME_LABELS) ?? nextLine(NAME_LABELS) ?? firstLineName ?? undefined;
     const parsedPhone =
-      line(["phone", "tel", "mobile", "hp", "no telefon", "no", "contact"]) ??
+      sameLine(PHONE_LABELS) ??
+      nextLine(PHONE_LABELS) ??
       text.match(/(?:\+?60|0)[\s-]?\d{1,2}[\s-]?\d{3,4}[\s-]?\d{4}/)?.[0] ??
       undefined;
     return { parsedName, parsedPhone };
