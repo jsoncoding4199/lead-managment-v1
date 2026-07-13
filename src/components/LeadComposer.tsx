@@ -54,16 +54,28 @@ export function LeadComposer({
    * ("Name: Jane Doe"); falls back to generic regexes for IC + phone.
    */
   const parseContactFromText = (text: string) => {
-    const NAME_LABELS = ["name", "nama", "full name", "customer"];
+    const NAME_LABELS = [
+      "name",
+      "nama",
+      "full name",
+      "customer",
+      "applicant name",
+      "applicant_name",
+    ];
     const PHONE_LABELS = [
       "phone",
       "phone number",
+      "phone_number",
       "tel",
+      "tel no",
+      "tel_no",
       "mobile",
       "hp",
       "no telefon",
       "no",
       "contact",
+      "contact no",
+      "contact number",
     ];
     // All label words we know — used to skip label-only lines in the
     // first-line fallback so a paste starting with "Name" on its own line

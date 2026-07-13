@@ -17,16 +17,28 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const NAME_LABELS = ["name", "nama", "full name", "customer"];
+const NAME_LABELS = [
+  "name",
+  "nama",
+  "full name",
+  "customer",
+  "applicant name",
+  "applicant_name",
+];
 const PHONE_LABELS = [
   "phone",
   "phone number",
+  "phone_number",
   "tel",
+  "tel no",
+  "tel_no",
   "mobile",
   "hp",
   "no telefon",
   "no",
   "contact",
+  "contact no",
+  "contact number",
 ];
 const ALL_LABELS = new Set(
   [
