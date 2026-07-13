@@ -200,16 +200,22 @@ export default async function DashboardPage({
       {!q && tab.kind === "static" && tab.key !== "fresh" && user.role === "MASTER" && (
         <LeadComposer assignableUsers={assignableUsers} sources={leadSources} />
       )}
-      {!q && tab.kind === "private" && user.role === "MASTER" && privateUser && (
-        <LeadComposer
-          assignableUsers={assignableUsers}
-          sources={leadSources}
-          privateChannelUserId={privateUser.id}
-          privateChannelLabel={
-            privateUser.id === user.id ? "my inbox" : privateUser.displayName
-          }
-        />
-      )}
+      {/* Private tab composer: master anywhere, or the channel owner on
+          their own tab — so private users can paste leads (with the
+          name/phone auto-detect) straight into their pipeline. */}
+      {!q &&
+        tab.kind === "private" &&
+        privateUser &&
+        (user.role === "MASTER" || user.id === privateUser.id) && (
+          <LeadComposer
+            assignableUsers={assignableUsers}
+            sources={leadSources}
+            privateChannelUserId={privateUser.id}
+            privateChannelLabel={
+              privateUser.id === user.id ? "my pipeline" : privateUser.displayName
+            }
+          />
+        )}
 
       {q ? (
         <Suspense fallback={<LeadsSkeleton />} key={`search:${q}`}>

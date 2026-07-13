@@ -286,8 +286,14 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   }
 
   let privateChannelUserId: number | null = parsed.data.privateChannelUserId ?? null;
-  if (privateChannelUserId !== null && user.role !== "MASTER") {
-    return { error: "Only the master can create leads in private channels." };
+  // Master can target any channel; everyone else may only create into
+  // their OWN private pipeline (the composer on their private tab).
+  if (
+    privateChannelUserId !== null &&
+    user.role !== "MASTER" &&
+    privateChannelUserId !== user.id
+  ) {
+    return { error: "You can only add leads to your own pipeline." };
   }
   if (privateChannelUserId !== null && privateChannelUserId !== user.id) {
     // Master can drop a lead into their own inbox unconditionally. For any
