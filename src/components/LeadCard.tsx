@@ -296,7 +296,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const canReassign = iOwnThisChannel || viewer.role === "MASTER";
 
   return (
-    <article className="card p-4 lg:p-4 hover:shadow-lift transition-shadow group flex flex-col">
+    <article className="card p-3 md:p-4 hover:shadow-lift transition-shadow group flex flex-col">
       <header className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-wrap relative">
           {lead.status === "NEW" ? (
@@ -359,14 +359,21 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         </button>
       </header>
 
-      {/* Source + Name + Phone rows. Source row always renders so users can
-          set it on leads that have no source yet. */}
-      <div className="mt-3 rounded-lg border border-ink-100 bg-white divide-y divide-ink-100 text-[12px]">
-        <SourceRow leadId={lead.id} source={lead.source ?? null} />
-        <LocationRow leadId={lead.id} location={lead.location ?? null} />
-        {/* Name row always renders (between Location and Phone) so it can be
-            set even when empty. */}
-        <ContactRow leadId={lead.id} label="Name" value={lead.name ?? ""} editable />
+      {/* Source + Location + Name + Phone rows. On phones, Source and
+          Location share one row (side by side) to save height; on md+ they
+          stack. Rows always render so empty fields can still be set. */}
+      <div className="mt-2 md:mt-3 rounded-lg border border-ink-100 bg-white text-[12px] overflow-hidden">
+        <div className="flex md:block">
+          <div className="flex-1 min-w-0 border-b border-r md:border-r-0 border-ink-100">
+            <SourceRow leadId={lead.id} source={lead.source ?? null} />
+          </div>
+          <div className="flex-1 min-w-0 border-b border-ink-100">
+            <LocationRow leadId={lead.id} location={lead.location ?? null} />
+          </div>
+        </div>
+        <div className="border-b border-ink-100">
+          <ContactRow leadId={lead.id} label="Name" value={lead.name ?? ""} editable />
+        </div>
         {(lead.phone || extractPhone(lead.content)) && (
           <ContactRow
             leadId={lead.id}
@@ -378,10 +385,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         )}
       </div>
 
-      <div className="mt-3 relative group/content">
+      <div className="mt-2 md:mt-3 relative group/content">
         <pre
           onClick={(e) => e.stopPropagation()}
-          className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-[12px] leading-relaxed text-ink-800 font-mono max-h-32 lg:max-h-40 overflow-y-auto overscroll-contain"
+          className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2.5 md:p-3 text-[12px] leading-relaxed text-ink-800 font-mono max-h-16 md:max-h-40 overflow-y-auto overscroll-contain"
         >
 {lead.content}
         </pre>
@@ -407,7 +414,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       )}
 
       {/* Assignees row */}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <div className="mt-2 md:mt-3 flex flex-wrap items-center gap-1.5">
         <Users className="h-3 w-3 text-ink-400" />
         {lead.assignees.length === 0 ? (
           <span className="text-[11px] text-ink-400 italic">Nobody picked up yet</span>
@@ -432,19 +439,19 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         </span>
       </div>
 
-      <footer className="mt-3 space-y-2 text-[11px] text-ink-500">
-        <div className="grid grid-cols-1 gap-1.5">
-          <span className="inline-flex items-center gap-1.5">
+      <footer className="mt-2 md:mt-3 space-y-1.5 md:space-y-2 text-[11px] text-ink-500">
+        {/* Meta: one wrapping line on mobile (From · date · aging · updated);
+            roomier on desktop. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="inline-flex items-center gap-1 min-w-0">
             <UserCircle2 className="h-3 w-3 shrink-0" />
-            <span className="truncate">From <strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong></span>
+            <span className="truncate"><strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong></span>
           </span>
-          <span className="inline-flex items-center gap-1.5">
+          <span className="hidden md:inline text-ink-300">·</span>
+          <span className="inline-flex items-center gap-1">
             <Calendar className="h-3 w-3 shrink-0" />
             <span className="truncate">{formatDateTime(lead.createdAt)}</span>
           </span>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <span
             className={
               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 " +
@@ -459,7 +466,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <Clock className="h-2.5 w-2.5" />
             {aging === 0 ? "today" : `${aging}d`}
           </span>
-          <span className="text-ink-400">Updated {timeAgo(lead.updatedAt)}</span>
+          <span className="ml-auto text-ink-400">Updated {timeAgo(lead.updatedAt)}</span>
         </div>
 
         {/* Pickup / drop / master assignment controls */}
@@ -1492,7 +1499,7 @@ function ContactRow({
 
   if (editing) {
     return (
-      <div className="flex flex-wrap items-center gap-2 px-2.5 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 px-2.5 py-1 md:py-1.5">
         <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
           {label}
         </span>
@@ -1604,7 +1611,7 @@ function ContactRow({
   // single-line layout (label + value + Copy).
   if (phone) {
     return (
-      <div className="px-2.5 py-1.5">
+      <div className="px-2.5 py-1 md:py-1.5">
         <div className="flex items-center gap-2">
           <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
             {label}
@@ -1621,7 +1628,7 @@ function ContactRow({
   }
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-1.5">
+    <div className="flex items-center gap-2 px-2.5 py-1 md:py-1.5">
       <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
         {label}
       </span>
@@ -1654,22 +1661,22 @@ function SourceRow({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-ink-50 rounded-t-lg"
+        className="flex w-full items-center gap-1.5 md:gap-2 px-2 py-1 md:px-2.5 md:py-1.5 text-left hover:bg-ink-50"
       >
-        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
-          Source
+        <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+          Src
         </span>
         <span className="flex-1 truncate">
           {source ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
-              <Tag className="h-3 w-3" />
-              {source.name}
+            <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
+              <Tag className="h-3 w-3 shrink-0" />
+              <span className="truncate">{source.name}</span>
             </span>
           ) : (
-            <span className="text-[11px] italic text-ink-400">Tap to set…</span>
+            <span className="text-[11px] italic text-ink-400">Tap…</span>
           )}
         </span>
-        <ChevronDown className="h-3.5 w-3.5 text-ink-400" />
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-400" />
       </button>
       {open && (
         <SourcePicker
@@ -1897,22 +1904,22 @@ function LocationRow({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-ink-50"
+        className="flex w-full items-center gap-1.5 md:gap-2 px-2 py-1 md:px-2.5 md:py-1.5 text-left hover:bg-ink-50"
       >
-        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
-          Location
+        <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+          Loc
         </span>
         <span className="flex-1 truncate">
           {location ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
-              <MapPin className="h-3 w-3" />
-              {location.name}
+            <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{location.name}</span>
             </span>
           ) : (
-            <span className="text-[11px] italic text-ink-400">Tap to set…</span>
+            <span className="text-[11px] italic text-ink-400">Tap…</span>
           )}
         </span>
-        <ChevronDown className="h-3.5 w-3.5 text-ink-400" />
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-400" />
       </button>
       {open && (
         <LocationPicker
