@@ -5,12 +5,15 @@ import { Filter, X } from "lucide-react";
 
 type UserOption = { id: number; displayName: string };
 type SourceOption = { id: number; name: string };
+type LocationOption = { id: number; name: string };
 
 type Props = {
   users: UserOption[];
   sources: SourceOption[];
+  locations: LocationOption[];
   creatorId: number | null;
   sourceId: number | null;
+  locationId: number | null;
 };
 
 /**
@@ -18,12 +21,19 @@ type Props = {
  * (creator) and/or their source. Writes `fu` / `fs` URL params, keeping
  * the current tab + search so the filter applies to whatever tab is open.
  */
-export function LeadFilterBar({ users, sources, creatorId, sourceId }: Props) {
+export function LeadFilterBar({
+  users,
+  sources,
+  locations,
+  creatorId,
+  sourceId,
+  locationId,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
 
-  const setParam = (key: "fu" | "fs", value: string) => {
+  const setParam = (key: "fu" | "fs" | "fl", value: string) => {
     const next = new URLSearchParams(params.toString());
     if (value) next.set(key, value);
     else next.delete(key);
@@ -34,10 +44,11 @@ export function LeadFilterBar({ users, sources, creatorId, sourceId }: Props) {
     const next = new URLSearchParams(params.toString());
     next.delete("fu");
     next.delete("fs");
+    next.delete("fl");
     router.push(`${pathname}?${next.toString()}`);
   };
 
-  const active = creatorId !== null || sourceId !== null;
+  const active = creatorId !== null || sourceId !== null || locationId !== null;
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white/95 backdrop-blur p-1.5 ring-1 ring-ink-200 shadow-soft">
@@ -70,6 +81,20 @@ export function LeadFilterBar({ users, sources, creatorId, sourceId }: Props) {
         {sources.map((s) => (
           <option key={s.id} value={s.id}>
             {s.name}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={locationId ?? ""}
+        onChange={(e) => setParam("fl", e.target.value)}
+        className="h-8 rounded-md border border-ink-200 bg-white px-2 text-xs text-ink-800"
+        aria-label="Filter by location"
+      >
+        <option value="">All locations</option>
+        {locations.map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.name}
           </option>
         ))}
       </select>

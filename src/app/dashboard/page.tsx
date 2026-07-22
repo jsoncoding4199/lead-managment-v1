@@ -31,6 +31,7 @@ function leadSearchFilter(q: string): Prisma.LeadWhereInput {
       { name: { contains: q, mode: "insensitive" } },
       { phone: { contains: q, mode: "insensitive" } },
       { source: { is: { name: { contains: q, mode: "insensitive" } } } },
+      { location: { is: { name: { contains: q, mode: "insensitive" } } } },
     ],
   };
 }
@@ -77,20 +78,22 @@ type DashTab =
   | { kind: "static"; key: DashStaticTab }
   | { kind: "private"; userId: number };
 
-type Search = { tab?: string; q?: string; fu?: string; fs?: string };
+type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string };
 
 /**
- * Cross-tab filter clause: narrow leads to a specific creator (fu) and/or
- * lead source (fs). Both optional; returns {} when neither is set so it's
- * a no-op alongside the other AND filters.
+ * Cross-tab filter clause: narrow leads to a specific creator (fu), lead
+ * source (fs) and/or location (fl). All optional; returns {} when none are
+ * set so it's a no-op alongside the other AND filters.
  */
 function leadFilterWhere(
   creatorId: number | null,
-  sourceId: number | null
+  sourceId: number | null,
+  locationId: number | null
 ): Prisma.LeadWhereInput {
   const and: Prisma.LeadWhereInput[] = [];
   if (creatorId) and.push({ createdById: creatorId });
   if (sourceId) and.push({ sourceId });
+  if (locationId) and.push({ locationId });
   return and.length ? { AND: and } : {};
 }
 
@@ -126,6 +129,7 @@ export default async function DashboardPage({
   const q = (sp.q ?? "").trim();
   const filterCreatorId = Number(sp.fu) > 0 ? Number(sp.fu) : null;
   const filterSourceId = Number(sp.fs) > 0 ? Number(sp.fs) : null;
+  const filterLocationId = Number(sp.fl) > 0 ? Number(sp.fl) : null;
 
   // Everyone — master included — lands on Fresh by default (parseTab
   // returns "fresh" when no tab param is present).
@@ -201,8 +205,10 @@ export default async function DashboardPage({
       <LeadFilterBar
         users={assignableUsers.map((u) => ({ id: u.id, displayName: u.displayName }))}
         sources={leadSources}
+        locations={leadLocations}
         creatorId={filterCreatorId}
         sourceId={filterSourceId}
+        locationId={filterLocationId}
       />
 
       {/* Composer rules — hide while searching globally. Non-masters only
@@ -245,12 +251,12 @@ export default async function DashboardPage({
         )}
 
       {q ? (
-        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorId}:${filterSourceId}`}>
-          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorId} sourceId={filterSourceId} />
+        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
+          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} />
         </Suspense>
       ) : (
-        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} />
+        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} />
         </Suspense>
       )}
     </div>
@@ -345,17 +351,19 @@ async function GlobalSearchResults({
   user,
   creatorId,
   sourceId,
+  locationId,
 }: {
   q: string;
   user: CurrentUser;
   creatorId: number | null;
   sourceId: number | null;
+  locationId: number | null;
 }) {
   const settings = await getAppSettings();
 
   const [matches, teamUsers, masterReassignTargets] = await Promise.all([
     prisma.lead.findMany({
-      where: { AND: [globalLeadVisibility(user), leadSearchFilter(q), leadFilterWhere(creatorId, sourceId)] },
+      where: { AND: [globalLeadVisibility(user), leadSearchFilter(q), leadFilterWhere(creatorId, sourceId, locationId)] },
       orderBy: [{ updatedAt: "desc" }],
       take: 200,
       select: leadSelect,
@@ -421,6 +429,7 @@ async function LeadsSection({
   privateUser,
   creatorId,
   sourceId,
+  locationId,
 }: {
   tab: DashTab;
   q: string;
@@ -428,8 +437,9 @@ async function LeadsSection({
   privateUser: { id: number; displayName: string } | null;
   creatorId: number | null;
   sourceId: number | null;
+  locationId: number | null;
 }) {
-  const filterWhere = leadFilterWhere(creatorId, sourceId);
+  const filterWhere = leadFilterWhere(creatorId, sourceId, locationId);
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
   // Master can reassign any lead to any pipeline — fetch the list of
