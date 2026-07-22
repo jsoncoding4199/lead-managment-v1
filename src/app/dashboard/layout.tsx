@@ -105,7 +105,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </form>
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-10">
+        <main className="flex-1 px-3 py-3 md:p-6 lg:p-8">
           <PushNudgeBanner hasServerSubscription={hasPush} />
           {children}
         </main>

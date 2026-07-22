@@ -14,7 +14,7 @@ export function LeadSearchBar({ q }: Props) {
         name="q"
         defaultValue={q}
         placeholder="Search all tabs — content, remarks, thread messages…"
-        className="input w-full pl-11 pr-24 h-12 text-sm"
+        className="input w-full pl-11 pr-24 h-11 text-sm"
         aria-label="Search leads across all tabs"
       />
       <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">

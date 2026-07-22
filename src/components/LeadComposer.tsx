@@ -228,14 +228,14 @@ export function LeadComposer({
           setOpen(true);
           setTimeout(() => ref.current?.focus(), 50);
         }}
-        className="card flex w-full items-center gap-3 p-5 text-left hover:shadow-lift transition-shadow"
+        className="card flex w-full items-center gap-2.5 p-2.5 md:p-5 text-left hover:shadow-lift transition-shadow"
       >
-        <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-600 text-white">
-          <Plus className="h-5 w-5" />
+        <span className="grid h-8 w-8 md:h-10 md:w-10 shrink-0 place-items-center rounded-xl bg-brand-600 text-white">
+          <Plus className="h-4 w-4 md:h-5 md:w-5" />
         </span>
-        <span>
-          <span className="block text-sm font-semibold text-ink-900">{ctaLabel}</span>
-          <span className="block text-xs text-ink-500">{ctaHint}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-ink-900">{ctaLabel}</span>
+          <span className="hidden md:block text-xs text-ink-500">{ctaHint}</span>
         </span>
       </button>
     );
@@ -322,7 +322,7 @@ export function LeadComposer({
     <form
       ref={formRef}
       action={submit}
-      className="card p-5 animate-in"
+      className="card p-3.5 md:p-5 animate-in"
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">

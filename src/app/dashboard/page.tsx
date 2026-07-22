@@ -162,10 +162,10 @@ export default async function DashboardPage({
   });
 
   return (
-    <div className="space-y-5 md:space-y-8 max-w-6xl">
+    <div className="space-y-3 md:space-y-6 max-w-6xl">
       <div>
-        <h2 className="text-2xl md:text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
-        <p className="text-ink-500 mt-1 text-xs md:text-sm">
+        <h2 className="text-lg md:text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
+        <p className="hidden md:block text-ink-500 mt-1 text-xs md:text-sm">
           {q && `Searching all visible leads for “${q}”.`}
           {!q && tab.kind === "static" && tab.key === "own" &&
             "Your private list — visible only to you, grouped by day. New leads get a 1-hour follow-up reminder."}
@@ -892,7 +892,7 @@ function ChannelLeadList({
   reassignTargets: { id: number; displayName: string }[];
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <CollapsibleSection
         storageKey={`channel:${label}`}
         count={leads.length}
@@ -1165,7 +1165,7 @@ function OpenGrouped({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {entries.map(([key, bucket]) => (
         <CollapsibleSection
           key={key}
@@ -1253,7 +1253,7 @@ function MasterInboxCategorized({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {ownPickup.length > 0 && (
         <CollapsibleSection
           storageKey="inbox:own-pickup"
@@ -1354,7 +1354,7 @@ function OwnByDay({
   const entries = Array.from(buckets.entries()).sort((a, b) => b[0].localeCompare(a[0]));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {entries.map(([key, bucket], idx) => (
         <CollapsibleSection
           key={key}
@@ -1419,7 +1419,7 @@ function ArchiveByAssignee({
   const entries = Array.from(buckets.entries()).sort((a, b) => a[1].label.localeCompare(b[1].label));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {unassigned.length > 0 && (
         <CollapsibleSection
           storageKey="archive:unassigned"
@@ -1512,7 +1512,7 @@ function MyPicksByStatus({
   const sections = ORDER.filter((s) => (byStatus.get(s)?.length ?? 0) > 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {sections.map((s) => {
         const items = byStatus.get(s) ?? [];
         return (
@@ -1585,7 +1585,7 @@ function PicksByAssignee({
   const entries = Array.from(buckets.entries()).sort((a, b) => a[1].label.localeCompare(b[1].label));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {entries.map(([key, bucket]) => (
         <CollapsibleSection
           key={key}

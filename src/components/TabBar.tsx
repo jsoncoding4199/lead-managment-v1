@@ -49,7 +49,7 @@ export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCou
 
   return (
     <div className="w-full">
-      <div className="rounded-xl bg-white/95 backdrop-blur p-1.5 ring-1 ring-ink-200 shadow-soft">
+      <div className="rounded-xl bg-white/95 backdrop-blur p-1 ring-1 ring-ink-200 shadow-soft">
         <div className="flex flex-wrap gap-1.5">
           {pipelineTabs.map((t) => (
             <TabLink key={t.key} tab={t} active={activeTab === t.key} />
@@ -58,7 +58,7 @@ export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCou
 
         {privateTabs.length > 0 && (
           <>
-            <div className="px-1.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
+            <div className="px-1.5 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
               Private pipelines
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -78,7 +78,7 @@ function TabLink({ tab, active }: { tab: TabItem; active: boolean }) {
     <Link
       href={tab.href}
       className={cn(
-        "inline-flex h-11 items-center justify-center gap-1.5 min-w-0",
+        "inline-flex h-10 items-center justify-center gap-1.5 min-w-0",
         "rounded-lg px-3 sm:px-4 text-[12px] sm:text-sm font-medium whitespace-nowrap transition-colors",
         active
           ? "bg-ink-900 text-white shadow-sm"
