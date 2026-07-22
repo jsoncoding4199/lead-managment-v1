@@ -1276,7 +1276,8 @@ const ReassignSchema = z.object({
   // -1 = public pool (privateChannelUserId set to null) — master-only
   //  n = a specific private-channel user's id
   targetUserId: z.coerce.number().int().min(-1),
-  remark: z.string().trim().min(1, "A handover remark is required.").max(2000),
+  // Optional — a handover note is helpful but not required.
+  remark: z.string().trim().max(2000).optional().default(""),
 });
 
 export async function reassignPrivateLeadAction(
@@ -1369,7 +1370,10 @@ export async function reassignPrivateLeadAction(
       data: {
         leadId: lead.id,
         authorId: me.id,
-        body: `[Reassigned to ${targetLabel}] ${parsed.data.remark}`,
+        // Remark is optional — keep the handover marker clean when omitted.
+        body: parsed.data.remark
+          ? `[Reassigned to ${targetLabel}] ${parsed.data.remark}`
+          : `[Reassigned to ${targetLabel}]`,
       },
     }),
   ]);

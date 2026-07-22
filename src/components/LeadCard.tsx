@@ -1030,7 +1030,6 @@ function ReassignSheet({
 
   if (!portalNode) return null;
 
-  const canSubmit = remark.trim().length > 0;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
@@ -1055,7 +1054,7 @@ function ReassignSheet({
             <p className="text-xs text-ink-500 mt-0.5">
               {viewerIsMaster
                 ? "Assign team members, or hand the lead to another pipeline."
-                : "Hand the lead to another pipeline or master's private inbox. A handover remark is required."}
+                : "Hand the lead to another pipeline or master's private inbox."}
             </p>
           </div>
           <button
@@ -1140,7 +1139,7 @@ function ReassignSheet({
             </p>
           </div>
           <div>
-            <label className="label">Handover remark <span className="text-rose-600">*</span></label>
+            <label className="label">Handover remark <span className="font-normal normal-case text-ink-400">(optional)</span></label>
             <textarea
               autoFocus
               value={remark}
@@ -1151,7 +1150,7 @@ function ReassignSheet({
               className="input w-full resize-y text-sm"
             />
             <div className="flex items-center justify-between text-[10px] text-ink-400 mt-1">
-              <span>{remark.trim().length === 0 ? "Required" : "Looks good"}</span>
+              <span>Optional</span>
               <span>{remark.length}/2000</span>
             </div>
           </div>
@@ -1161,7 +1160,7 @@ function ReassignSheet({
             </button>
             <button
               onClick={() => onSubmit(targetId, remark.trim())}
-              disabled={!canSubmit || pending}
+              disabled={pending}
               className="btn btn-primary h-9 px-3 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
