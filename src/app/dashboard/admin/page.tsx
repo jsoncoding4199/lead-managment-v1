@@ -77,7 +77,6 @@ export default async function AdminPage() {
       changeCounts,
       totalChanges,
       pickUpsCount: u.pickUpsCount,
-      dropsCount: u.dropsCount,
       pushDevices: u._count.pushSubscriptions,
       createdLeads: u._count.createdLeads,
     };

@@ -1,5 +1,5 @@
 import type { LeadStatus } from "@prisma/client";
-import { BellOff, BellRing, Hand, LogOut, FilePlus } from "lucide-react";
+import { BellOff, BellRing, Hand, FilePlus } from "lucide-react";
 import { STATUS_LABEL, STATUS_TONE } from "@/lib/leadStatus";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +24,6 @@ export type UserStatsRow = {
   changeCounts: Record<LeadStatus, number>;
   totalChanges: number;
   pickUpsCount: number;
-  dropsCount: number;
   pushDevices: number;
   createdLeads: number;
 };
@@ -121,18 +120,6 @@ export function TeamStatsTable({ rows }: { rows: UserStatsRow[] }) {
                     <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
                       <Hand className="h-3 w-3" />
                       {r.pickUpsCount}
-                    </span>
-                  )
-                }
-              </MetricRow>
-              <MetricRow label="Dropped" rows={rows}>
-                {(r) =>
-                  r.dropsCount === 0 ? (
-                    <Dash />
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
-                      <LogOut className="h-3 w-3" />
-                      {r.dropsCount}
                     </span>
                   )
                 }

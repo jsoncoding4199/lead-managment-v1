@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Hand, LogOut } from "lucide-react";
+import { ArrowLeft, Hand } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
@@ -124,11 +124,9 @@ export default async function LeadDetailPage({
         </p>
 
         {/*
-          Lifetime activity counters on the lead itself. They never
-          decrement when the lead's status moves on, so they reflect
-          "how many times this lead has been worked on" — independent
-          of who. Same pattern as User.pickUpsCount / dropsCount but
-          scoped per-lead.
+          Lifetime pickup counter on the lead itself. Never decrements when
+          the lead's status moves on, so it reflects "how many times this
+          lead has been worked on" — independent of who.
         */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <span
@@ -138,14 +136,6 @@ export default async function LeadDetailPage({
             <Hand className="h-3 w-3" />
             Picked up {lead.pickUpsCount}{" "}
             {lead.pickUpsCount === 1 ? "time" : "times"}
-          </span>
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200"
-            title="Total drops for this lead (cumulative)"
-          >
-            <LogOut className="h-3 w-3" />
-            Dropped {lead.dropsCount}{" "}
-            {lead.dropsCount === 1 ? "time" : "times"}
           </span>
         </div>
 
