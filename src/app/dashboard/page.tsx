@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import type { LeadStatus, LeadQuality, Prisma } from "@prisma/client";
@@ -105,31 +104,8 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
 
-  // Master's default landing = the "AH" private tab (first-available
-  // fallback: any active private-channel user). Runs only when master
-  // hits /dashboard with no explicit tab param and no search — so once
-  // they navigate to any other tab, this doesn't fight them.
-  if (user.role === "MASTER" && !sp.tab && !q) {
-    const ah = await prisma.user.findFirst({
-      where: {
-        active: true,
-        role: "USER",
-        isPrivateChannel: true,
-        displayName: { equals: "AH", mode: "insensitive" },
-      },
-      select: { id: true },
-    });
-    const preferred =
-      ah ??
-      (await prisma.user.findFirst({
-        where: { active: true, role: "USER", isPrivateChannel: true },
-        select: { id: true },
-        orderBy: { displayName: "asc" },
-      }));
-    if (preferred) {
-      redirect(`/dashboard?tab=${privateChannelTabKey(preferred.id)}`);
-    }
-  }
+  // Everyone — master included — lands on Fresh by default (parseTab
+  // returns "fresh" when no tab param is present).
 
   const tab: DashTab = parseTab(sp.tab);
 
