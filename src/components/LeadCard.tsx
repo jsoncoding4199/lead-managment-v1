@@ -364,7 +364,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       <div className="mt-3 rounded-lg border border-ink-100 bg-white divide-y divide-ink-100 text-[12px]">
         <SourceRow leadId={lead.id} source={lead.source ?? null} />
         <LocationRow leadId={lead.id} location={lead.location ?? null} />
-        {lead.name && <ContactRow leadId={lead.id} label="Name" value={lead.name} editable />}
+        {/* Name row always renders (between Location and Phone) so it can be
+            set even when empty. */}
+        <ContactRow leadId={lead.id} label="Name" value={lead.name ?? ""} editable />
         {(lead.phone || extractPhone(lead.content)) && (
           <ContactRow
             leadId={lead.id}
@@ -1623,8 +1625,12 @@ function ContactRow({
       <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
         {label}
       </span>
-      <span className="flex-1 truncate text-ink-800">{value}</span>
-      {copyBtn}
+      {value ? (
+        <span className="flex-1 truncate text-ink-800">{value}</span>
+      ) : (
+        <span className="flex-1 truncate text-[11px] italic text-ink-400">Tap to set…</span>
+      )}
+      {value && copyBtn}
       {editBtn}
     </div>
   );

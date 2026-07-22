@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import Link from "next/link";
+import { Home } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_STATUSES } from "@/lib/leadStatus";
@@ -68,6 +70,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-20 h-14 md:h-16 border-b border-ink-200/70 bg-white/80 backdrop-blur flex items-center justify-between gap-2 pl-16 md:pl-6 pr-3 md:pr-6">
           <div className="flex items-center gap-2 min-w-0">
+            <Link
+              href="/dashboard?tab=fresh"
+              aria-label="Home"
+              title="Home"
+              className="shrink-0 grid h-9 w-9 place-items-center rounded-lg text-ink-600 ring-1 ring-ink-200 bg-white hover:bg-ink-50 hover:text-ink-900"
+            >
+              <Home className="h-4 w-4" />
+            </Link>
             <span className="hidden md:inline text-sm text-ink-500">Signed in as</span>
             <span className="text-sm font-medium text-ink-900 truncate max-w-[35vw] md:max-w-none">
               {user.displayName}
