@@ -81,13 +81,15 @@ function contactStateLabel(state: string | undefined): string {
   return hit?.label ?? "New";
 }
 
-/** "45m", "2h", "3h 10m" — best-effort short label of time until remindAt. */
+/** "45m", "2h", "3d 4h" — best-effort short label of time until remindAt. */
 function remindersRemainingLabel(iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (ms <= 0) return "now";
   const totalMinutes = Math.floor(ms / 60_000);
-  const h = Math.floor(totalMinutes / 60);
+  const d = Math.floor(totalMinutes / 1440);
+  const h = Math.floor((totalMinutes % 1440) / 60);
   const m = totalMinutes % 60;
+  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
@@ -112,6 +114,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const [reassignOpen, setReassignOpen] = useState(false);
   const [contactStateOpen, setContactStateOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderDays, setReminderDays] = useState(0);
   const [reminderHours, setReminderHours] = useState(1);
   const [reminderMinutes, setReminderMinutes] = useState(0);
   // ponytail: per-mount only — a page refresh re-enables Ping/OK. Fine;
@@ -578,8 +581,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         <ReminderSheet
           leadId={lead.id}
           currentAt={lead.myReminderAt ?? null}
+          days={reminderDays}
           hours={reminderHours}
           minutes={reminderMinutes}
+          onDaysChange={setReminderDays}
           onHoursChange={setReminderHours}
           onMinutesChange={setReminderMinutes}
           onSave={(total) => setReminder(total)}
@@ -1265,8 +1270,10 @@ function ReassignSheet({
 function ReminderSheet({
   leadId,
   currentAt,
+  days,
   hours,
   minutes,
+  onDaysChange,
   onHoursChange,
   onMinutesChange,
   onSave,
@@ -1274,8 +1281,10 @@ function ReminderSheet({
 }: {
   leadId: number;
   currentAt: string | null;
+  days: number;
   hours: number;
   minutes: number;
+  onDaysChange: (d: number) => void;
   onHoursChange: (h: number) => void;
   onMinutesChange: (m: number) => void;
   onSave: (totalMinutes: number) => void;
@@ -1292,7 +1301,7 @@ function ReminderSheet({
   }, [onClose]);
   if (!portalNode) return null;
 
-  const total = hours * 60 + minutes;
+  const total = days * 1440 + hours * 60 + minutes;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
@@ -1333,6 +1342,22 @@ function ReminderSheet({
           <div className="flex items-center gap-3">
             <label className="flex-1">
               <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-500 mb-1">
+                Days
+              </span>
+              <select
+                value={days}
+                onChange={(e) => onDaysChange(Number(e.target.value))}
+                className="w-full h-11 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-800"
+              >
+                {Array.from({ length: 31 }, (_, d) => (
+                  <option key={d} value={d}>
+                    {d} d
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-500 mb-1">
                 Hours
               </span>
               <select
@@ -1340,7 +1365,7 @@ function ReminderSheet({
                 onChange={(e) => onHoursChange(Number(e.target.value))}
                 className="w-full h-11 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-800"
               >
-                {[0, 1, 2, 3, 4].map((h) => (
+                {Array.from({ length: 24 }, (_, h) => (
                   <option key={h} value={h}>
                     {h} h
                   </option>

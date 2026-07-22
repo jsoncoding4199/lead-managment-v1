@@ -1366,7 +1366,8 @@ const ReminderSchema = z.object({
   leadId: z.coerce.number().int().positive(),
   // Total minutes from now. 0 = clear. Cap at a day so a fat-finger can't
   // schedule something a year out.
-  minutes: z.coerce.number().int().min(0).max(24 * 60),
+  // Total minutes from now. 0 clears. Cap ~31 days (covers 30d 23h 45m).
+  minutes: z.coerce.number().int().min(0).max(31 * 24 * 60),
 });
 
 export async function setReminderAction(
