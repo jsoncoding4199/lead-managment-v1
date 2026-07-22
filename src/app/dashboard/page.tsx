@@ -16,6 +16,7 @@ import { LeadComposer } from "@/components/LeadComposer";
 import { LeadCard } from "@/components/LeadCard";
 import { TabBar } from "@/components/TabBar";
 import { LeadSearchBar } from "@/components/LeadSearchBar";
+import { LeadFilterBar } from "@/components/LeadFilterBar";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 function leadSearchFilter(q: string): Prisma.LeadWhereInput {
@@ -25,6 +26,11 @@ function leadSearchFilter(q: string): Prisma.LeadWhereInput {
       { content: { contains: q, mode: "insensitive" } },
       { remark: { contains: q, mode: "insensitive" } },
       { remarks: { some: { body: { contains: q, mode: "insensitive" } } } },
+      // Structured fields + source name so a search like "Ezy" or "FB"
+      // (or a customer name / phone) matches too.
+      { name: { contains: q, mode: "insensitive" } },
+      { phone: { contains: q, mode: "insensitive" } },
+      { source: { is: { name: { contains: q, mode: "insensitive" } } } },
     ],
   };
 }
@@ -71,7 +77,22 @@ type DashTab =
   | { kind: "static"; key: DashStaticTab }
   | { kind: "private"; userId: number };
 
-type Search = { tab?: string; q?: string };
+type Search = { tab?: string; q?: string; fu?: string; fs?: string };
+
+/**
+ * Cross-tab filter clause: narrow leads to a specific creator (fu) and/or
+ * lead source (fs). Both optional; returns {} when neither is set so it's
+ * a no-op alongside the other AND filters.
+ */
+function leadFilterWhere(
+  creatorId: number | null,
+  sourceId: number | null
+): Prisma.LeadWhereInput {
+  const and: Prisma.LeadWhereInput[] = [];
+  if (creatorId) and.push({ createdById: creatorId });
+  if (sourceId) and.push({ sourceId });
+  return and.length ? { AND: and } : {};
+}
 
 function parseTab(raw: string | undefined): DashTab {
   const privateId = parsePrivateChannelTab(raw);
@@ -103,6 +124,8 @@ export default async function DashboardPage({
   const user = await requireUser();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
+  const filterCreatorId = Number(sp.fu) > 0 ? Number(sp.fu) : null;
+  const filterSourceId = Number(sp.fs) > 0 ? Number(sp.fs) : null;
 
   // Everyone — master included — lands on Fresh by default (parseTab
   // returns "fresh" when no tab param is present).
@@ -171,6 +194,13 @@ export default async function DashboardPage({
         </Suspense>
       )}
 
+      <LeadFilterBar
+        users={assignableUsers.map((u) => ({ id: u.id, displayName: u.displayName }))}
+        sources={leadSources}
+        creatorId={filterCreatorId}
+        sourceId={filterSourceId}
+      />
+
       {/* Composer rules — hide while searching globally. Non-masters only
           see it on Fresh (public composer). Master can drop a lead from
           any tab: on a private tab the lead lands in that channel, on any
@@ -208,12 +238,12 @@ export default async function DashboardPage({
         )}
 
       {q ? (
-        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}`}>
-          <GlobalSearchResults q={q} user={user} />
+        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorId}:${filterSourceId}`}>
+          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorId} sourceId={filterSourceId} />
         </Suspense>
       ) : (
-        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${q}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} />
+        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}`}>
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} />
         </Suspense>
       )}
     </div>
@@ -302,12 +332,22 @@ function globalLeadVisibility(user: CurrentUser): Prisma.LeadWhereInput {
   };
 }
 
-async function GlobalSearchResults({ q, user }: { q: string; user: CurrentUser }) {
+async function GlobalSearchResults({
+  q,
+  user,
+  creatorId,
+  sourceId,
+}: {
+  q: string;
+  user: CurrentUser;
+  creatorId: number | null;
+  sourceId: number | null;
+}) {
   const settings = await getAppSettings();
 
   const [matches, teamUsers, masterReassignTargets] = await Promise.all([
     prisma.lead.findMany({
-      where: { AND: [globalLeadVisibility(user), leadSearchFilter(q)] },
+      where: { AND: [globalLeadVisibility(user), leadSearchFilter(q), leadFilterWhere(creatorId, sourceId)] },
       orderBy: [{ updatedAt: "desc" }],
       take: 200,
       select: leadSelect,
@@ -371,12 +411,17 @@ async function LeadsSection({
   q,
   user,
   privateUser,
+  creatorId,
+  sourceId,
 }: {
   tab: DashTab;
   q: string;
   user: CurrentUser;
   privateUser: { id: number; displayName: string } | null;
+  creatorId: number | null;
+  sourceId: number | null;
 }) {
+  const filterWhere = leadFilterWhere(creatorId, sourceId);
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
   // Master can reassign any lead to any pipeline — fetch the list of
@@ -420,6 +465,7 @@ async function LeadsSection({
             // for every other private channel.
             { isOwn: false },
             leadSearchFilter(q),
+            filterWhere,
           ],
         },
         orderBy: [{ updatedAt: "desc" }],
@@ -466,6 +512,7 @@ async function LeadsSection({
           { isOwn: true },
           { privateChannelUserId: user.id },
           leadSearchFilter(q),
+          filterWhere,
         ],
       },
       orderBy: [{ createdAt: "desc" }],
@@ -506,6 +553,7 @@ async function LeadsSection({
             { privateChannelUserId: null },
             baseWhere,
             leadSearchFilter(q),
+            filterWhere,
           ],
         },
         orderBy: [{ updatedAt: "desc" }],
@@ -547,6 +595,7 @@ async function LeadsSection({
             // visible to everyone.
             freshOrMarketVisibility(user),
             leadSearchFilter(q),
+            filterWhere,
           ],
         },
         orderBy: [{ updatedAt: "desc" }],
@@ -581,6 +630,7 @@ async function LeadsSection({
             { privateChannelUserId: null },
             { status: { in: ALWAYS_ARCHIVED_STATUSES } },
             leadSearchFilter(q),
+            filterWhere,
           ],
         },
         orderBy: [{ updatedAt: "desc" }],
@@ -618,6 +668,7 @@ async function LeadsSection({
           dateFilter,
           visibilityFilter,
           leadSearchFilter(q),
+          filterWhere,
         ],
       },
       orderBy: [{ updatedAt: "desc" }],
