@@ -1228,13 +1228,16 @@ export async function reassignPrivateLeadAction(
     newOwnerId = null;
     targetLabel = "Public pool";
   } else if (targetId === 0) {
-    // "Send to master" → master's private inbox, NOT public.
+    // "Send to master" → master's private inbox, NOT public. Also record a
+    // master assignment stamped with the sender (assignedById = me) so the
+    // inbox can categorize the lead under "Assigned by <sender>".
     const [masterId] = await getMasterIds();
     if (!masterId) return { error: "No master configured." };
     if (masterId === lead.privateChannelUserId) {
       return { error: "Lead is already in master's inbox." };
     }
     newOwnerId = masterId;
+    assignToUserId = masterId;
     targetLabel = "Master (private inbox)";
   } else {
     const target = await prisma.user.findUnique({
