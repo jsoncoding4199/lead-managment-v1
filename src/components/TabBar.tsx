@@ -26,7 +26,8 @@ type TabItem = {
 
 export function TabBar({ activeTab, freshCount, marketCount, privateChannels }: Props) {
   const pipelineTabs: TabItem[] = [
-    { key: "fresh", href: "/dashboard", label: "Fresh", short: "Fresh", count: freshCount, icon: <Sparkles className="h-4 w-4" /> },
+    // ponytail: explicit ?tab=fresh — bare /dashboard redirects master to AH.
+    { key: "fresh", href: "/dashboard?tab=fresh", label: "Fresh", short: "Fresh", count: freshCount, icon: <Sparkles className="h-4 w-4" /> },
     { key: "market", href: "/dashboard?tab=market", label: "Open Market", short: "Market", count: marketCount, icon: <Store className="h-4 w-4" /> },
   ];
 

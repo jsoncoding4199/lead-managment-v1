@@ -148,8 +148,11 @@ function SidebarInner({
       </div>
 
       <nav className="px-3 mt-2 space-y-1 flex-1 overflow-y-auto">
+        {/* Explicit ?tab=fresh — bare /dashboard triggers the master
+            default-tab redirect to the AH pipeline, which would swallow
+            this click. */}
         <NavLink
-          href="/dashboard"
+          href="/dashboard?tab=fresh"
           icon={LayoutGrid}
           active={onDashboardRoot && tab === "fresh"}
         >

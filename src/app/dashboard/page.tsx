@@ -350,7 +350,7 @@ async function GlobalSearchResults({ q, user }: { q: string; user: CurrentUser }
         <p className="mt-1 text-sm text-ink-500">
           Search covers every tab you can see. Try a different keyword.
         </p>
-        <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">
+        <Link href="/dashboard?tab=fresh" className="btn btn-outline mt-4 inline-flex">
           Clear search
         </Link>
       </div>
@@ -728,7 +728,7 @@ function ChannelLockedNotice({ label }: { label: string }) {
       <p className="mt-1 text-sm text-ink-500">
         Only the channel owner and the master can view these leads.
       </p>
-      <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">
+      <Link href="/dashboard?tab=fresh" className="btn btn-outline mt-4 inline-flex">
         Back to Fresh
       </Link>
     </div>
@@ -814,7 +814,7 @@ function ArchiveLockedNotice() {
       <p className="mt-1 text-sm text-ink-500">
         Closed leads that have reached pickup capacity live here. Ask your master if you need access.
       </p>
-      <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">
+      <Link href="/dashboard?tab=fresh" className="btn btn-outline mt-4 inline-flex">
         Back to Fresh
       </Link>
     </div>
@@ -1321,7 +1321,7 @@ function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }
       <h3 className="mt-4 text-base font-semibold text-ink-900">{title}</h3>
       <p className="mt-1 text-sm text-ink-500">{body}</p>
       {tab !== "fresh" && !hasQuery && (
-        <Link href="/dashboard" className="btn btn-outline mt-4 inline-flex">
+        <Link href="/dashboard?tab=fresh" className="btn btn-outline mt-4 inline-flex">
           Go to Fresh
         </Link>
       )}
