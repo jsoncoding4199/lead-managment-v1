@@ -438,6 +438,11 @@ async function LeadsSection({
                 { assignments: { some: { userId: tab.userId } } },
               ],
             },
+            // Master's "Own" leads live under privateChannelUserId=master.id
+            // but belong only in the dedicated Own tab — keep them out of
+            // the inbox. Only Own leads carry isOwn=true, so this is a no-op
+            // for every other private channel.
+            { isOwn: false },
             leadSearchFilter(q),
           ],
         },
@@ -931,9 +936,16 @@ async function TabBarWithCounts({
       visiblePrivateUsers.map((u) =>
         prisma.lead.count({
           where: {
-            OR: [
-              { privateChannelUserId: u.id },
-              { assignments: { some: { userId: u.id } } },
+            // Exclude master's Own leads (isOwn=true) so the inbox badge
+            // matches its filtered body. No-op for other channels.
+            AND: [
+              {
+                OR: [
+                  { privateChannelUserId: u.id },
+                  { assignments: { some: { userId: u.id } } },
+                ],
+              },
+              { isOwn: false },
             ],
           },
         }).then((count) => ({ userId: u.id, count }))
