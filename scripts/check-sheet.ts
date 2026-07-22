@@ -7,6 +7,7 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { parseCsv, parseSheet, normalizePhone, normalizeHeader } from "../src/lib/sheet";
+import { waNumber } from "../src/lib/utils";
 
 // Quoted fields, embedded comma + newline + "" escape, CRLF endings.
 const csv = 'Name,Phone Number,Note\r\n"Tan, Ah Kow",0123456789,"said ""ok""\nlater"\r\n';
@@ -22,6 +23,13 @@ assert.strictEqual(normalizePhone("0123456789"), "0123456789");
 assert.strictEqual(normalizePhone("60123456789"), "60123456789");
 assert.strictEqual(normalizePhone("012-345 6789"), "0123456789");
 assert.strictEqual(normalizePhone(""), "");
+
+// wa.me needs the country code; display and tel: stay local.
+assert.strictEqual(waNumber("0173705170"), "60173705170");
+assert.strictEqual(waNumber("173705170"), "60173705170");
+assert.strictEqual(waNumber("+60 17-370 5170"), "60173705170");
+assert.strictEqual(waNumber("60173705170"), "60173705170");
+assert.strictEqual(waNumber(""), "");
 
 assert.strictEqual(normalizeHeader("Phone Number"), "phonenumber");
 assert.strictEqual(normalizeHeader("Loan Amount (MYR)"), "loanamountmyr");

@@ -25,7 +25,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
-import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
+import { timeAgo, daysAgo, formatDateTime, waNumber, cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { QualityBadge, QualityPicker } from "./QualityPicker";
 import { LeadRemarkThread } from "./LeadRemarkThread";
@@ -1228,8 +1228,9 @@ function ContactRow({
       /* clipboard unavailable — ignore */
     }
   };
-  // Digits-only phone for tel: and wa.me. wa.me needs no + prefix.
+  // Digits-only for tel: (local form); wa.me needs the 60 country code.
   const digits = phone ? value.replace(/\D+/g, "") : "";
+  const wa = phone ? waNumber(value) : "";
 
   const save = () => {
     setSaveError(null);
@@ -1331,7 +1332,7 @@ function ContactRow({
         <Phone className="h-3.5 w-3.5" />
       </a>
       <a
-        href={`https://wa.me/${digits}`}
+        href={`https://wa.me/${wa}`}
         target="_blank"
         rel="noopener noreferrer"
         className="grid h-7 w-7 place-items-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
@@ -1430,6 +1431,7 @@ function LeadDetailsSheet({
 
   const phoneValue = lead.phone || extractPhone(lead.content) || "";
   const digits = phoneValue.replace(/\D+/g, "");
+  const wa = waNumber(phoneValue);
 
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div className="flex gap-3 py-1.5">
@@ -1493,7 +1495,7 @@ function LeadDetailsSheet({
                         <Phone className="h-3.5 w-3.5" />
                       </a>
                       <a
-                        href={`https://wa.me/${digits}`}
+                        href={`https://wa.me/${wa}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="grid h-7 w-7 place-items-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"

@@ -44,6 +44,24 @@ export function formatDateTime(date: Date | string): string {
   }).format(d);
 }
 
+/**
+ * wa.me requires the international form with no + — a local "0173705170"
+ * opens the wrong chat (or none). Display and tel: stay local; only the
+ * WhatsApp link goes through here.
+ *
+ * ponytail: assumes a Malaysian number when there's no country code,
+ * which is the whole team. A leading 6 (60… local, 65… Singapore) is
+ * taken as already-international and passed through.
+ */
+export function waNumber(raw: string): string {
+  const d = raw.replace(/\D+/g, "");
+  if (!d) return "";
+  if (d.startsWith("6")) return d;
+  if (d.startsWith("0")) return "60" + d.slice(1);
+  // Excel strips the leading zero off a numeric phone column.
+  return "60" + d;
+}
+
 export function daysAgo(date: Date | string): number {
   const d = typeof date === "string" ? new Date(date) : date;
   const ms = Date.now() - d.getTime();
