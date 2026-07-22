@@ -118,6 +118,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const [dropOpen, setDropOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [contactStateOpen, setContactStateOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderDays, setReminderDays] = useState(0);
   const [reminderHours, setReminderHours] = useState(1);
@@ -132,13 +133,13 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
 
   // Lock body scroll while any portal modal is open.
   useEffect(() => {
-    if (!menuOpen && !assignOpen && !qualityOpen && !dropOpen && !reassignOpen && !reminderOpen) return;
+    if (!menuOpen && !assignOpen && !qualityOpen && !dropOpen && !reassignOpen && !reminderOpen && !detailsOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [menuOpen, assignOpen, qualityOpen, dropOpen, reassignOpen, reminderOpen]);
+  }, [menuOpen, assignOpen, qualityOpen, dropOpen, reassignOpen, reminderOpen, detailsOpen]);
 
   const setContactState = (state: string) => {
     setError(null);
@@ -385,20 +386,17 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         )}
       </div>
 
-      <div className="mt-2 md:mt-3 relative group/content">
-        <pre
-          onClick={(e) => e.stopPropagation()}
-          className="whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-2.5 md:p-3 text-[12px] leading-relaxed text-ink-800 font-mono max-h-16 md:max-h-40 overflow-y-auto overscroll-contain"
-        >
-{lead.content}
-        </pre>
-        <Link
-          href={`/dashboard/leads/${lead.id}`}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm ring-1 ring-brand-700/20 hover:bg-brand-700 active:bg-brand-800 transition-colors"
+      {/* No inline content preview — the full lead opens in a floating
+          window instead, keeping the card compact. */}
+      <div className="mt-2 md:mt-3">
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm ring-1 ring-brand-700/20 hover:bg-brand-700 active:bg-brand-800 transition-colors"
         >
           Open details
           <ArrowRight className="h-3 w-3" />
-        </Link>
+        </button>
       </div>
 
       {lead.remark && (
@@ -591,6 +589,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           </button>
         </div>
       </footer>
+
+      {detailsOpen && (
+        <LeadDetailsSheet lead={lead} onClose={() => setDetailsOpen(false)} />
+      )}
 
       {reminderOpen && (
         <ReminderSheet
@@ -1606,40 +1608,181 @@ function ContactRow({
     </button>
   );
 
-  // Phone row: stack the buttons on their own line below the number so the
-  // full value is always readable, no matter the length. Name row keeps the
-  // single-line layout (label + value + Copy).
+  // Phone row: number and its actions sit on ONE line so the row stays
+  // compact. The number truncates if long; the action cluster never wraps.
   if (phone) {
     return (
-      <div className="px-2.5 py-1 md:py-1.5">
-        <div className="flex items-center gap-2">
-          <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
-            {label}
-          </span>
-          <span className="flex-1 break-all text-ink-800 font-medium">{value}</span>
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1.5">
+      <div className="flex items-center gap-1.5 px-2.5 py-1 md:py-1.5">
+        <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+          {label}
+        </span>
+        <span className="flex-1 min-w-0 truncate text-ink-800 font-medium">{value}</span>
+        <span className="flex shrink-0 items-center gap-1">
           {copyBtn}
           {phoneBtns}
           {editBtn}
-        </div>
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-1 md:py-1.5">
-      <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+    <div className="flex items-center gap-1.5 px-2.5 py-1 md:py-1.5">
+      <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
         {label}
       </span>
       {value ? (
-        <span className="flex-1 truncate text-ink-800">{value}</span>
+        <span className="flex-1 min-w-0 truncate text-ink-800">{value}</span>
       ) : (
-        <span className="flex-1 truncate text-[11px] italic text-ink-400">Tap to set…</span>
+        <span className="flex-1 min-w-0 truncate text-[11px] italic text-ink-400">Tap to set…</span>
       )}
-      {value && copyBtn}
-      {editBtn}
+      <span className="flex shrink-0 items-center gap-1">
+        {value && copyBtn}
+        {editBtn}
+      </span>
     </div>
+  );
+}
+
+/**
+ * Floating lead detail window. Replaces navigating to /dashboard/leads/[id]
+ * for a quick look — shows every field we already have on the card plus the
+ * full (unclipped) content. A link to the full page remains for the remark
+ * thread and status history.
+ */
+function LeadDetailsSheet({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setPortalNode(document.body);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  if (!portalNode) return null;
+
+  const phoneValue = lead.phone || extractPhone(lead.content) || "";
+  const digits = phoneValue.replace(/\D+/g, "");
+
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="flex gap-3 py-1.5">
+      <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+        {label}
+      </span>
+      <span className="flex-1 min-w-0 text-[12px] text-ink-800">{children}</span>
+    </div>
+  );
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
+      <button
+        aria-label="Close lead details"
+        onClick={onClose}
+        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-in"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Lead #${lead.id} details`}
+        className="relative w-full md:w-[520px] max-h-[88vh] flex flex-col bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="md:hidden flex justify-center pt-2">
+          <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
+        </div>
+        <div className="flex items-start justify-between gap-2 px-5 pt-4 pb-2 border-b border-ink-100">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <StatusBadge status={lead.status} />
+              <span className="text-[11px] text-ink-400">#{lead.id}</span>
+            </div>
+            <h3 className="mt-1 truncate text-base font-semibold text-ink-900">
+              {lead.name || "Lead details"}
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-3">
+          <div className="divide-y divide-ink-100">
+            {lead.name && <Row label="Name">{lead.name}</Row>}
+            {phoneValue && (
+              <Row label="Phone">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{phoneValue}</span>
+                  {digits && (
+                    <span className="flex items-center gap-1">
+                      <a
+                        href={`tel:${digits}`}
+                        className="grid h-7 w-7 place-items-center rounded-md border border-brand-200 bg-white text-brand-700 hover:bg-brand-50"
+                        aria-label="Call"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                      </a>
+                      <a
+                        href={`https://wa.me/${digits}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="grid h-7 w-7 place-items-center rounded-md border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                        aria-label="WhatsApp"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                      </a>
+                    </span>
+                  )}
+                </span>
+              </Row>
+            )}
+            {lead.source && <Row label="Source">{lead.source.name}</Row>}
+            {lead.location && <Row label="Location">{lead.location.name}</Row>}
+            <Row label="Added by">{lead.createdBy?.displayName ?? "—"}</Row>
+            <Row label="Created">{formatDateTime(lead.createdAt)}</Row>
+            <Row label="Updated">{timeAgo(lead.updatedAt)}</Row>
+            <Row label="Assigned">
+              {lead.assignees.length === 0 ? (
+                <span className="italic text-ink-400">Nobody picked up yet</span>
+              ) : (
+                lead.assignees.map((a) => a.displayName).join(", ")
+              )}
+            </Row>
+          </div>
+
+          {lead.remark && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+              <p className="text-[12px] leading-relaxed text-amber-900">{lead.remark}</p>
+            </div>
+          )}
+
+          <div className="mt-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+              Full lead
+            </div>
+            <pre className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-ink-50 p-3 text-[12px] leading-relaxed text-ink-800 font-mono">
+{lead.content}
+            </pre>
+          </div>
+        </div>
+
+        <div className="border-t border-ink-100 px-5 py-3">
+          <Link
+            href={`/dashboard/leads/${lead.id}`}
+            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-brand-700 hover:underline"
+          >
+            Open full page for thread &amp; history
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+      </div>
+    </div>,
+    portalNode
   );
 }
 
