@@ -113,7 +113,6 @@ type Props = {
 
 export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -133,13 +132,13 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
 
   // Lock body scroll while any portal modal is open.
   useEffect(() => {
-    if (!menuOpen && !assignOpen && !qualityOpen && !dropOpen && !reassignOpen && !reminderOpen && !detailsOpen) return;
+    if (!menuOpen && !qualityOpen && !dropOpen && !reassignOpen && !reminderOpen && !detailsOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [menuOpen, assignOpen, qualityOpen, dropOpen, reassignOpen, reminderOpen, detailsOpen]);
+  }, [menuOpen, qualityOpen, dropOpen, reassignOpen, reminderOpen, detailsOpen]);
 
   const setContactState = (state: string) => {
     setError(null);
@@ -206,7 +205,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     startTransition(async () => {
       const res = await setLeadAssignmentsAction({ leadId: lead.id, userIds });
       if (res?.error) setError(res.error);
-      else setAssignOpen(false);
+      // Assignment now lives inside the combined Assign sheet — close it on
+      // success so the save reads as done.
+      else setReassignOpen(false);
     });
   };
 
@@ -489,17 +490,8 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             </button>
           )}
 
-          {viewer.role === "MASTER" && (
-            <button
-              onClick={() => setAssignOpen(true)}
-              disabled={pending}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2 text-[11px] font-medium text-ink-700 hover:bg-ink-50"
-            >
-              <Users className="h-3 w-3" />
-              Assign
-            </button>
-          )}
-
+          {/* One button covers both jobs now: assigning team members and
+              moving the lead between pipelines. */}
           {canReassign && (
             <button
               onClick={() => setReassignOpen(true)}
@@ -507,7 +499,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
               className="inline-flex h-7 items-center gap-1.5 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
             >
               <Send className="h-3 w-3" />
-              {viewer.role === "MASTER" ? "Pipeline" : "Assign"}
+              Assign
             </button>
           )}
 
@@ -624,17 +616,6 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         />
       )}
 
-      {assignOpen && viewer.role === "MASTER" && (
-        <AssignSheet
-          lead={lead}
-          teamUsers={teamUsers}
-          maxPickup={maxPickup}
-          onSave={setAssignments}
-          onClose={() => setAssignOpen(false)}
-          pending={pending}
-        />
-      )}
-
       {qualityOpen && (
         <QualityPicker
           current={lead.quality}
@@ -657,6 +638,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           targets={reassignTargets ?? []}
           currentChannelUserId={lead.privateChannelUserId ?? null}
           viewerIsMaster={viewer.role === "MASTER"}
+          teamUsers={teamUsers}
+          currentAssigneeIds={lead.assignees.map((a) => a.id)}
+          maxPickup={maxPickup}
+          onSaveAssignees={setAssignments}
           onSubmit={reassign}
           onClose={() => setReassignOpen(false)}
           pending={pending}
@@ -1007,147 +992,6 @@ function StatusMenu({
   );
 }
 
-/* ---------- Master-only assign sheet (portal) ---------- */
-
-function AssignSheet({
-  lead,
-  teamUsers,
-  maxPickup,
-  onSave,
-  onClose,
-  pending,
-}: {
-  lead: Lead;
-  teamUsers: { id: number; displayName: string }[];
-  maxPickup: number;
-  onSave: (userIds: number[]) => void;
-  onClose: () => void;
-  pending: boolean;
-}) {
-  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(
-    () => new Set(lead.assignees.map((a) => a.id))
-  );
-
-  useEffect(() => {
-    setPortalNode(document.body);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  if (!portalNode) return null;
-
-  const toggle = (id: number) => {
-    setSelected((cur) => {
-      const next = new Set(cur);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const overCap = selected.size > maxPickup;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
-      <button
-        aria-label="Close assignment menu"
-        onClick={onClose}
-        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-in"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Assign lead"
-        className="relative w-full md:w-[440px] max-h-[85vh] overflow-y-auto bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="md:hidden flex justify-center pt-2">
-          <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
-        </div>
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <div>
-            <h3 className="text-base font-semibold text-ink-900">Assign lead #{lead.id}</h3>
-            <p className="text-xs text-ink-500 mt-0.5">
-              Master override — bypasses the {maxPickup}-pickup cap, but you can warn yourself.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="px-3 pb-4">
-          {teamUsers.length === 0 ? (
-            <p className="text-sm text-ink-500 px-3 py-6 text-center">
-              No active users yet. Add some on the Team page.
-            </p>
-          ) : (
-            <ul className="space-y-1 px-1">
-              {teamUsers.map((u) => {
-                const checked = selected.has(u.id);
-                return (
-                  <li key={u.id}>
-                    <button
-                      onClick={() => toggle(u.id)}
-                      className={
-                        "w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-sm text-left transition-colors " +
-                        (checked
-                          ? "border-brand-300 bg-brand-50 text-brand-800"
-                          : "border-ink-100 hover:border-ink-300 hover:bg-ink-50 text-ink-800")
-                      }
-                    >
-                      <span className="font-medium">{u.displayName}</span>
-                      <span
-                        className={cn(
-                          "grid h-5 w-5 place-items-center rounded-md border",
-                          checked ? "border-brand-500 bg-brand-500 text-white" : "border-ink-300"
-                        )}
-                      >
-                        {checked && <Check className="h-3 w-3" />}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {overCap && (
-            <p className="mt-3 mx-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              You&apos;re assigning {selected.size} users — that&apos;s above the {maxPickup}-pickup
-              setting. Saving will still work (master override), but you may want to bump
-              the limit in Admin settings.
-            </p>
-          )}
-
-          <div className="mt-4 flex items-center justify-end gap-2 px-1">
-            <button onClick={onClose} disabled={pending} className="btn btn-ghost h-9 text-xs">
-              Cancel
-            </button>
-            <button
-              onClick={() => onSave(Array.from(selected))}
-              disabled={pending}
-              className="btn btn-primary h-9 px-3 text-xs"
-            >
-              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              Save assignment
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    portalNode
-  );
-}
-
 /* ---------- Private-channel reassign sheet (portal) ---------- */
 
 function ReassignSheet({
@@ -1155,6 +999,10 @@ function ReassignSheet({
   targets,
   currentChannelUserId,
   viewerIsMaster,
+  teamUsers,
+  currentAssigneeIds,
+  maxPickup,
+  onSaveAssignees,
   onSubmit,
   onClose,
   pending,
@@ -1163,6 +1011,10 @@ function ReassignSheet({
   targets: { id: number; displayName: string; isPrivateChannel?: boolean }[];
   currentChannelUserId: number | null;
   viewerIsMaster: boolean;
+  teamUsers: { id: number; displayName: string }[];
+  currentAssigneeIds: number[];
+  maxPickup: number;
+  onSaveAssignees: (userIds: number[]) => void;
   onSubmit: (targetUserId: number, remark: string) => void;
   onClose: () => void;
   pending: boolean;
@@ -1171,6 +1023,20 @@ function ReassignSheet({
   // 0 = "send to master / public pool"; any positive id = a private user.
   const [targetId, setTargetId] = useState<number>(0);
   const [remark, setRemark] = useState<string>("");
+  // Master-only inline assignment (folded in from the old Assign button).
+  const [selected, setSelected] = useState<Set<number>>(
+    () => new Set(currentAssigneeIds)
+  );
+  const toggleAssignee = (id: number) =>
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const assigneesChanged =
+    selected.size !== currentAssigneeIds.length ||
+    currentAssigneeIds.some((id) => !selected.has(id));
 
   useEffect(() => {
     setPortalNode(document.body);
@@ -1204,10 +1070,11 @@ function ReassignSheet({
         </div>
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <div>
-            <h3 className="text-base font-semibold text-ink-900">Reassign lead #{leadId}</h3>
+            <h3 className="text-base font-semibold text-ink-900">Assign lead #{leadId}</h3>
             <p className="text-xs text-ink-500 mt-0.5">
-              Hand the lead to another private pipeline or master&apos;s private inbox.
-              A handover remark is required.
+              {viewerIsMaster
+                ? "Assign team members, or hand the lead to another pipeline."
+                : "Hand the lead to another pipeline or master's private inbox. A handover remark is required."}
             </p>
           </div>
           <button
@@ -1220,6 +1087,54 @@ function ReassignSheet({
         </div>
 
         <div className="px-5 pb-4 space-y-3">
+          {/* Assign team members — folded in from the old separate Assign
+              button. Master override: bypasses the pickup cap. */}
+          {viewerIsMaster && teamUsers.length > 0 && (
+            <div className="rounded-lg border border-ink-200 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
+                <Users className="h-3.5 w-3.5 text-brand-600" />
+                Assign to team
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {teamUsers.map((u) => {
+                  const checked = selected.has(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => toggleAssignee(u.id)}
+                      disabled={pending}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-60",
+                        checked
+                          ? "border-brand-500 bg-brand-500 text-white"
+                          : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
+                      )}
+                    >
+                      {checked && <Check className="h-3 w-3" />}
+                      {u.displayName}
+                    </button>
+                  );
+                })}
+              </div>
+              {selected.size > maxPickup && (
+                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                  {selected.size} assignees — above the {maxPickup}-pickup limit. Saving still
+                  works (master override).
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => onSaveAssignees(Array.from(selected))}
+                disabled={pending || !assigneesChanged}
+                className="btn btn-primary mt-2 h-8 px-3 text-xs disabled:opacity-50"
+              >
+                {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Save assignment
+              </button>
+            </div>
+          )}
+
           <div>
             <label className="label">Send to</label>
             <select

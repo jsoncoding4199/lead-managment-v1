@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Filter, X } from "lucide-react";
+import { X } from "lucide-react";
 
 type UserOption = { id: number; displayName: string };
 type SourceOption = { id: number; name: string };
@@ -51,16 +51,11 @@ export function LeadFilterBar({
   const active = creatorId !== null || sourceId !== null || locationId !== null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white/95 backdrop-blur p-1.5 ring-1 ring-ink-200 shadow-soft">
-      <span className="inline-flex items-center gap-1.5 px-1.5 text-xs font-semibold text-ink-500">
-        <Filter className="h-4 w-4" />
-        Filter
-      </span>
-
+    <div className="flex items-center gap-1.5 rounded-xl bg-white/95 backdrop-blur p-1.5 ring-1 ring-ink-200 shadow-soft">
       <select
         value={creatorId ?? ""}
         onChange={(e) => setParam("fu", e.target.value)}
-        className="h-8 rounded-md border border-ink-200 bg-white px-2 text-xs text-ink-800"
+        className="h-8 min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-1.5 text-xs text-ink-800"
         aria-label="Filter by user"
       >
         <option value="">All users</option>
@@ -74,7 +69,7 @@ export function LeadFilterBar({
       <select
         value={sourceId ?? ""}
         onChange={(e) => setParam("fs", e.target.value)}
-        className="h-8 rounded-md border border-ink-200 bg-white px-2 text-xs text-ink-800"
+        className="h-8 min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-1.5 text-xs text-ink-800"
         aria-label="Filter by source"
       >
         <option value="">All sources</option>
@@ -88,7 +83,7 @@ export function LeadFilterBar({
       <select
         value={locationId ?? ""}
         onChange={(e) => setParam("fl", e.target.value)}
-        className="h-8 rounded-md border border-ink-200 bg-white px-2 text-xs text-ink-800"
+        className="h-8 min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-1.5 text-xs text-ink-800"
         aria-label="Filter by location"
       >
         <option value="">All locations</option>
@@ -103,10 +98,11 @@ export function LeadFilterBar({
         <button
           type="button"
           onClick={clearAll}
-          className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-500 hover:bg-ink-100 hover:text-ink-700"
+          aria-label="Clear filters"
+          title="Clear filters"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 hover:bg-ink-100 hover:text-ink-700"
         >
-          <X className="h-3.5 w-3.5" />
-          Clear
+          <X className="h-4 w-4" />
         </button>
       )}
     </div>
