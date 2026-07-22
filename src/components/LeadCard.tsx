@@ -471,9 +471,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           <span className="ml-auto text-ink-400">Updated {timeAgo(lead.updatedAt)}</span>
         </div>
 
-        {/* Action bar — always a single row. Scrolls horizontally on very
-            narrow screens rather than wrapping to a second line. */}
-        <div className="flex flex-nowrap items-center gap-1.5 pt-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Action bar — one row, equal-width buttons that share the space so
+            every action stays visible without horizontal scrolling. Labels
+            truncate on the narrowest phones; icons always show. */}
+        <div className="flex items-center gap-1 pt-1">
           {/* OK / Pick — picks the lead up (if not already yours) and sends
               the acknowledgement in one tap. */}
           <button
@@ -485,32 +486,35 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
                 : "Pick up this lead and acknowledge it"
             }
             className={cn(
-              "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed",
+              "inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed",
               acked || masterOkSent || lead.ackedAt
                 ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
                 : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
             )}
           >
             <Check className="h-3 w-3 shrink-0" />
-            {masterOkSent
-              ? "Sent ✓"
-              : acked
-                ? "Seen ✓"
-                : !iAmAssigned && atCapacity && viewer.role !== "MASTER"
-                  ? "Full"
-                  : iAmAssigned
-                    ? "OK"
-                    : "OK / Pick"}
+            <span className="truncate">
+              {masterOkSent
+                ? "Sent"
+                : acked
+                  ? "Seen"
+                  : !iAmAssigned && atCapacity && viewer.role !== "MASTER"
+                    ? "Full"
+                    : iAmAssigned
+                      ? "OK"
+                      : "OK/Pick"}
+            </span>
           </button>
 
           {iAmAssigned && (
             <button
               onClick={() => setDropOpen(true)}
               disabled={pending}
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-rose-200 bg-white px-2 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
+              title="Drop this lead"
+              className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-rose-200 bg-white px-1.5 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
             >
               <LogOut className="h-3 w-3 shrink-0" />
-              Drop
+              <span className="truncate">Drop</span>
             </button>
           )}
 
@@ -520,10 +524,11 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <button
               onClick={() => setReassignOpen(true)}
               disabled={pending}
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
+              title="Assign or move to a pipeline"
+              className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-violet-200 bg-white px-1.5 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
             >
               <Send className="h-3 w-3 shrink-0" />
-              Assign
+              <span className="truncate">Assign</span>
             </button>
           )}
 
@@ -531,10 +536,11 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <button
               onClick={ping}
               disabled={pending}
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+              title="Ping the people responsible"
+              className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-amber-200 bg-white px-1.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
             >
               <BellRing className="h-3 w-3 shrink-0" />
-              {pinged ? "Pinged ✓" : "Ping"}
+              <span className="truncate">{pinged ? "Sent" : "Ping"}</span>
             </button>
           )}
 
@@ -544,7 +550,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             onClick={() => setReminderOpen(true)}
             disabled={pending}
             className={cn(
-              "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium disabled:opacity-60",
+              "inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] font-medium disabled:opacity-60",
               lead.myReminderAt
                 ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
                 : "border border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
@@ -556,9 +562,11 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             }
           >
             <BellRing className="h-3 w-3 shrink-0" />
-            {lead.myReminderAt
-              ? remindersRemainingLabel(lead.myReminderAt)
-              : "Remind"}
+            <span className="truncate">
+              {lead.myReminderAt
+                ? remindersRemainingLabel(lead.myReminderAt)
+                : "Remind"}
+            </span>
           </button>
         </div>
       </footer>
