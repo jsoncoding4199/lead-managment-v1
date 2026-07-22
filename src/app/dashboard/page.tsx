@@ -79,7 +79,10 @@ type DashTab =
   | { kind: "static"; key: DashStaticTab }
   | { kind: "private"; userId: number };
 
-type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string };
+type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; n?: string };
+
+/** Default rows per tab. `?n=all` lifts it — see the Own tab's footer. */
+const LEAD_PAGE_SIZE = 300;
 
 /**
  * Cross-tab filter clause: narrow leads to a specific creator (fu), lead
@@ -259,11 +262,28 @@ export default async function DashboardPage({
         </Suspense>
       ) : (
         <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} />
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} showAll={sp.n === "all"} />
         </Suspense>
       )}
     </div>
   );
+}
+
+/** Own-tab URL that keeps the active search + filters. */
+function ownHref(o: {
+  q: string;
+  creatorId: number | null;
+  sourceId: number | null;
+  locationId: number | null;
+  all?: boolean;
+}): string {
+  const p = new URLSearchParams({ tab: "own" });
+  if (o.q) p.set("q", o.q);
+  if (o.creatorId) p.set("fu", String(o.creatorId));
+  if (o.sourceId) p.set("fs", String(o.sourceId));
+  if (o.locationId) p.set("fl", String(o.locationId));
+  if (o.all) p.set("n", "all");
+  return `/dashboard?${p.toString()}`;
 }
 
 function serializeTab(tab: DashTab): string {
@@ -433,6 +453,7 @@ async function LeadsSection({
   creatorId,
   sourceId,
   locationId,
+  showAll,
 }: {
   tab: DashTab;
   q: string;
@@ -441,6 +462,7 @@ async function LeadsSection({
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
+  showAll: boolean;
 }) {
   const filterWhere = leadFilterWhere(creatorId, sourceId, locationId);
   const settings = await getAppSettings();
@@ -563,31 +585,53 @@ async function LeadsSection({
     if (user.role !== "MASTER") {
       return <ChannelLockedNotice label="this list" />;
     }
-    const ownLeads = await prisma.lead.findMany({
-      where: {
-        AND: [
-          { isOwn: true },
-          { privateChannelUserId: user.id },
-          leadSearchFilter(q),
-          filterWhere,
-        ],
-      },
-      orderBy: [{ createdAt: "desc" }],
-      take: 300,
-      select: leadSelect,
-    });
+    const ownWhere: Prisma.LeadWhereInput = {
+      AND: [
+        { isOwn: true },
+        { privateChannelUserId: user.id },
+        leadSearchFilter(q),
+        filterWhere,
+      ],
+    };
+    // The tab badge counts every Own lead, so the list has to say when it
+    // is showing fewer — otherwise 433 in the badge and 300 on screen just
+    // looks like missing leads.
+    const [ownLeads, ownTotal] = await Promise.all([
+      prisma.lead.findMany({
+        where: ownWhere,
+        orderBy: [{ createdAt: "desc" }],
+        take: showAll ? undefined : LEAD_PAGE_SIZE,
+        select: leadSelect,
+      }),
+      prisma.lead.count({ where: ownWhere }),
+    ]);
     if (ownLeads.length === 0) {
       return <EmptyState tab="own" hasQuery={!!q} />;
     }
     const leads = await toLeadViewsForUser(ownLeads, user.id);
     return (
-      <OwnByDay
-        leads={leads}
-        viewer={user}
-        teamUsers={[]}
-        maxPickup={settings.maxPickup}
-        reassignTargets={masterReassignTargets}
-      />
+      <>
+        <OwnByDay
+          leads={leads}
+          viewer={user}
+          teamUsers={[]}
+          maxPickup={settings.maxPickup}
+          reassignTargets={masterReassignTargets}
+        />
+        {ownTotal > ownLeads.length && (
+          <div className="card mt-4 p-4 text-center">
+            <p className="text-sm text-ink-600">
+              Showing {ownLeads.length} of {ownTotal} leads.
+            </p>
+            <Link
+              href={ownHref({ q, creatorId, sourceId, locationId, all: true })}
+              className="btn btn-outline mt-3 inline-flex h-9 text-xs"
+            >
+              Show all {ownTotal}
+            </Link>
+          </div>
+        )}
+      </>
     );
   }
 
