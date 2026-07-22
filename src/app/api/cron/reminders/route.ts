@@ -40,7 +40,7 @@ export async function GET(req: Request) {
         userIds: [r.userId],
         payload: {
           title: "Follow up reminder",
-          body: `Time to follow up on lead #${r.leadId}`,
+          body: `Time to follow up on lead #${r.leadId}.\n\nOpen the lead to set another reminder.`,
           url: `/dashboard/leads/${r.leadId}`,
           kind: "lead",
           tag: `lead-${r.leadId}-reminder`,
