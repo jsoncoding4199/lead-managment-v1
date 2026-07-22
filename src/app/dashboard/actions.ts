@@ -9,6 +9,7 @@ import { requireUser, requireMaster } from "@/lib/auth";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
 import { canAccessLead } from "@/lib/channels";
+import { parseSheet, normalizeHeader, normalizePhone } from "@/lib/sheet";
 
 /**
  * Focused push to the lead's original creator about a change to their
@@ -889,6 +890,200 @@ export async function addLeadRemarkAction(formData: FormData): Promise<{ error?:
       body: `${me.displayName}: ${snippet}`,
     });
   });
+}
+
+/* ------------------------- CSV / XLSX import -------------------------- */
+
+/** Header aliases → the structured Lead columns. Everything else in the
+ *  file is kept as a "Header: value" line in the lead's detail body. */
+const IMPORT_FIELDS: Record<string, "name" | "phone" | "location" | "source"> = {
+  name: "name",
+  fullname: "name",
+  applicantname: "name",
+  leadname: "name",
+  phone: "phone",
+  phonenumber: "phone",
+  phoneno: "phone",
+  mobile: "phone",
+  contactnumber: "phone",
+  telno: "phone",
+  location: "location",
+  state: "location",
+  source: "source",
+  leadsource: "source",
+};
+
+/** Lead exports say "Kuala Lumpur" / "Putrajaya"; the registry says
+ *  "KL/Selangor". Fold the Klang Valley into the existing option instead
+ *  of growing three near-duplicate entries. */
+const LOCATION_ALIASES: Record<string, string> = {
+  kualalumpur: "KL/Selangor",
+  kl: "KL/Selangor",
+  selangor: "KL/Selangor",
+  putrajaya: "KL/Selangor",
+  klselangor: "KL/Selangor",
+};
+
+/** Find a source/location by name (case-insensitive), creating it if new. */
+async function findOrCreateNamed(
+  kind: "source" | "location",
+  name: string,
+  cache: Map<string, number>
+): Promise<number> {
+  const key = name.toLowerCase();
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const where = { name: { equals: name, mode: "insensitive" as const } };
+  const row =
+    kind === "source"
+      ? (await prisma.leadSource.findFirst({ where, select: { id: true } })) ??
+        (await prisma.leadSource.create({ data: { name }, select: { id: true } }))
+      : (await prisma.leadLocation.findFirst({ where, select: { id: true } })) ??
+        (await prisma.leadLocation.create({ data: { name }, select: { id: true } }));
+  cache.set(key, row.id);
+  return row.id;
+}
+
+export type ImportResult = {
+  error?: string;
+  imported?: number;
+  skippedDuplicates?: string[];
+  skippedInvalid?: number;
+  unmatchedHeaders?: string[];
+};
+
+/**
+ * Bulk-import leads from an Excel CSV or .xlsx into the master's Own list.
+ *
+ * Deliberately unlike createLeadAction: no per-lead reminder (an 80-row
+ * file would fire 80 pushes), no team broadcast, no assignments — these
+ * are the master's own follow-up list. Rows whose phone already exists in
+ * Own, or repeats earlier in the same file, are skipped and reported.
+ */
+export async function importOwnLeadsAction(formData: FormData): Promise<ImportResult> {
+  const user = await requireMaster();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Pick a file first." };
+  if (file.size > 8_000_000) return { error: "File is too large (max 8 MB)." };
+
+  let sheet;
+  try {
+    sheet = parseSheet(file.name, Buffer.from(await file.arrayBuffer()));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not read that file." };
+  }
+  if (sheet.headers.length === 0 || sheet.rows.length === 0) {
+    return { error: "No rows found. The first row must be the column headers." };
+  }
+
+  // Map each column once: either a structured field or a detail-body line.
+  const fieldOf = sheet.headers.map((h) => IMPORT_FIELDS[normalizeHeader(h)]);
+  if (!fieldOf.includes("name") && !fieldOf.includes("phone")) {
+    return {
+      error:
+        "Need a Name or Phone column. Found: " + sheet.headers.join(", "),
+    };
+  }
+  const defaultSourceName = (formData.get("sourceName") ?? "").toString().trim();
+
+  // Existing Own phones — the dedupe set, seeded before the loop so the
+  // same file can't insert a row twice either.
+  const existing = await prisma.lead.findMany({
+    where: { isOwn: true, privateChannelUserId: user.id, phone: { not: null } },
+    select: { phone: true },
+  });
+  const seen = new Set(existing.map((l) => normalizePhone(l.phone ?? "")).filter(Boolean));
+
+  const sourceCache = new Map<string, number>();
+  const locationCache = new Map<string, number>();
+  const defaultSourceId = defaultSourceName
+    ? await findOrCreateNamed("source", defaultSourceName, sourceCache)
+    : null;
+
+  const toCreate: {
+    content: string;
+    name: string | null;
+    phone: string | null;
+    sourceId: number | null;
+    locationId: number | null;
+    status: "NEW";
+    privateChannelUserId: number;
+    isOwn: true;
+    createdById: number;
+  }[] = [];
+  const skippedDuplicates: string[] = [];
+  let skippedInvalid = 0;
+
+  for (const row of sheet.rows) {
+    let name = "";
+    let phone = "";
+    let locationName = "";
+    let sourceName = "";
+    const lines: string[] = [];
+
+    sheet.headers.forEach((header, i) => {
+      const value = (row[i] ?? "").trim();
+      if (!value) return;
+      switch (fieldOf[i]) {
+        case "name":
+          name = value;
+          break;
+        case "phone":
+          phone = normalizePhone(value);
+          break;
+        case "location":
+          locationName = value;
+          break;
+        case "source":
+          sourceName = value;
+          break;
+      }
+      // Every column — mapped or not — is kept verbatim in the body so
+      // nothing from the spreadsheet is lost.
+      lines.push(`${header}: ${value}`);
+    });
+
+    if (!name && !phone) {
+      skippedInvalid++;
+      continue;
+    }
+    if (phone && seen.has(phone)) {
+      skippedDuplicates.push(`${name || "(no name)"} — ${phone}`);
+      continue;
+    }
+    if (phone) seen.add(phone);
+
+    const resolvedLocation =
+      LOCATION_ALIASES[normalizeHeader(locationName)] ?? locationName;
+
+    toCreate.push({
+      content: lines.join("\n"),
+      name: name.slice(0, 200) || null,
+      phone: phone.slice(0, 50) || null,
+      sourceId: sourceName
+        ? await findOrCreateNamed("source", sourceName, sourceCache)
+        : defaultSourceId,
+      locationId: resolvedLocation
+        ? await findOrCreateNamed("location", resolvedLocation, locationCache)
+        : null,
+      status: "NEW",
+      privateChannelUserId: user.id,
+      isOwn: true,
+      createdById: user.id,
+    });
+  }
+
+  if (toCreate.length > 0) {
+    await prisma.lead.createMany({ data: toCreate });
+  }
+  revalidatePath("/dashboard");
+
+  return {
+    imported: toCreate.length,
+    skippedDuplicates,
+    skippedInvalid,
+    unmatchedHeaders: sheet.headers.filter((_, i) => !fieldOf[i]),
+  };
 }
 
 /**

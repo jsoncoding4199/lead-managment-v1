@@ -13,6 +13,7 @@ import {
 } from "@/lib/leadStatus";
 import { parsePrivateChannelTab, privateChannelTabKey } from "@/lib/channels";
 import { LeadComposer } from "@/components/LeadComposer";
+import { OwnLeadImport } from "@/components/OwnLeadImport";
 import { LeadCard } from "@/components/LeadCard";
 import { TabBar } from "@/components/TabBar";
 import { LeadSearchBar } from "@/components/LeadSearchBar";
@@ -217,12 +218,15 @@ export default async function DashboardPage({
       {/* "Own" tab (master-only): composer drops leads into the master's
           private Own list + triggers the default 1-hour reminder. */}
       {!q && tab.kind === "static" && tab.key === "own" && user.role === "MASTER" && (
-        <LeadComposer
-          assignableUsers={assignableUsers}
-          sources={leadSources}
-          locations={leadLocations}
-          isOwn
-        />
+        <>
+          <LeadComposer
+            assignableUsers={assignableUsers}
+            sources={leadSources}
+            locations={leadLocations}
+            isOwn
+          />
+          <OwnLeadImport sources={leadSources} />
+        </>
       )}
       {/* Other static tabs: every user gets the composer (paste auto-detect,
           source picker, assign chips). The lead always lands in the public

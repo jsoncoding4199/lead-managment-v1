@@ -6,6 +6,9 @@ const config: NextConfig = {
   // icons we actually reference, shaving 30-50 KB off the client bundle.
   experimental: {
     optimizePackageImports: ["lucide-react"],
+    // Lead imports post the spreadsheet through a server action, and the
+    // default cap is 1 MB. Matches the check in importOwnLeadsAction.
+    serverActions: { bodySizeLimit: "8mb" },
   },
   // Skip ESLint during build; we don't ship eslint deps anyway and it'd
   // otherwise fail the build on first run.
