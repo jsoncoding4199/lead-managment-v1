@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Plus, ClipboardPaste, Loader2, Check, Users, Tag, X, ScanSearch } from "lucide-react";
-import { createLeadAction, addLeadSourceAction } from "@/app/dashboard/actions";
+import { Plus, ClipboardPaste, Loader2, Check, Users, Tag, X, ScanSearch, MapPin } from "lucide-react";
+import { createLeadAction, addLeadSourceAction, addLeadLocationAction } from "@/app/dashboard/actions";
 import { cn } from "@/lib/utils";
 
 type Assignable = {
@@ -12,6 +12,9 @@ type Assignable = {
 };
 
 type SourceOption = { id: number; name: string };
+type LocationOption = { id: number; name: string };
+
+const DEFAULT_LOCATION_NAME = "KL/Selangor";
 
 type Props = {
   /** Private-channel user id to drop the lead into. Omitted = public pipeline. */
@@ -22,6 +25,8 @@ type Props = {
   assignableUsers?: Assignable[];
   /** Team-wide lead sources shown in the picker. */
   sources?: SourceOption[];
+  /** Team-wide lead locations shown in the picker. */
+  locations?: LocationOption[];
   /** When true, the lead goes into the master's private "Own" list. */
   isOwn?: boolean;
 };
@@ -31,6 +36,7 @@ export function LeadComposer({
   privateChannelLabel,
   assignableUsers = [],
   sources = [],
+  locations = [],
   isOwn = false,
 }: Props = {}) {
   const [open, setOpen] = useState(false);
@@ -44,6 +50,14 @@ export function LeadComposer({
   const [addingSource, setAddingSource] = useState(false);
   const [newSourceName, setNewSourceName] = useState("");
   const [sourceError, setSourceError] = useState<string | null>(null);
+  const [localLocations, setLocalLocations] = useState<LocationOption[]>(locations);
+  // Default the location to KL/Selangor when it exists.
+  const [locationId, setLocationId] = useState<number | null>(
+    () => locations.find((l) => l.name === DEFAULT_LOCATION_NAME)?.id ?? null
+  );
+  const [addingLocation, setAddingLocation] = useState(false);
+  const [newLocationName, setNewLocationName] = useState("");
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [autofilled, setAutofilled] = useState<null | string[]>(null);
   const [pendingParse, setPendingParse] = useState<
     { parsedName?: string; parsedPhone?: string } | null
@@ -233,6 +247,7 @@ export function LeadComposer({
     // same key (matches formData.getAll on the server).
     for (const uid of assignees) fd.append("assignedUserIds", String(uid));
     if (sourceId !== null) fd.set("sourceId", String(sourceId));
+    if (locationId !== null) fd.set("locationId", String(locationId));
     startTransition(async () => {
       const res = await createLeadAction(fd);
       if (res?.error) setError(res.error);
@@ -247,8 +262,37 @@ export function LeadComposer({
         setAddingSource(false);
         setNewSourceName("");
         setSourceError(null);
+        // Reset location back to the default (KL/Selangor).
+        setLocationId(
+          localLocations.find((l) => l.name === DEFAULT_LOCATION_NAME)?.id ?? null
+        );
+        setAddingLocation(false);
+        setNewLocationName("");
+        setLocationError(null);
         setOpen(false);
       }
+    });
+  };
+
+  const addLocation = () => {
+    const trimmed = newLocationName.trim();
+    if (!trimmed) return;
+    setLocationError(null);
+    const fd = new FormData();
+    fd.set("name", trimmed);
+    startTransition(async () => {
+      const res = await addLeadLocationAction(fd);
+      if (!res || res.error || !res.locationId) {
+        setLocationError(res?.error ?? "Could not add location.");
+        return;
+      }
+      const id = res.locationId;
+      setLocalLocations((prev) =>
+        prev.some((l) => l.id === id) ? prev : [...prev, { id, name: trimmed }]
+      );
+      setLocationId(id);
+      setAddingLocation(false);
+      setNewLocationName("");
     });
   };
 
@@ -394,6 +438,93 @@ export function LeadComposer({
         {sourceError && (
           <div className="mt-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
             {sourceError}
+          </div>
+        )}
+      </div>
+      <div className="mb-3">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
+          <MapPin className="h-3.5 w-3.5 text-brand-600" />
+          Location
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {localLocations.map((l) => {
+            const active = locationId === l.id;
+            return (
+              <button
+                type="button"
+                key={l.id}
+                onClick={() => setLocationId(active ? null : l.id)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold border transition-colors",
+                  active
+                    ? "border-brand-500 bg-brand-500 text-white"
+                    : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
+                )}
+              >
+                {active && <Check className="h-3 w-3" />}
+                <MapPin className="h-3 w-3" />
+                {l.name}
+              </button>
+            );
+          })}
+          {addingLocation ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={newLocationName}
+                onChange={(e) => setNewLocationName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addLocation();
+                  }
+                  if (e.key === "Escape") {
+                    setAddingLocation(false);
+                    setNewLocationName("");
+                  }
+                }}
+                maxLength={40}
+                placeholder="e.g. Ipoh"
+                disabled={pending}
+                className="rounded-full border border-ink-300 bg-white px-2.5 py-1 text-[11px] text-ink-800"
+              />
+              <button
+                type="button"
+                onClick={addLocation}
+                disabled={pending || !newLocationName.trim()}
+                className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingLocation(false);
+                  setNewLocationName("");
+                  setLocationError(null);
+                }}
+                disabled={pending}
+                className="grid h-6 w-6 place-items-center rounded-full border border-ink-200 bg-white text-ink-500 hover:bg-ink-50"
+                aria-label="Cancel new location"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddingLocation(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink-300 bg-white px-2.5 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50"
+            >
+              <Plus className="h-3 w-3" />
+              Add more
+            </button>
+          )}
+        </div>
+        {locationError && (
+          <div className="mt-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
+            {locationError}
           </div>
         )}
       </div>

@@ -79,6 +79,7 @@ const CreateSchema = z.object({
   phone: z.string().trim().max(50).optional(),
   // Optional LeadSource pointer. Any positive id must exist in LeadSource.
   sourceId: z.coerce.number().int().positive().optional(),
+  locationId: z.coerce.number().int().positive().optional(),
   // Optional pointer to a private channel user. Master-only; everyone
   // else's value is ignored. Empty / 0 means a public lead.
   privateChannelUserId: z.coerce.number().int().positive().optional(),
@@ -204,6 +205,83 @@ export async function setLeadSourceAction(
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
 
+/* ---------- Lead location (mirrors source) ---------- */
+
+/** Return all LeadLocation rows for the picker. Alphabetical. */
+export async function listLeadLocationsAction(): Promise<
+  { id: number; name: string }[]
+> {
+  await requireUser();
+  return prisma.leadLocation.findMany({
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+const AddLocationSchema = z.object({
+  name: z.string().trim().min(1, "Location name is required.").max(40),
+});
+
+export async function addLeadLocationAction(
+  formData: FormData
+): Promise<{ error?: string; locationId?: number } | void> {
+  await requireUser();
+  const parsed = AddLocationSchema.safeParse({ name: formData.get("name") });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid name." };
+  }
+  const name = parsed.data.name;
+  const existing = await prisma.leadLocation.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (existing) {
+    revalidatePath("/dashboard");
+    return { locationId: existing.id };
+  }
+  const created = await prisma.leadLocation.create({
+    data: { name },
+    select: { id: true },
+  });
+  revalidatePath("/dashboard");
+  return { locationId: created.id };
+}
+
+const SetLocationSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  locationId: z.coerce.number().int().min(0),
+});
+
+export async function setLeadLocationAction(
+  formData: FormData
+): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = SetLocationSchema.safeParse({
+    leadId: formData.get("leadId"),
+    locationId: formData.get("locationId"),
+  });
+  if (!parsed.success) return { error: "Invalid location." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
+  if (!meta) return { error: "Lead not found." };
+
+  if (parsed.data.locationId > 0) {
+    const exists = await prisma.leadLocation.findUnique({
+      where: { id: parsed.data.locationId },
+      select: { id: true },
+    });
+    if (!exists) return { error: "Unknown location." };
+  }
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { locationId: parsed.data.locationId || null },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
 /**
  * Inline edit of the structured name field on an existing lead. Any user
  * with access can fix a mis-parsed name from the card. Empty string clears.
@@ -277,6 +355,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     ic: formData.get("ic") || undefined,
     phone: formData.get("phone") || undefined,
     sourceId: formData.get("sourceId") || undefined,
+    locationId: formData.get("locationId") || undefined,
     privateChannelUserId: rawPrivate || undefined,
     initialNote: formData.get("initialNote") || undefined,
     assignedUserIds: formData.getAll("assignedUserIds").filter(Boolean),
@@ -340,6 +419,14 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
       });
       if (s) sourceId = s.id;
     }
+    let locationId: number | null = null;
+    if (parsed.data.locationId) {
+      const loc = await tx.leadLocation.findUnique({
+        where: { id: parsed.data.locationId },
+        select: { id: true },
+      });
+      if (loc) locationId = loc.id;
+    }
     const created = await tx.lead.create({
       data: {
         content: parsed.data.content,
@@ -347,6 +434,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         ic: parsed.data.ic || null,
         phone: parsed.data.phone || null,
         sourceId,
+        locationId,
         status: "NEW",
         contactState: parsed.data.initialNote ?? "NEW",
         privateChannelUserId,

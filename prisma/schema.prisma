@@ -147,6 +147,10 @@ model Lead {
   // via the picker on a lead card — new sources persist for everyone.
   sourceId     Int?
   source       LeadSource?  @relation(fields: [sourceId], references: [id])
+  // Lead location (KL/Selangor, Seremban, etc). Same add-your-own model as
+  // source — any user can add a new location from the picker.
+  locationId   Int?
+  location     LeadLocation? @relation(fields: [locationId], references: [id])
   remark       String?
   status       LeadStatus   @default(NEW)
   quality      LeadQuality?
@@ -220,6 +224,15 @@ model AppSettings {
 // for everyone. Rows are never deleted from the UI — orphan rows would
 // break existing leads' `sourceId` FKs.
 model LeadSource {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  leads     Lead[]
+}
+
+// Lead location registry (KL/Selangor, Seremban, etc). Same team-wide
+// add-your-own model as LeadSource.
+model LeadLocation {
   id        Int      @id @default(autoincrement())
   name      String   @unique
   createdAt DateTime @default(now())

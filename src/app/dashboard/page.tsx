@@ -156,6 +156,10 @@ export default async function DashboardPage({
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
+  const leadLocations = await prisma.leadLocation.findMany({
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <div className="space-y-5 md:space-y-8 max-w-6xl">
@@ -211,6 +215,7 @@ export default async function DashboardPage({
         <LeadComposer
           assignableUsers={assignableUsers}
           sources={leadSources}
+          locations={leadLocations}
           isOwn
         />
       )}
@@ -218,7 +223,8 @@ export default async function DashboardPage({
           source picker, assign chips). The lead always lands in the public
           Fresh pipeline regardless of which tab it was composed from. */}
       {!q && tab.kind === "static" && tab.key !== "own" && (
-        <LeadComposer assignableUsers={assignableUsers} sources={leadSources} />
+        <LeadComposer assignableUsers={assignableUsers} sources={leadSources}
+          locations={leadLocations} />
       )}
       {/* Private tab composer: master anywhere, or the channel owner on
           their own tab — so private users can paste leads (with the
@@ -230,6 +236,7 @@ export default async function DashboardPage({
           <LeadComposer
             assignableUsers={assignableUsers}
             sources={leadSources}
+          locations={leadLocations}
             privateChannelUserId={privateUser.id}
             privateChannelLabel={
               privateUser.id === user.id ? "my pipeline" : privateUser.displayName
@@ -262,6 +269,7 @@ type LeadView = {
   name: string | null;
   phone: string | null;
   source: { id: number; name: string } | null;
+  location: { id: number; name: string } | null;
   remark: string | null;
   status: LeadStatus;
   quality: LeadQuality | null;
@@ -748,6 +756,7 @@ const leadSelect = {
   name: true,
   phone: true,
   source: { select: { id: true, name: true } },
+  location: { select: { id: true, name: true } },
   remark: true,
   status: true,
   quality: true,
@@ -770,6 +779,7 @@ type RawLead = {
   name: string | null;
   phone: string | null;
   source: { id: number; name: string } | null;
+  location: { id: number; name: string } | null;
   remark: string | null;
   status: LeadStatus;
   quality: LeadQuality | null;
@@ -790,6 +800,7 @@ function toLeadView(l: RawLead, myReminderAt: Date | null = null): LeadView {
     name: l.name,
     phone: l.phone,
     source: l.source,
+    location: l.location,
     remark: l.remark,
     status: l.status,
     quality: l.quality,

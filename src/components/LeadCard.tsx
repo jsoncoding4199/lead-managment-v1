@@ -24,6 +24,7 @@ import {
   Pencil,
   Tag,
   Plus,
+  MapPin,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
@@ -47,6 +48,9 @@ import {
   setLeadSourceAction,
   addLeadSourceAction,
   listLeadSourcesAction,
+  setLeadLocationAction,
+  addLeadLocationAction,
+  listLeadLocationsAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -56,6 +60,7 @@ type Lead = {
   name?: string | null;
   phone?: string | null;
   source?: { id: number; name: string } | null;
+  location?: { id: number; name: string } | null;
   remark?: string | null;
   status: LeadStatus;
   quality: LeadQuality | null;
@@ -358,6 +363,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           set it on leads that have no source yet. */}
       <div className="mt-3 rounded-lg border border-ink-100 bg-white divide-y divide-ink-100 text-[12px]">
         <SourceRow leadId={lead.id} source={lead.source ?? null} />
+        <LocationRow leadId={lead.id} location={lead.location ?? null} />
         {lead.name && <ContactRow leadId={lead.id} label="Name" value={lead.name} editable />}
         {(lead.phone || extractPhone(lead.content)) && (
           <ContactRow
@@ -1855,6 +1861,248 @@ function SourcePicker({
             >
               <Plus className="h-3 w-3" />
               Add new
+            </button>
+          )}
+
+          {error && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] text-rose-700">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    portalNode
+  );
+}
+
+/* ---------- Location row + picker (mirrors source) ---------- */
+
+function LocationRow({
+  leadId,
+  location,
+}: {
+  leadId: number;
+  location: { id: number; name: string } | null;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-ink-50"
+      >
+        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+          Location
+        </span>
+        <span className="flex-1 truncate">
+          {location ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
+              <MapPin className="h-3 w-3" />
+              {location.name}
+            </span>
+          ) : (
+            <span className="text-[11px] italic text-ink-400">Tap to set…</span>
+          )}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 text-ink-400" />
+      </button>
+      {open && (
+        <LocationPicker
+          leadId={leadId}
+          currentLocationId={location?.id ?? null}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function LocationPicker({
+  leadId,
+  currentLocationId,
+  onClose,
+}: {
+  leadId: number;
+  currentLocationId: number | null;
+  onClose: () => void;
+}) {
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  const [locations, setLocations] = useState<{ id: number; name: string }[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setPortalNode(document.body);
+    listLeadLocationsAction()
+      .then(setLocations)
+      .catch(() => setLocations([]));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!portalNode) return null;
+
+  const pick = (locationId: number) => {
+    setError(null);
+    const fd = new FormData();
+    fd.set("leadId", String(leadId));
+    fd.set("locationId", String(locationId));
+    startTransition(async () => {
+      const res = await setLeadLocationAction(fd);
+      if (res?.error) setError(res.error);
+      else onClose();
+    });
+  };
+
+  const saveNew = () => {
+    const name = newName.trim();
+    if (!name) return;
+    setError(null);
+    const fd = new FormData();
+    fd.set("name", name);
+    startTransition(async () => {
+      const res = await addLeadLocationAction(fd);
+      if (!res || res.error || !res.locationId) {
+        setError(res?.error ?? "Could not add location.");
+        return;
+      }
+      setLocations((prev) => [...(prev ?? []), { id: res.locationId!, name }]);
+      pick(res.locationId);
+    });
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
+      <button
+        aria-label="Close location picker"
+        onClick={onClose}
+        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-in"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Pick lead location"
+        className="relative w-full md:w-[360px] bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="md:hidden flex justify-center pt-2">
+          <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
+        </div>
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <div>
+            <h3 className="text-base font-semibold text-ink-900">Where is this lead located?</h3>
+            <p className="text-xs text-ink-500 mt-0.5">
+              Pick a location or add a new one — it saves for everyone.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-4 pb-4 space-y-2">
+          {locations === null ? (
+            <div className="flex items-center gap-2 text-xs text-ink-500 px-2 py-3">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {locations.map((l) => {
+                const active = l.id === currentLocationId;
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => pick(l.id)}
+                    disabled={pending}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors disabled:opacity-60",
+                      active
+                        ? "border-brand-500 bg-brand-500 text-white"
+                        : "border-ink-200 bg-white text-ink-800 hover:bg-ink-50"
+                    )}
+                  >
+                    {active && <Check className="h-3 w-3" />}
+                    <MapPin className="h-3 w-3" />
+                    {l.name}
+                  </button>
+                );
+              })}
+              {currentLocationId !== null && (
+                <button
+                  type="button"
+                  onClick={() => pick(0)}
+                  disabled={pending}
+                  className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                >
+                  <X className="h-3 w-3" />
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+
+          {adding ? (
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveNew();
+                  if (e.key === "Escape") {
+                    setAdding(false);
+                    setNewName("");
+                  }
+                }}
+                maxLength={40}
+                placeholder="e.g. Ipoh, Kuantan…"
+                className="flex-1 rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800"
+                disabled={pending}
+              />
+              <button
+                type="button"
+                onClick={saveNew}
+                disabled={pending || !newName.trim()}
+                className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdding(false);
+                  setNewName("");
+                  setError(null);
+                }}
+                disabled={pending}
+                className="grid h-8 w-8 place-items-center rounded-md border border-ink-200 bg-white text-ink-500 hover:bg-ink-50"
+                aria-label="Cancel"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              disabled={pending}
+              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50"
+            >
+              <Plus className="h-3 w-3" />
+              Add more
             </button>
           )}
 
