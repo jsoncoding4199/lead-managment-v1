@@ -357,20 +357,6 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         skipDuplicates: true,
       });
     }
-    // Leads master drops into their OWN channel ("Own" tab) auto-get a
-    // 1-hour follow-up reminder for master. The reminder push (via cron)
-    // invites setting another one.
-    if (privateChannelUserId === user.id) {
-      await tx.leadReminder.upsert({
-        where: { leadId_userId: { leadId: created.id, userId: user.id } },
-        update: { remindAt: new Date(Date.now() + 60 * 60_000) },
-        create: {
-          leadId: created.id,
-          userId: user.id,
-          remindAt: new Date(Date.now() + 60 * 60_000),
-        },
-      });
-    }
     return created;
   });
 
@@ -550,17 +536,9 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
         },
       });
     } else {
-      // Private leads (incl. master's "Own" list) must NOT broadcast to the
-      // whole team — that would leak the private lead. Only the channel
-      // owner is notified (and they're the actor's own account for "Own"
-      // leads, so notifyLeadCreator above already covers the owner-as-actor
-      // no-op case). Public leads broadcast to everyone as before.
-      const recipients =
-        lead.privateChannelUserId !== null
-          ? [lead.privateChannelUserId]
-          : await getAllUserIds();
+      const allUsers = await getAllUserIds();
       await sendPushToUsers({
-        userIds: recipients.filter((id) => id !== lead.createdById),
+        userIds: allUsers.filter((id) => id !== lead.createdById),
         excludeUserId: user.id,
         payload: {
           title: "Lead status changed",
