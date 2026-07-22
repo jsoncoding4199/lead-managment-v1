@@ -892,6 +892,38 @@ export async function addLeadRemarkAction(formData: FormData): Promise<{ error?:
 }
 
 /**
+ * Read a lead's remark thread. Used by the floating details window on the
+ * lead card, which loads remarks on open rather than shipping them with
+ * every card in the list.
+ */
+export async function listLeadRemarksAction(leadId: number): Promise<
+  {
+    id: number;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
+    author: { id: number; displayName: string };
+  }[]
+> {
+  const me = await requireUser();
+  const meta = await loadAccessibleLeadMeta(leadId, me);
+  if (!meta) return [];
+
+  const rows = await prisma.leadRemark.findMany({
+    where: { leadId },
+    orderBy: { createdAt: "asc" },
+    include: { author: { select: { id: true, displayName: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    body: r.body,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    author: r.author,
+  }));
+}
+
+/**
  * Edit a remark message. Only the author can edit their own row — the
  * updateMany WHERE clause enforces this without a separate fetch+check,
  * so a forged remarkId from someone else's row simply matches zero rows.

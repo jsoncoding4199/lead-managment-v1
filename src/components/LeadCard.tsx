@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import type { LeadStatus, LeadQuality } from "@prisma/client";
 import {
@@ -28,6 +28,7 @@ import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { QualityBadge, QualityPicker } from "./QualityPicker";
+import { LeadRemarkThread } from "./LeadRemarkThread";
 import {
   changeStatusAction,
   pickUpLeadAction,
@@ -48,6 +49,7 @@ import {
   setLeadLocationAction,
   addLeadLocationAction,
   listLeadLocationsAction,
+  listLeadRemarksAction,
 } from "@/app/dashboard/actions";
 import Link from "next/link";
 
@@ -71,6 +73,8 @@ type Lead = {
   ackedBy?: { id: number; displayName: string } | null;
   myReminderAt?: string | null;
 };
+
+type SheetRemark = Awaited<ReturnType<typeof listLeadRemarksAction>>[number];
 
 const CONTACT_STATE_OPTIONS: { value: string; label: string }[] = [
   { value: "NEW", label: "New" },
@@ -547,7 +551,11 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       </footer>
 
       {detailsOpen && (
-        <LeadDetailsSheet lead={lead} onClose={() => setDetailsOpen(false)} />
+        <LeadDetailsSheet
+          lead={lead}
+          viewerId={viewer.id}
+          onClose={() => setDetailsOpen(false)}
+        />
       )}
 
       {reminderOpen && (
@@ -1389,11 +1397,21 @@ function ContactRow({
 /**
  * Floating lead detail window. Replaces navigating to /dashboard/leads/[id]
  * for a quick look — shows every field we already have on the card plus the
- * full (unclipped) content. A link to the full page remains for the remark
- * thread and status history.
+ * full (unclipped) content plus the remark thread, which is fetched on open
+ * rather than shipped with every card. A link to the full page remains for
+ * the status history.
  */
-function LeadDetailsSheet({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+function LeadDetailsSheet({
+  lead,
+  viewerId,
+  onClose,
+}: {
+  lead: Lead;
+  viewerId: number;
+  onClose: () => void;
+}) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  const [remarks, setRemarks] = useState<SheetRemark[] | null>(null);
   useEffect(() => {
     setPortalNode(document.body);
     const onKey = (e: KeyboardEvent) => {
@@ -1402,6 +1420,12 @@ function LeadDetailsSheet({ lead, onClose }: { lead: Lead; onClose: () => void }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const loadRemarks = useCallback(() => {
+    listLeadRemarksAction(lead.id).then(setRemarks);
+  }, [lead.id]);
+  useEffect(loadRemarks, [loadRemarks]);
+
   if (!portalNode) return null;
 
   const phoneValue = lead.phone || extractPhone(lead.content) || "";
@@ -1511,6 +1535,20 @@ function LeadDetailsSheet({ lead, onClose }: { lead: Lead; onClose: () => void }
 {lead.content}
             </pre>
           </div>
+
+          <div className="mt-4 border-t border-ink-100 pt-3">
+            {remarks === null ? (
+              <p className="text-[12px] text-ink-400">Loading remarks…</p>
+            ) : (
+              <LeadRemarkThread
+                leadId={lead.id}
+                viewerId={viewerId}
+                remarks={remarks}
+                variant="sheet"
+                onChanged={loadRemarks}
+              />
+            )}
+          </div>
         </div>
 
         <div className="border-t border-ink-100 px-5 py-3">
@@ -1518,7 +1556,7 @@ function LeadDetailsSheet({ lead, onClose }: { lead: Lead; onClose: () => void }
             href={`/dashboard/leads/${lead.id}`}
             className="inline-flex items-center gap-1.5 text-[12px] font-medium text-brand-700 hover:underline"
           >
-            Open full page for thread &amp; history
+            Open full page for history
             <ArrowRight className="h-3 w-3" />
           </Link>
         </div>

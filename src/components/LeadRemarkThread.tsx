@@ -17,6 +17,13 @@ type Props = {
   leadId: number;
   viewerId: number;
   remarks: Remark[];
+  /** "sheet" drops the card chrome — the floating details window supplies it. */
+  variant?: "page" | "sheet";
+  /**
+   * Called after a successful post/edit. The page variant relies on
+   * revalidatePath; the sheet holds remarks in local state and refetches.
+   */
+  onChanged?: () => void;
 };
 
 /**
@@ -24,7 +31,13 @@ type Props = {
  * author can edit theirs (enforced server-side too). Messages with
  * updatedAt > createdAt show a small "edited" suffix.
  */
-export function LeadRemarkThread({ leadId, viewerId, remarks }: Props) {
+export function LeadRemarkThread({
+  leadId,
+  viewerId,
+  remarks,
+  variant = "page",
+  onChanged,
+}: Props) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -44,25 +57,39 @@ export function LeadRemarkThread({ leadId, viewerId, remarks }: Props) {
         setError(res.error);
       } else {
         setDraft("");
+        onChanged?.();
       }
     });
   };
 
+  const sheet = variant === "sheet";
+  const Wrapper = sheet ? "div" : "section";
+
   return (
-    <section className="card p-6">
+    <Wrapper className={sheet ? "" : "card p-6"}>
       <div>
-        <h3 className="text-sm font-semibold text-ink-900">Remarks</h3>
-        <p className="text-xs text-ink-500 mt-0.5">
-          Conversation style — each user posts their own notes. You can only edit your own messages.
-        </p>
+        <h3
+          className={
+            sheet
+              ? "text-[10px] font-semibold uppercase tracking-wider text-ink-500"
+              : "text-sm font-semibold text-ink-900"
+          }
+        >
+          Remarks
+        </h3>
+        {!sheet && (
+          <p className="text-xs text-ink-500 mt-0.5">
+            Conversation style — each user posts their own notes. You can only edit your own messages.
+          </p>
+        )}
       </div>
 
       {remarks.length === 0 ? (
-        <p className="mt-5 text-sm text-ink-400 italic">
+        <p className={(sheet ? "mt-2 text-[12px]" : "mt-5 text-sm") + " text-ink-400 italic"}>
           No messages yet. Be the first to leave a note.
         </p>
       ) : (
-        <ol className="mt-5 space-y-3">
+        <ol className={(sheet ? "mt-2" : "mt-5") + " space-y-3"}>
           {remarks.map((r) => (
             <RemarkRow
               key={r.id}
@@ -71,13 +98,16 @@ export function LeadRemarkThread({ leadId, viewerId, remarks }: Props) {
               isEditing={editingId === r.id}
               onStartEdit={() => setEditingId(r.id)}
               onCancelEdit={() => setEditingId(null)}
-              onSaved={() => setEditingId(null)}
+              onSaved={() => {
+                setEditingId(null);
+                onChanged?.();
+              }}
             />
           ))}
         </ol>
       )}
 
-      <form onSubmit={submit} className="mt-5 flex items-end gap-2">
+      <form onSubmit={submit} className={(sheet ? "mt-3" : "mt-5") + " flex items-end gap-2"}>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -111,7 +141,7 @@ export function LeadRemarkThread({ leadId, viewerId, remarks }: Props) {
         </p>
       )}
       <div className="mt-1 text-[11px] text-ink-400">{draft.length}/2000</div>
-    </section>
+    </Wrapper>
   );
 }
 
