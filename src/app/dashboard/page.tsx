@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { Lock, Hand } from "lucide-react";
 import type { LeadStatus, LeadQuality, Prisma } from "@prisma/client";
 import { requireUser, type CurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -490,6 +490,42 @@ async function LeadsSection({
       return <ChannelEmpty label={privateUser.displayName} hasQuery={!!q} />;
     }
     const leads = await toLeadViewsForUser(channelLeads, user.id);
+
+    // Master's own inbox: categorize into "Own pick up" (leads master
+    // picked up themselves) and one section per user who assigned a lead
+    // to master.
+    const isMasterInbox = user.role === "MASTER" && tab.userId === user.id;
+    if (isMasterInbox) {
+      const assigns = await prisma.leadAssignment.findMany({
+        where: { userId: user.id, leadId: { in: leads.map((l) => l.id) } },
+        select: {
+          leadId: true,
+          assignedById: true,
+          assignedBy: { select: { id: true, displayName: true } },
+        },
+      });
+      const assignerByLead = new Map<
+        number,
+        { id: number; displayName: string } | null
+      >();
+      for (const a of assigns) {
+        // Self-assignment (picked up by master) → no external assigner.
+        assignerByLead.set(
+          a.leadId,
+          a.assignedById === user.id ? null : a.assignedBy
+        );
+      }
+      return (
+        <MasterInboxCategorized
+          leads={leads}
+          assignerByLead={assignerByLead}
+          viewer={user}
+          maxPickup={settings.maxPickup}
+          reassignTargets={otherPrivateUsers}
+        />
+      );
+    }
+
     return (
       <ChannelLeadList
         label={privateUser.displayName}
@@ -1159,6 +1195,105 @@ function OpenGrouped({
  * created (Today / Yesterday / explicit date), newest day first. Each day
  * is a collapsible section; the most recent day starts open.
  */
+/**
+ * Master inbox renderer: splits leads into "Own pick up" (leads master
+ * picked up themselves — no external assigner) and one collapsible section
+ * per user who assigned a lead to master. Leads with no recorded master
+ * assignment (e.g. reassigned straight into the inbox) fall under "Own
+ * pick up" too.
+ */
+function MasterInboxCategorized({
+  leads,
+  assignerByLead,
+  viewer,
+  maxPickup,
+  reassignTargets = [],
+}: {
+  leads: LeadView[];
+  assignerByLead: Map<number, { id: number; displayName: string } | null>;
+  viewer: CurrentUser;
+  maxPickup: number;
+  reassignTargets?: { id: number; displayName: string }[];
+}) {
+  const ownPickup: LeadView[] = [];
+  const byAssigner = new Map<number, { label: string; items: LeadView[] }>();
+  for (const lead of leads) {
+    const assigner = assignerByLead.get(lead.id) ?? null;
+    if (!assigner) {
+      ownPickup.push(lead);
+      continue;
+    }
+    const bucket = byAssigner.get(assigner.id) ?? { label: assigner.displayName, items: [] };
+    bucket.items.push(lead);
+    byAssigner.set(assigner.id, bucket);
+  }
+  const assignerEntries = Array.from(byAssigner.entries()).sort((a, b) =>
+    a[1].label.localeCompare(b[1].label)
+  );
+
+  const renderGrid = (items: LeadView[]) => (
+    <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {items.map((lead) => (
+        <li key={lead.id}>
+          <LeadCard lead={lead} viewer={viewer} teamUsers={[]} maxPickup={maxPickup} reassignTargets={reassignTargets} />
+        </li>
+      ))}
+    </ul>
+  );
+
+  return (
+    <div className="space-y-6">
+      {ownPickup.length > 0 && (
+        <CollapsibleSection
+          storageKey="inbox:own-pickup"
+          count={ownPickup.length}
+          defaultOpen
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-emerald-100 text-emerald-700">
+                <Hand className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">Own pick up</h3>
+                <p className="text-xs text-ink-500">
+                  {ownPickup.length} lead{ownPickup.length === 1 ? "" : "s"} you picked up
+                </p>
+              </div>
+            </div>
+          }
+        >
+          {renderGrid(ownPickup)}
+        </CollapsibleSection>
+      )}
+      {assignerEntries.map(([id, bucket]) => (
+        <CollapsibleSection
+          key={id}
+          storageKey={`inbox:assigner:${id}`}
+          count={bucket.items.length}
+          defaultOpen
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                {initials(bucket.label)}
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">
+                  Assigned by {bucket.label}
+                </h3>
+                <p className="text-xs text-ink-500">
+                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} assigned to you
+                </p>
+              </div>
+            </div>
+          }
+        >
+          {renderGrid(bucket.items)}
+        </CollapsibleSection>
+      ))}
+    </div>
+  );
+}
+
 function OwnByDay({
   leads,
   viewer,
