@@ -11,7 +11,6 @@ import {
   Calendar,
   X,
   StickyNote,
-  Hand,
   LogOut,
   Users,
   Check,
@@ -176,13 +175,43 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     });
   };
 
-  const pickUp = () => {
+  /**
+   * Combined "OK / Pick" — the old Pick up button folded into OK. In one
+   * tap it picks the lead up (when the viewer isn't already an assignee and
+   * has capacity) and then sends the role-appropriate acknowledgement:
+   * master notifies the lead's creator, everyone else notifies master.
+   */
+  const okPick = () => {
     setError(null);
-    const fd = new FormData();
-    fd.set("leadId", String(lead.id));
+    const shouldPick = !iAmAssigned && !(atCapacity && viewer.role !== "MASTER");
     startTransition(async () => {
-      const res = await pickUpLeadAction(fd);
-      if (res?.error) setError(res.error);
+      if (shouldPick) {
+        const fd = new FormData();
+        fd.set("leadId", String(lead.id));
+        const res = await pickUpLeadAction(fd);
+        if (res?.error) {
+          setError(res.error);
+          return;
+        }
+      }
+      const fd = new FormData();
+      fd.set("leadId", String(lead.id));
+      if (viewer.role === "MASTER") {
+        const res = await masterOkLeadAction(fd);
+        if (res?.error) {
+          setError(res.error);
+          return;
+        }
+        setMasterOkSent(true);
+        setTimeout(() => setMasterOkSent(false), 1500);
+      } else {
+        const res = await ackLeadAction(fd);
+        if (res?.error) {
+          setError(res.error);
+          return;
+        }
+        setAcked(true);
+      }
     });
   };
 
@@ -235,32 +264,6 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         setPinged(true);
         setTimeout(() => setPinged(false), 1500);
       }
-    });
-  };
-
-  const masterOk = () => {
-    setError(null);
-    const fd = new FormData();
-    fd.set("leadId", String(lead.id));
-    startTransition(async () => {
-      const res = await masterOkLeadAction(fd);
-      if (res?.error) setError(res.error);
-      else {
-        // Flash "OK sent ✓" then re-arm — master can confirm again anytime.
-        setMasterOkSent(true);
-        setTimeout(() => setMasterOkSent(false), 1500);
-      }
-    });
-  };
-
-  const acknowledge = () => {
-    setError(null);
-    const fd = new FormData();
-    fd.set("leadId", String(lead.id));
-    startTransition(async () => {
-      const res = await ackLeadAction(fd);
-      if (res?.error) setError(res.error);
-      else setAcked(true);
     });
   };
 
@@ -468,25 +471,46 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           <span className="ml-auto text-ink-400">Updated {timeAgo(lead.updatedAt)}</span>
         </div>
 
-        {/* Pickup / drop / master assignment controls */}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {iAmAssigned ? (
+        {/* Action bar — always a single row. Scrolls horizontally on very
+            narrow screens rather than wrapping to a second line. */}
+        <div className="flex flex-nowrap items-center gap-1.5 pt-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* OK / Pick — picks the lead up (if not already yours) and sends
+              the acknowledgement in one tap. */}
+          <button
+            onClick={okPick}
+            disabled={pending || (!iAmAssigned && atCapacity && viewer.role !== "MASTER")}
+            title={
+              iAmAssigned
+                ? "Acknowledge this lead"
+                : "Pick up this lead and acknowledge it"
+            }
+            className={cn(
+              "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed",
+              acked || masterOkSent || lead.ackedAt
+                ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+            )}
+          >
+            <Check className="h-3 w-3 shrink-0" />
+            {masterOkSent
+              ? "Sent ✓"
+              : acked
+                ? "Seen ✓"
+                : !iAmAssigned && atCapacity && viewer.role !== "MASTER"
+                  ? "Full"
+                  : iAmAssigned
+                    ? "OK"
+                    : "OK / Pick"}
+          </button>
+
+          {iAmAssigned && (
             <button
               onClick={() => setDropOpen(true)}
               disabled={pending}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-rose-200 bg-white px-2 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-rose-200 bg-white px-2 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
             >
-              <LogOut className="h-3 w-3" />
+              <LogOut className="h-3 w-3 shrink-0" />
               Drop
-            </button>
-          ) : (
-            <button
-              onClick={pickUp}
-              disabled={pending || (atCapacity && viewer.role !== "MASTER")}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-emerald-200 bg-white px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Hand className="h-3 w-3" />
-              {atCapacity ? "Full" : "Pick up"}
             </button>
           )}
 
@@ -496,74 +520,31 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <button
               onClick={() => setReassignOpen(true)}
               disabled={pending}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
             >
-              <Send className="h-3 w-3" />
+              <Send className="h-3 w-3 shrink-0" />
               Assign
             </button>
           )}
 
-          {viewer.role === "MASTER" ? (
-            <>
-              <button
-                onClick={ping}
-                disabled={pending}
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
-              >
-                <BellRing className="h-3 w-3" />
-                {pinged ? "Pinged ✓" : "Ping"}
-              </button>
-              {/* Master OK — notifies the user who put in the lead. Turns
-                  green when a picker has already acknowledged it, and shows
-                  who; still clickable so master can send a fresh confirm. */}
-              <button
-                onClick={masterOk}
-                disabled={pending}
-                title={
-                  lead.ackedBy
-                    ? `Acknowledged by ${lead.ackedBy.displayName} — tap to confirm to the creator`
-                    : "Tap to confirm this lead to its creator"
-                }
-                className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold disabled:opacity-60",
-                  lead.ackedAt
-                    ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-                    : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
-                )}
-              >
-                <Check className="h-3 w-3" />
-                {masterOkSent
-                  ? "OK sent ✓"
-                  : lead.ackedBy
-                    ? `OK · ${lead.ackedBy.displayName}`
-                    : "OK"}
-              </button>
-            </>
-          ) : (
+          {viewer.role === "MASTER" && (
             <button
-              onClick={acknowledge}
-              disabled={pending || acked || lead.ackedBy?.id === viewer.id}
-              className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium",
-                acked || lead.ackedBy?.id === viewer.id
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
-              )}
+              onClick={ping}
+              disabled={pending}
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
             >
-              <Check className="h-3 w-3" />
-              {acked || lead.ackedBy?.id === viewer.id ? "Seen ✓" : "OK"}
+              <BellRing className="h-3 w-3 shrink-0" />
+              {pinged ? "Pinged ✓" : "Ping"}
             </button>
           )}
 
-          {/* Personal follow-up reminder. Any user w/ access sets their own; */}
-          {/* cron sweeps due rows every 5 min and pushes to the owner. */}
-          {/* Panel is portaled to <body> so it can't hide behind another */}
-          {/* card in the grid. */}
+          {/* Personal follow-up reminder. Any user w/ access sets their own;
+              cron sweeps due rows and pushes to the owner. */}
           <button
             onClick={() => setReminderOpen(true)}
             disabled={pending}
             className={cn(
-              "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium disabled:opacity-60",
+              "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium disabled:opacity-60",
               lead.myReminderAt
                 ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
                 : "border border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
@@ -574,9 +555,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
                 : "Set a follow-up reminder"
             }
           >
-            <BellRing className="h-3 w-3" />
+            <BellRing className="h-3 w-3 shrink-0" />
             {lead.myReminderAt
-              ? `In ${remindersRemainingLabel(lead.myReminderAt)}`
+              ? remindersRemainingLabel(lead.myReminderAt)
               : "Remind"}
           </button>
         </div>

@@ -136,34 +136,33 @@ export default async function DashboardPage({
 
   const tab: DashTab = parseTab(sp.tab);
 
-  // Resolve private-channel user (if any) up front so we can label the
-  // header subtitle and gate the composer.
-  let privateUser: { id: number; displayName: string } | null = null;
-  if (tab.kind === "private") {
-    privateUser = await prisma.user.findUnique({
-      where: { id: tab.userId },
-      select: { id: true, displayName: true },
-    });
-  }
-
-  // Every active user — creator can assign the fresh lead to anyone,
-  // including master. Fetched once, threaded into every composer instance.
-  const assignableUsers = await prisma.user.findMany({
-    where: { active: true },
-    select: { id: true, displayName: true, role: true },
-    orderBy: [{ role: "asc" }, { displayName: "asc" }],
-  });
-  // Every LeadSource, so the composer's source picker renders the chips
-  // without a client roundtrip. Any Add-new done in the picker calls
-  // listLeadSourcesAction (revalidatePath refreshes this SSR list).
-  const leadSources = await prisma.leadSource.findMany({
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
-  const leadLocations = await prisma.leadLocation.findMany({
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  // All four lookups are independent — run them in one round-trip batch
+  // instead of four sequential awaits (noticeably faster on mobile links).
+  //   privateUser    — labels the header + gates the composer on a private tab
+  //   assignableUsers— composer's assign chips (every active user)
+  //   leadSources /  — composer pickers, rendered server-side so there's no
+  //   leadLocations    client roundtrip on open
+  const [privateUser, assignableUsers, leadSources, leadLocations] = await Promise.all([
+    tab.kind === "private"
+      ? prisma.user.findUnique({
+          where: { id: tab.userId },
+          select: { id: true, displayName: true },
+        })
+      : Promise.resolve(null),
+    prisma.user.findMany({
+      where: { active: true },
+      select: { id: true, displayName: true, role: true },
+      orderBy: [{ role: "asc" }, { displayName: "asc" }],
+    }),
+    prisma.leadSource.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.leadLocation.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <div className="space-y-3 md:space-y-6 max-w-6xl">
@@ -968,6 +967,13 @@ async function TabBarWithCounts({
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
 
+  // Fire the Own-tab count now so it overlaps the queries below instead of
+  // adding another sequential round-trip.
+  const ownCountPromise =
+    user.role === "MASTER"
+      ? prisma.lead.count({ where: { isOwn: true, privateChannelUserId: user.id } })
+      : Promise.resolve(0);
+
   // Private-channel users this viewer can SEE as tabs:
   //   master   → all active private-channel users
   //   private  → just themselves
@@ -1042,13 +1048,9 @@ async function TabBarWithCounts({
     privateCountsMap.set(r.userId, r.count);
   }
 
-  // Master-only "Own" tab badge count.
-  const ownCount =
-    user.role === "MASTER"
-      ? await prisma.lead.count({
-          where: { isOwn: true, privateChannelUserId: user.id },
-        })
-      : 0;
+  // Master-only "Own" tab badge count. Awaited alongside the batch above
+  // rather than after it.
+  const ownCount = await ownCountPromise;
 
   // Only Fresh + Open Market keep live counts in the tab bar now — the
   // status buckets moved to the sidebar (no counts), so their per-status
