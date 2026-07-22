@@ -158,6 +158,11 @@ model Lead {
   // null = public pipeline (Fresh/Market/Picks/Archive).
   privateChannelUserId Int?
   privateChannelUser   User? @relation("PrivateChannelOwner", fields: [privateChannelUserId], references: [id])
+  // Marks a lead that lives in the master's dedicated "Own" tab. Additive
+  // flag on top of privateChannelUserId = master.id — lets the Own tab
+  // filter to exactly these and gives them Own-specific notifications,
+  // without altering any existing tab query.
+  isOwn        Boolean      @default(false)
   // Sub-state used only while the main status is NEW. Tracks whether the
   // team has already tried to reach the lead. Values: "NEW", "CALLED_BEFORE",
   // "WHATSAPP_BEFORE". String column (not enum) to skip migration ceremony.

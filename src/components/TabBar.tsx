@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Sparkles, Store, Crown } from "lucide-react";
+import { Sparkles, Store, Crown, Lock } from "lucide-react";
 
 type PrivateChannel = {
   key: string;
@@ -10,6 +10,9 @@ type PrivateChannel = {
 
 type Props = {
   activeTab: string;
+  /** Master-only "Own" tab, rendered before Fresh. */
+  showOwn?: boolean;
+  ownCount?: number;
   freshCount: number;
   marketCount: number;
   privateChannels: PrivateChannel[];
@@ -24,8 +27,12 @@ type TabItem = {
   icon: React.ReactNode;
 };
 
-export function TabBar({ activeTab, freshCount, marketCount, privateChannels }: Props) {
+export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCount, privateChannels }: Props) {
   const pipelineTabs: TabItem[] = [
+    // Master-only "Own" tab in front of Fresh — master's private list.
+    ...(showOwn
+      ? [{ key: "own", href: "/dashboard?tab=own", label: "Own", short: "Own", count: ownCount, icon: <Lock className="h-4 w-4" /> }]
+      : []),
     // ponytail: explicit ?tab=fresh — bare /dashboard redirects master to AH.
     { key: "fresh", href: "/dashboard?tab=fresh", label: "Fresh", short: "Fresh", count: freshCount, icon: <Sparkles className="h-4 w-4" /> },
     { key: "market", href: "/dashboard?tab=market", label: "Open Market", short: "Market", count: marketCount, icon: <Store className="h-4 w-4" /> },

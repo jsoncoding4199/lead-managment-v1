@@ -285,7 +285,13 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
+  // "Own" list flag — master-only. Own leads live under the master's own
+  // private channel (privateChannelUserId = master.id) plus this marker,
+  // and get an automatic 1-hour follow-up reminder.
+  const isOwn = formData.get("isOwn") === "true" && user.role === "MASTER";
+
   let privateChannelUserId: number | null = parsed.data.privateChannelUserId ?? null;
+  if (isOwn) privateChannelUserId = user.id;
   // Master can target any channel; everyone else may only create into
   // their OWN private pipeline (the composer on their private tab).
   if (
@@ -344,9 +350,20 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         status: "NEW",
         contactState: parsed.data.initialNote ?? "NEW",
         privateChannelUserId,
+        isOwn,
         createdById: user.id,
       },
     });
+    // Own-list leads auto-get a 1-hour follow-up reminder for the master.
+    if (isOwn) {
+      await tx.leadReminder.create({
+        data: {
+          leadId: created.id,
+          userId: user.id,
+          remindAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      });
+    }
     if (validAssignees.length > 0) {
       await tx.leadAssignment.createMany({
         data: validAssignees.map((uid) => ({
@@ -509,6 +526,25 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   const toStatus = parsed.data.status as LeadStatus;
   after(async () => {
     const reason = parsed.data.note?.trim() || STATUS_LABEL[toStatus];
+
+    // "Own" leads are the master's private list. Status changes notify the
+    // master directly (they manage the list) and NEVER broadcast to the
+    // team. Handled here and returned so the standard creator-notify +
+    // team-broadcast paths below stay untouched for every other lead.
+    if (lead.isOwn && lead.privateChannelUserId !== null) {
+      await sendPushToUsers({
+        userIds: [lead.privateChannelUserId],
+        payload: {
+          title: "Own lead status changed",
+          body: `#${lead.id} → ${STATUS_LABEL[toStatus]}`,
+          url: `/dashboard/leads/${lead.id}`,
+          kind: "status",
+          tag: `lead-${lead.id}-own`,
+        },
+      });
+      return;
+    }
+
     const focusedTitle =
       toStatus === "APPROVED" ? "Your lead was approved 🎉" :
       toStatus === "REJECTED" ? "Your lead was rejected" :

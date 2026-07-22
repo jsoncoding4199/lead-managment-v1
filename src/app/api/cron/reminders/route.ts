@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   const now = new Date();
   const due = await prisma.leadReminder.findMany({
     where: { remindAt: { lte: now } },
-    select: { id: true, leadId: true, userId: true },
+    select: { id: true, leadId: true, userId: true, lead: { select: { isOwn: true } } },
     take: 200,
   });
 
@@ -34,13 +34,16 @@ export async function GET(req: Request) {
 
   // Group by user so each user gets one push per lead. LeadReminder is
   // unique(leadId, userId), so at most one per user per lead already.
+  // Own-list reminders invite the master to set another reminder.
   await Promise.all(
     due.map((r) =>
       sendPushToUsers({
         userIds: [r.userId],
         payload: {
           title: "Follow up reminder",
-          body: `Time to follow up on lead #${r.leadId}`,
+          body: r.lead?.isOwn
+            ? `Follow up on lead #${r.leadId}.\n\nOpen the lead to set another reminder.`
+            : `Time to follow up on lead #${r.leadId}`,
           url: `/dashboard/leads/${r.leadId}`,
           kind: "lead",
           tag: `lead-${r.leadId}-reminder`,

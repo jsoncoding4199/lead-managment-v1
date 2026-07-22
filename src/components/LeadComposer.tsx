@@ -22,6 +22,8 @@ type Props = {
   assignableUsers?: Assignable[];
   /** Team-wide lead sources shown in the picker. */
   sources?: SourceOption[];
+  /** When true, the lead goes into the master's private "Own" list. */
+  isOwn?: boolean;
 };
 
 export function LeadComposer({
@@ -29,6 +31,7 @@ export function LeadComposer({
   privateChannelLabel,
   assignableUsers = [],
   sources = [],
+  isOwn = false,
 }: Props = {}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,12 +196,16 @@ export function LeadComposer({
   };
 
   const isPrivate = privateChannelUserId !== undefined;
-  const ctaLabel = isPrivate
-    ? `Drop a new lead into ${privateChannelLabel}'s pipeline`
-    : "Drop a new lead";
-  const ctaHint = isPrivate
-    ? `Goes into ${privateChannelLabel}'s private pipeline — only they and master see it.`
-    : "Paste any text — contact info, message, or notes.";
+  const ctaLabel = isOwn
+    ? "Add a lead to your Own list"
+    : isPrivate
+      ? `Drop a new lead into ${privateChannelLabel}'s pipeline`
+      : "Drop a new lead";
+  const ctaHint = isOwn
+    ? "Private to you, grouped by day, with a 1-hour follow-up reminder."
+    : isPrivate
+      ? `Goes into ${privateChannelLabel}'s private pipeline — only they and master see it.`
+      : "Paste any text — contact info, message, or notes.";
 
   if (!open) {
     return (
@@ -289,6 +296,7 @@ export function LeadComposer({
       {isPrivate && (
         <input type="hidden" name="privateChannelUserId" value={privateChannelUserId} />
       )}
+      {isOwn && <input type="hidden" name="isOwn" value="true" />}
       {isPrivate && (
         <div className="mb-3">
           <label className="label">Initial status</label>

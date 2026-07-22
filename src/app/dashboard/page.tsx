@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Lock } from "lucide-react";
 import type { LeadStatus, LeadQuality, Prisma } from "@prisma/client";
 import { requireUser, type CurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -39,6 +40,7 @@ function leadSearchFilter(q: string): Prisma.LeadWhereInput {
  */
 
 type DashStaticTab =
+  | "own"
   | "fresh"
   | "market"
   | "picks"
@@ -76,6 +78,7 @@ function parseTab(raw: string | undefined): DashTab {
   const privateId = parsePrivateChannelTab(raw);
   if (privateId !== null) return { kind: "private", userId: privateId };
   switch (raw) {
+    case "own":
     case "market":
     case "picks":
     case "archive":
@@ -161,6 +164,8 @@ export default async function DashboardPage({
         <h2 className="text-2xl md:text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
         <p className="text-ink-500 mt-1 text-xs md:text-sm">
           {q && `Searching all visible leads for “${q}”.`}
+          {!q && tab.kind === "static" && tab.key === "own" &&
+            "Your private list — visible only to you, grouped by day. New leads get a 1-hour follow-up reminder."}
           {!q && tab.kind === "static" && tab.key === "fresh" &&
             (user.role === "MASTER"
               ? "Fresh leads in the active pipeline."
@@ -194,10 +199,19 @@ export default async function DashboardPage({
           see it on Fresh (public composer). Master can drop a lead from
           any tab: on a private tab the lead lands in that channel, on any
           static tab it goes into the public Fresh pipeline. */}
-      {/* Static tabs: every user gets the composer (paste auto-detect,
+      {/* "Own" tab (master-only): composer drops leads into the master's
+          private Own list + triggers the default 1-hour reminder. */}
+      {!q && tab.kind === "static" && tab.key === "own" && user.role === "MASTER" && (
+        <LeadComposer
+          assignableUsers={assignableUsers}
+          sources={leadSources}
+          isOwn
+        />
+      )}
+      {/* Other static tabs: every user gets the composer (paste auto-detect,
           source picker, assign chips). The lead always lands in the public
           Fresh pipeline regardless of which tab it was composed from. */}
-      {!q && tab.kind === "static" && (
+      {!q && tab.kind === "static" && tab.key !== "own" && (
         <LeadComposer assignableUsers={assignableUsers} sources={leadSources} />
       )}
       {/* Private tab composer: master anywhere, or the channel owner on
@@ -456,6 +470,38 @@ async function LeadsSection({
         viewer={user}
         maxPickup={settings.maxPickup}
         reassignTargets={otherPrivateUsers}
+      />
+    );
+  }
+
+  /* ---------- "Own" tab — master's private list, grouped by day ---------- */
+  if (tab.key === "own") {
+    if (user.role !== "MASTER") {
+      return <ChannelLockedNotice label="this list" />;
+    }
+    const ownLeads = await prisma.lead.findMany({
+      where: {
+        AND: [
+          { isOwn: true },
+          { privateChannelUserId: user.id },
+          leadSearchFilter(q),
+        ],
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: 300,
+      select: leadSelect,
+    });
+    if (ownLeads.length === 0) {
+      return <EmptyState tab="own" hasQuery={!!q} />;
+    }
+    const leads = await toLeadViewsForUser(ownLeads, user.id);
+    return (
+      <OwnByDay
+        leads={leads}
+        viewer={user}
+        teamUsers={[]}
+        maxPickup={settings.maxPickup}
+        reassignTargets={masterReassignTargets}
       />
     );
   }
@@ -900,6 +946,14 @@ async function TabBarWithCounts({
     privateCountsMap.set(r.userId, r.count);
   }
 
+  // Master-only "Own" tab badge count.
+  const ownCount =
+    user.role === "MASTER"
+      ? await prisma.lead.count({
+          where: { isOwn: true, privateChannelUserId: user.id },
+        })
+      : 0;
+
   // Only Fresh + Open Market keep live counts in the tab bar now — the
   // status buckets moved to the sidebar (no counts), so their per-status
   // tallies aren't needed here.
@@ -927,6 +981,8 @@ async function TabBarWithCounts({
   return (
     <TabBar
       activeTab={serializeTab(tab)}
+      showOwn={user.role === "MASTER"}
+      ownCount={ownCount}
       freshCount={freshCount}
       marketCount={marketCount}
       privateChannels={visiblePrivateUsers.map((u) => ({
@@ -1041,6 +1097,94 @@ function OpenGrouped({
                 </h3>
                 <p className="text-xs text-ink-500">
                   {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} added by {bucket.label}
+                </p>
+              </div>
+            </div>
+          }
+        >
+          <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {bucket.items.map((lead) => (
+              <li key={lead.id}>
+                <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} reassignTargets={reassignTargets} />
+              </li>
+            ))}
+          </ul>
+        </CollapsibleSection>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * "Own" tab renderer: master's private leads grouped by the day they were
+ * created (Today / Yesterday / explicit date), newest day first. Each day
+ * is a collapsible section; the most recent day starts open.
+ */
+function OwnByDay({
+  leads,
+  viewer,
+  teamUsers,
+  maxPickup,
+  reassignTargets = [],
+}: {
+  leads: LeadView[];
+  viewer: CurrentUser;
+  teamUsers: { id: number; displayName: string }[];
+  maxPickup: number;
+  reassignTargets?: { id: number; displayName: string }[];
+}) {
+  const dayKey = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  };
+  const dayLabel = (iso: string) => {
+    const d = new Date(iso);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const sameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    if (sameDay(d, today)) return "Today";
+    if (sameDay(d, yesterday)) return "Yesterday";
+    return d.toLocaleDateString(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  // Leads arrive newest-first, so day buckets keep that order.
+  const buckets = new Map<string, { label: string; items: LeadView[] }>();
+  for (const lead of leads) {
+    const key = dayKey(lead.createdAt);
+    const bucket = buckets.get(key) ?? { label: dayLabel(lead.createdAt), items: [] };
+    bucket.items.push(lead);
+    buckets.set(key, bucket);
+  }
+  const entries = Array.from(buckets.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+
+  return (
+    <div className="space-y-6">
+      {entries.map(([key, bucket], idx) => (
+        <CollapsibleSection
+          key={key}
+          storageKey={`own:by-day:${key}`}
+          count={bucket.items.length}
+          defaultOpen={idx === 0}
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-brand-700">
+                <Lock className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">{bucket.label}</h3>
+                <p className="text-xs text-ink-500">
+                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"}
                 </p>
               </div>
             </div>
@@ -1293,26 +1437,30 @@ function PicksByAssignee({
 function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }) {
   const title = hasQuery
     ? "No leads match your search"
-    : tab === "fresh"
-      ? "No leads to show"
-      : tab === "market"
-        ? "Open Market is empty"
-        : tab === "picks"
-          ? "Nothing picked up yet"
-          : tab === "archive"
-            ? "Archive is empty"
-            : "No leads with this status yet";
+    : tab === "own"
+      ? "Your list is empty"
+      : tab === "fresh"
+        ? "No leads to show"
+        : tab === "market"
+          ? "Open Market is empty"
+          : tab === "picks"
+            ? "Nothing picked up yet"
+            : tab === "archive"
+              ? "Archive is empty"
+              : "No leads with this status yet";
   const body = hasQuery
     ? "Try a different search term."
-    : tab === "fresh"
-      ? "Paste a new lead above, or wait for a teammate to drop one in."
-      : tab === "market"
-        ? "Closed leads will appear here once the team starts moving them out of New."
-        : tab === "picks"
-          ? "Pick up a lead from Fresh or Open Market and it'll show up here."
-          : tab === "archive"
-            ? "Nothing has been moved to the long-term archive yet."
-            : "Leads set to this status will land here.";
+    : tab === "own"
+      ? "Paste a lead above — it lands in your private list with a 1-hour follow-up reminder."
+      : tab === "fresh"
+        ? "Paste a new lead above, or wait for a teammate to drop one in."
+        : tab === "market"
+          ? "Closed leads will appear here once the team starts moving them out of New."
+          : tab === "picks"
+            ? "Pick up a lead from Fresh or Open Market and it'll show up here."
+            : tab === "archive"
+              ? "Nothing has been moved to the long-term archive yet."
+              : "Leads set to this status will land here.";
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
