@@ -11,7 +11,6 @@ import {
   Calendar,
   X,
   StickyNote,
-  LogOut,
   Users,
   Check,
   ArrowRight,
@@ -32,7 +31,6 @@ import { QualityBadge, QualityPicker } from "./QualityPicker";
 import {
   changeStatusAction,
   pickUpLeadAction,
-  dropWithStatusAction,
   setLeadAssignmentsAction,
   updateLeadQualityAction,
   resetToOpenMarketAction,
@@ -113,7 +111,6 @@ type Props = {
 export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
-  const [dropOpen, setDropOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [contactStateOpen, setContactStateOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -131,13 +128,13 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
 
   // Lock body scroll while any portal modal is open.
   useEffect(() => {
-    if (!menuOpen && !qualityOpen && !dropOpen && !reassignOpen && !reminderOpen && !detailsOpen) return;
+    if (!menuOpen && !qualityOpen && !reassignOpen && !reminderOpen && !detailsOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [menuOpen, qualityOpen, dropOpen, reassignOpen, reminderOpen, detailsOpen]);
+  }, [menuOpen, qualityOpen, reassignOpen, reminderOpen, detailsOpen]);
 
   const setContactState = (state: string) => {
     setError(null);
@@ -212,20 +209,6 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         }
         setAcked(true);
       }
-    });
-  };
-
-  const dropWithStatus = (status: LeadStatus, note?: string) => {
-    setError(null);
-    setDropOpen(false);
-    const trimmed = note?.trim();
-    startTransition(async () => {
-      const res = await dropWithStatusAction({
-        leadId: lead.id,
-        status,
-        note: trimmed && trimmed.length > 0 ? trimmed : undefined,
-      });
-      if (res?.error) setError(res.error);
     });
   };
 
@@ -506,17 +489,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             </span>
           </button>
 
-          {iAmAssigned && (
-            <button
-              onClick={() => setDropOpen(true)}
-              disabled={pending}
-              title="Drop this lead"
-              className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-rose-200 bg-white px-1.5 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
-            >
-              <LogOut className="h-3 w-3 shrink-0" />
-              <span className="truncate">Drop</span>
-            </button>
-          )}
+          {/* No Drop button — releasing a lead happens via the Status menu
+              ("Reset to Open Market" / "Recycle to Archive"), both of which
+              clear every assignee so anyone can pick it up again. */}
 
           {/* One button covers both jobs now: assigning team members and
               moving the lead between pipelines. */}
@@ -613,14 +588,6 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         />
       )}
 
-      {dropOpen && (
-        <DropMenu
-          currentStatus={lead.status}
-          onChoose={dropWithStatus}
-          onClose={() => setDropOpen(false)}
-        />
-      )}
-
       {reassignOpen && canReassign && (
         <ReassignSheet
           leadId={lead.id}
@@ -640,135 +607,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   );
 }
 
-/* ---------- Drop-with-status menu (portal) ---------- */
-
-/**
- * Forces the user to pick a final status before the assignment is
- * removed. Tapping a status calls dropWithStatusAction which updates the
- * lead's status (if different), deletes the assignment, and increments
- * the user's dropsCount — all in a single transaction.
- */
-function DropMenu({
-  currentStatus,
-  onChoose,
-  onClose,
-}: {
-  currentStatus: LeadStatus;
-  onChoose: (s: LeadStatus, note?: string) => void;
-  onClose: () => void;
-}) {
-  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
-  const [rejectReason, setRejectReason] = useState<string | null>(null);
-  useEffect(() => {
-    setPortalNode(document.body);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  if (!portalNode) return null;
-
-  const handlePick = (status: LeadStatus) => {
-    if (status === "REJECTED") {
-      setRejectReason("");
-      return;
-    }
-    onChoose(status);
-  };
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
-      <button
-        aria-label="Close drop menu"
-        onClick={onClose}
-        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-in"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Drop lead with status"
-        className="relative w-full md:w-[420px] max-h-[85vh] overflow-y-auto bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="md:hidden flex justify-center pt-2">
-          <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
-        </div>
-
-        {rejectReason !== null ? (
-          <RejectReasonStep
-            value={rejectReason}
-            onChange={setRejectReason}
-            onBack={() => setRejectReason(null)}
-            onConfirm={(text) => onChoose("REJECTED", text)}
-            onClose={onClose}
-            droppingToo
-          />
-        ) : (
-          <>
-            <div className="flex items-center justify-between px-5 pt-4 pb-2">
-              <div>
-                <h3 className="text-base font-semibold text-ink-900">Set final status, then drop</h3>
-                <p className="text-xs text-ink-500 mt-0.5">
-                  Pick the outcome — the lead is dropped from you and tagged with this status.
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                className="grid h-9 w-9 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="px-3 pb-4">
-              {STATUS_GROUPS.map((group) => (
-                <div key={group.key} className="px-1 pt-3">
-                  <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
-                    {group.title}
-                  </div>
-                  <div className="grid grid-cols-1 gap-1">
-                    {group.options.map((opt) => {
-                      const isCurrent = currentStatus === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          onClick={() => handlePick(opt.value)}
-                          className={
-                            "flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-sm text-left transition-colors " +
-                            (isCurrent
-                              ? "border-rose-300 bg-rose-50 text-rose-800"
-                              : opt.tone === "good"
-                                ? "border-ink-100 hover:border-emerald-200 hover:bg-emerald-50 text-emerald-700"
-                                : opt.tone === "bad"
-                                  ? "border-ink-100 hover:border-rose-200 hover:bg-rose-50 text-rose-700"
-                                  : "border-ink-100 hover:border-ink-300 hover:bg-ink-50 text-ink-800")
-                          }
-                        >
-                          <span className="font-medium">{opt.label}</span>
-                          <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-ink-500">
-                            {isCurrent && <span className="text-rose-700">current</span>}
-                            <LogOut className="h-3.5 w-3.5" />
-                            drop
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    </div>,
-    portalNode
-  );
-}
-
-/* ---------- Reject-reason step (shared by status menu + drop menu) ---------- */
+/* ---------- Reject-reason step (used by the status menu) ---------- */
 
 /**
  * Forced text-entry step shown after the user picks the REJECTED status.
