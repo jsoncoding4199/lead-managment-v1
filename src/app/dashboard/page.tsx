@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { Lock, Hand } from "lucide-react";
+import { Lock } from "lucide-react";
 import type { LeadStatus, LeadQuality, Prisma } from "@prisma/client";
 import { requireUser, type CurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -90,16 +90,16 @@ const LEAD_PAGE_SIZE = 300;
  * counted together — the master wants "who's at Documents", not which
  * side of it they landed on.
  */
-const OWN_STATUS_GROUPS = {
+const STAGE_GROUPS = {
   contact: { label: "Contact", statuses: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"] },
   documents: { label: "Documents", statuses: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"] },
   appointment: { label: "Appointment", statuses: ["APPOINTMENT_ABLE", "APPOINTMENT_NOT_ABLE"] },
 } satisfies Record<string, { label: string; statuses: LeadStatus[] }>;
 
-type OwnStatusGroup = keyof typeof OWN_STATUS_GROUPS;
+type StageGroup = keyof typeof STAGE_GROUPS;
 
-function parseStatusGroup(raw: string | undefined): OwnStatusGroup | null {
-  return raw && raw in OWN_STATUS_GROUPS ? (raw as OwnStatusGroup) : null;
+function parseStageGroup(raw: string | undefined): StageGroup | null {
+  return raw && raw in STAGE_GROUPS ? (raw as StageGroup) : null;
 }
 
 /**
@@ -282,23 +282,23 @@ export default async function DashboardPage({
         </Suspense>
       ) : (
         <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} showAll={sp.n === "all"} statusGroup={parseStatusGroup(sp.sg)} />
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} showAll={sp.n === "all"} statusGroup={parseStageGroup(sp.sg)} />
         </Suspense>
       )}
     </div>
   );
 }
 
-/** Own-tab URL that keeps the active search + filters. */
-function ownHref(o: {
+/** Tab URL that keeps the active search + filters. */
+function tabHref(tabKey: string, o: {
   q: string;
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
   all?: boolean;
-  sg?: OwnStatusGroup | null;
+  sg?: StageGroup | null;
 }): string {
-  const p = new URLSearchParams({ tab: "own" });
+  const p = new URLSearchParams({ tab: tabKey });
   if (o.q) p.set("q", o.q);
   if (o.creatorId) p.set("fu", String(o.creatorId));
   if (o.sourceId) p.set("fs", String(o.sourceId));
@@ -308,8 +308,67 @@ function ownHref(o: {
   return `/dashboard?${p.toString()}`;
 }
 
-/** One stage chip in the Own tab's status row. */
-function OwnStatusChip({
+/**
+ * Stage filter row (All / Contact / Documents / Appointment). Counts each
+ * stage's Able + Not able together — the question is "how far did this
+ * lead get", not which side of the stage it landed on. Rendered on the
+ * Own tab and on every private channel tab.
+ */
+async function StageRow({
+  tabKey,
+  where,
+  active,
+  q,
+  creatorId,
+  sourceId,
+  locationId,
+  showAll,
+}: {
+  tabKey: string;
+  /** The tab's unfiltered-by-stage predicate — what the counts run over. */
+  where: Prisma.LeadWhereInput;
+  active: StageGroup | null;
+  q: string;
+  creatorId: number | null;
+  sourceId: number | null;
+  locationId: number | null;
+  showAll: boolean;
+}) {
+  const rows = await prisma.lead.groupBy({
+    by: ["status"],
+    where,
+    _count: { _all: true },
+  });
+  const countOf = (g: StageGroup) =>
+    rows
+      .filter((r) => (STAGE_GROUPS[g].statuses as LeadStatus[]).includes(r.status))
+      .reduce((n, r) => n + r._count._all, 0);
+  const link = (sg?: StageGroup) =>
+    tabHref(tabKey, { q, creatorId, sourceId, locationId, all: showAll, sg });
+
+  return (
+    <div className="flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft">
+      <StageChip
+        label="All"
+        count={rows.reduce((n, r) => n + r._count._all, 0)}
+        href={link()}
+        active={active === null}
+      />
+      {(Object.keys(STAGE_GROUPS) as StageGroup[]).map((g) => (
+        <StageChip
+          key={g}
+          label={STAGE_GROUPS[g].label}
+          count={countOf(g)}
+          href={link(g)}
+          active={active === g}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** One stage chip in a StageRow. */
+function StageChip({
   label,
   count,
   href,
@@ -523,7 +582,7 @@ async function LeadsSection({
   sourceId: number | null;
   locationId: number | null;
   showAll: boolean;
-  statusGroup: OwnStatusGroup | null;
+  statusGroup: StageGroup | null;
 }) {
   const filterWhere = leadFilterWhere(creatorId, sourceId, locationId);
   const settings = await getAppSettings();
@@ -548,10 +607,10 @@ async function LeadsSection({
     if (!privateUser) {
       return <ChannelLockedNotice label="this channel" />;
     }
-    const [channelLeads, otherPrivateUsers] = await Promise.all([
-      prisma.lead.findMany({
-        where: {
-          AND: [
+    // Everything in this channel that survives search + filters. The stage
+    // chips narrow it further and are counted against this base.
+    const channelBase: Prisma.LeadWhereInput = {
+      AND: [
             // The private tab shows two things side-by-side:
             //   1. Leads in the user's private channel (assigned by master).
             //   2. Any lead they've picked up from the public pool.
@@ -568,12 +627,18 @@ async function LeadsSection({
             // the inbox. Only Own leads carry isOwn=true, so this is a no-op
             // for every other private channel.
             { isOwn: false },
-            leadSearchFilter(q),
-            filterWhere,
-          ],
-        },
+        leadSearchFilter(q),
+        filterWhere,
+      ],
+    };
+    const channelWhere: Prisma.LeadWhereInput = statusGroup
+      ? { AND: [channelBase, { status: { in: STAGE_GROUPS[statusGroup].statuses } }] }
+      : channelBase;
+    const [channelLeads, otherPrivateUsers] = await Promise.all([
+      prisma.lead.findMany({
+        where: channelWhere,
         orderBy: [{ updatedAt: "desc" }],
-        take: 200,
+        take: showAll ? undefined : LEAD_PAGE_SIZE,
         select: leadSelect,
       }),
       // Handover targets for the channel owner's Assign button — every
@@ -590,54 +655,42 @@ async function LeadsSection({
         orderBy: { displayName: "asc" },
       }),
     ]);
+    const channelStageRow = (
+      <StageRow
+        tabKey={privateChannelTabKey(tab.userId)}
+        where={channelBase}
+        active={statusGroup}
+        q={q}
+        creatorId={creatorId}
+        sourceId={sourceId}
+        locationId={locationId}
+        showAll={showAll}
+      />
+    );
     if (channelLeads.length === 0) {
-      return <ChannelEmpty label={privateUser.displayName} hasQuery={!!q} />;
+      return (
+        <div className="space-y-3">
+          {channelStageRow}
+          <ChannelEmpty label={privateUser.displayName} hasQuery={!!q} />
+        </div>
+      );
     }
     const leads = await toLeadViewsForUser(channelLeads, user.id);
 
-    // Master's own inbox: categorize into "Own pick up" (leads master
-    // picked up themselves) and one section per user who assigned a lead
-    // to master.
-    const isMasterInbox = user.role === "MASTER" && tab.userId === user.id;
-    if (isMasterInbox) {
-      const assigns = await prisma.leadAssignment.findMany({
-        where: { userId: user.id, leadId: { in: leads.map((l) => l.id) } },
-        select: {
-          leadId: true,
-          assignedById: true,
-          assignedBy: { select: { id: true, displayName: true } },
-        },
-      });
-      const assignerByLead = new Map<
-        number,
-        { id: number; displayName: string } | null
-      >();
-      for (const a of assigns) {
-        // Self-assignment (picked up by master) → no external assigner.
-        assignerByLead.set(
-          a.leadId,
-          a.assignedById === user.id ? null : a.assignedBy
-        );
-      }
-      return (
-        <MasterInboxCategorized
+    // Every private tab — master's inbox included — is a flat list under
+    // the stage row. Grouping by who assigned the lead was replaced by
+    // grouping by how far the lead got.
+    return (
+      <div className="space-y-3">
+        {channelStageRow}
+        <ChannelLeadList
+          label={privateUser.displayName}
           leads={leads}
-          assignerByLead={assignerByLead}
           viewer={user}
           maxPickup={settings.maxPickup}
           reassignTargets={otherPrivateUsers}
         />
-      );
-    }
-
-    return (
-      <ChannelLeadList
-        label={privateUser.displayName}
-        leads={leads}
-        viewer={user}
-        maxPickup={settings.maxPickup}
-        reassignTargets={otherPrivateUsers}
-      />
+      </div>
     );
   }
 
@@ -657,35 +710,19 @@ async function LeadsSection({
       ],
     };
     const ownWhere: Prisma.LeadWhereInput = statusGroup
-      ? { AND: [ownBase, { status: { in: OWN_STATUS_GROUPS[statusGroup].statuses } }] }
+      ? { AND: [ownBase, { status: { in: STAGE_GROUPS[statusGroup].statuses } }] }
       : ownBase;
-    const statusCounts = await prisma.lead.groupBy({
-      by: ["status"],
-      where: ownBase,
-      _count: { _all: true },
-    });
-    const countOf = (g: OwnStatusGroup) =>
-      statusCounts
-        .filter((r) => (OWN_STATUS_GROUPS[g].statuses as LeadStatus[]).includes(r.status))
-        .reduce((n, r) => n + r._count._all, 0);
     const statusRow = (
-      <div className="flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft">
-        <OwnStatusChip
-          label="All"
-          count={statusCounts.reduce((n, r) => n + r._count._all, 0)}
-          href={ownHref({ q, creatorId, sourceId, locationId, all: showAll })}
-          active={statusGroup === null}
-        />
-        {(Object.keys(OWN_STATUS_GROUPS) as OwnStatusGroup[]).map((g) => (
-          <OwnStatusChip
-            key={g}
-            label={OWN_STATUS_GROUPS[g].label}
-            count={countOf(g)}
-            href={ownHref({ q, creatorId, sourceId, locationId, all: showAll, sg: g })}
-            active={statusGroup === g}
-          />
-        ))}
-      </div>
+      <StageRow
+        tabKey="own"
+        where={ownBase}
+        active={statusGroup}
+        q={q}
+        creatorId={creatorId}
+        sourceId={sourceId}
+        locationId={locationId}
+        showAll={showAll}
+      />
     );
     // The tab badge counts every Own lead, so the list has to say when it
     // is showing fewer — otherwise 433 in the badge and 300 on screen just
@@ -724,7 +761,7 @@ async function LeadsSection({
               Showing {ownLeads.length} of {ownTotal} leads.
             </p>
             <Link
-              href={ownHref({ q, creatorId, sourceId, locationId, all: true, sg: statusGroup })}
+              href={tabHref("own", { q, creatorId, sourceId, locationId, all: true, sg: statusGroup })}
               className="btn btn-outline mt-3 inline-flex h-9 text-xs"
             >
               Show all {ownTotal}
@@ -1366,105 +1403,6 @@ function OpenGrouped({
  * created (Today / Yesterday / explicit date), newest day first. Each day
  * is a collapsible section; the most recent day starts open.
  */
-/**
- * Master inbox renderer: splits leads into "Own pick up" (leads master
- * picked up themselves — no external assigner) and one collapsible section
- * per user who assigned a lead to master. Leads with no recorded master
- * assignment (e.g. reassigned straight into the inbox) fall under "Own
- * pick up" too.
- */
-function MasterInboxCategorized({
-  leads,
-  assignerByLead,
-  viewer,
-  maxPickup,
-  reassignTargets = [],
-}: {
-  leads: LeadView[];
-  assignerByLead: Map<number, { id: number; displayName: string } | null>;
-  viewer: CurrentUser;
-  maxPickup: number;
-  reassignTargets?: { id: number; displayName: string }[];
-}) {
-  const ownPickup: LeadView[] = [];
-  const byAssigner = new Map<number, { label: string; items: LeadView[] }>();
-  for (const lead of leads) {
-    const assigner = assignerByLead.get(lead.id) ?? null;
-    if (!assigner) {
-      ownPickup.push(lead);
-      continue;
-    }
-    const bucket = byAssigner.get(assigner.id) ?? { label: assigner.displayName, items: [] };
-    bucket.items.push(lead);
-    byAssigner.set(assigner.id, bucket);
-  }
-  const assignerEntries = Array.from(byAssigner.entries()).sort((a, b) =>
-    a[1].label.localeCompare(b[1].label)
-  );
-
-  const renderGrid = (items: LeadView[]) => (
-    <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      {items.map((lead) => (
-        <li key={lead.id}>
-          <LeadCard lead={lead} viewer={viewer} teamUsers={[]} maxPickup={maxPickup} reassignTargets={reassignTargets} />
-        </li>
-      ))}
-    </ul>
-  );
-
-  return (
-    <div className="space-y-4 md:space-y-6">
-      {ownPickup.length > 0 && (
-        <CollapsibleSection
-          storageKey="inbox:own-pickup"
-          count={ownPickup.length}
-          defaultOpen
-          header={
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-emerald-100 text-emerald-700">
-                <Hand className="h-4 w-4" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-ink-900">Own pick up</h3>
-                <p className="text-xs text-ink-500">
-                  {ownPickup.length} lead{ownPickup.length === 1 ? "" : "s"} you picked up
-                </p>
-              </div>
-            </div>
-          }
-        >
-          {renderGrid(ownPickup)}
-        </CollapsibleSection>
-      )}
-      {assignerEntries.map(([id, bucket]) => (
-        <CollapsibleSection
-          key={id}
-          storageKey={`inbox:assigner:${id}`}
-          count={bucket.items.length}
-          defaultOpen
-          header={
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-                {initials(bucket.label)}
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-ink-900">
-                  Assigned by {bucket.label}
-                </h3>
-                <p className="text-xs text-ink-500">
-                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} assigned to you
-                </p>
-              </div>
-            </div>
-          }
-        >
-          {renderGrid(bucket.items)}
-        </CollapsibleSection>
-      ))}
-    </div>
-  );
-}
-
 function OwnByDay({
   leads,
   viewer,
