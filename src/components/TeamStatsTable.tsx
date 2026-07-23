@@ -54,7 +54,7 @@ export function TeamStatsTable({ rows }: { rows: UserStatsRow[] }) {
             <thead className="bg-ink-50 text-ink-500 text-[10px] uppercase tracking-wider">
               <tr>
                 <th
-                  className="text-left font-semibold px-3 py-3 sticky left-0 bg-ink-50 z-10 border-b border-ink-200/70 min-w-[7.5rem]"
+                  className="text-left font-semibold px-2.5 py-2 sticky left-0 bg-ink-50 z-10 border-b border-ink-200/70 min-w-[6.5rem]"
                 >
                   Metric
                 </th>
@@ -62,7 +62,7 @@ export function TeamStatsTable({ rows }: { rows: UserStatsRow[] }) {
                   <th
                     key={r.userId}
                     className={cn(
-                      "text-center font-semibold px-2 py-3 border-b border-ink-200/70 whitespace-nowrap min-w-[5.5rem]",
+                      "text-center font-semibold px-1.5 py-2 border-b border-ink-200/70 min-w-[5rem]",
                       !r.active && "opacity-60"
                     )}
                     title={`@${r.username}`}
@@ -164,7 +164,7 @@ function MetricRow({
     <tr>
       <th
         scope="row"
-        className="text-left text-xs font-semibold text-ink-700 px-3 py-3 sticky left-0 bg-white z-10 whitespace-nowrap"
+        className="text-left text-[11px] font-semibold text-ink-700 px-2.5 py-1.5 sticky left-0 bg-white z-10 whitespace-nowrap"
       >
         {label}
       </th>
@@ -172,7 +172,7 @@ function MetricRow({
         <td
           key={r.userId}
           className={cn(
-            "px-2 py-3 text-center",
+            "px-1.5 py-1.5 text-center",
             !r.active && "opacity-60"
           )}
         >
