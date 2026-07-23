@@ -957,8 +957,9 @@ export type ImportResult = {
  *
  * Deliberately unlike createLeadAction: no per-lead reminder (an 80-row
  * file would fire 80 pushes), no team broadcast, no assignments — these
- * are the master's own follow-up list. Rows whose phone already exists in
- * Own, or repeats earlier in the same file, are skipped and reported.
+ * are the master's own follow-up list. Rows whose phone already exists
+ * anywhere in the app, or repeats earlier in the same file, are skipped
+ * and reported.
  */
 export async function importOwnLeadsAction(formData: FormData): Promise<ImportResult> {
   const user = await requireMaster();
@@ -986,10 +987,13 @@ export async function importOwnLeadsAction(formData: FormData): Promise<ImportRe
   }
   const defaultSourceName = (formData.get("sourceName") ?? "").toString().trim();
 
-  // Existing Own phones — the dedupe set, seeded before the loop so the
-  // same file can't insert a row twice either.
+  // Cross-reference against EVERY lead in the system — Own, Fresh, Open
+  // Market, every private channel, archive — not just the Own list. A
+  // number the team already holds anywhere is a duplicate, wherever it
+  // sits. Seeded before the loop so a file can't insert a row twice
+  // against itself either.
   const existing = await prisma.lead.findMany({
-    where: { isOwn: true, privateChannelUserId: user.id, phone: { not: null } },
+    where: { phone: { not: null } },
     select: { phone: true },
   });
   const seen = new Set(existing.map((l) => normalizePhone(l.phone ?? "")).filter(Boolean));

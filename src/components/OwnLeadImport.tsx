@@ -78,7 +78,7 @@ export function OwnLeadImport({ sources }: { sources: { id: number; name: string
         Headers on row 1. <strong>Name</strong> and <strong>Phone Number</strong> become the
         lead&apos;s contact rows, <strong>Location</strong> its pill — every other column is kept
         in the lead details. Leading zeros Excel dropped from phone numbers are restored, and
-        numbers already in your Own list are skipped.
+        numbers that already exist anywhere in the app are skipped.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -148,7 +148,7 @@ export function OwnLeadImport({ sources }: { sources: { id: number; name: string
                 onClick={() => setShowSkipped((v) => !v)}
                 className="inline-flex items-center gap-1 font-medium underline"
               >
-                {result.skippedDuplicates!.length} skipped as duplicate phone
+                {result.skippedDuplicates!.length} skipped — already in the app
                 <ChevronDown
                   className={"h-3 w-3 transition-transform " + (showSkipped ? "rotate-180" : "")}
                 />
