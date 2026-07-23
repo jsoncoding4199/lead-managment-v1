@@ -27,7 +27,6 @@ export function CollapsibleSection({
   count,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
-  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     try {
@@ -37,7 +36,6 @@ export function CollapsibleSection({
     } catch {
       /* ignore quota / privacy mode errors */
     }
-    setHydrated(true);
   }, [storageKey]);
 
   const toggle = () => {
@@ -75,14 +73,12 @@ export function CollapsibleSection({
         )}
       </button>
 
-      {/* Render but hide via display:none to keep grid layout calculations
-          consistent when toggling. Avoids loss of selection/scroll position. */}
-      <div
-        id={`section-${storageKey}`}
-        hidden={hydrated && !open}
-        className={open ? "animate-in" : ""}
-      >
-        {children}
+      {/* Children are unmounted while collapsed, not just hidden. Each lead
+          card is a stateful client component, so a closed section that still
+          rendered its cards cost as much as an open one — with hundreds of
+          leads in a section that was the whole page's lag. */}
+      <div id={`section-${storageKey}`} className={open ? "animate-in" : ""}>
+        {open && children}
       </div>
     </section>
   );

@@ -80,10 +80,14 @@ type DashTab =
   | { kind: "static"; key: DashStaticTab }
   | { kind: "private"; userId: number };
 
-type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; n?: string; sg?: string };
+type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; p?: string; sg?: string };
 
-/** Default rows per tab. `?n=all` lifts it — see the Own tab's footer. */
-const LEAD_PAGE_SIZE = 300;
+/**
+ * Rows per page. Every lead is a stateful client component, so this is the
+ * ceiling on how many mount at once — kept small because Own can hold
+ * thousands of imported leads. Page through with `?p=`.
+ */
+const LEAD_PAGE_SIZE = 50;
 
 /**
  * Own-tab status filter (`?sg=`): one chip per stage, Able and Not able
@@ -100,6 +104,11 @@ type StageGroup = keyof typeof STAGE_GROUPS;
 
 function parseStageGroup(raw: string | undefined): StageGroup | null {
   return raw && raw in STAGE_GROUPS ? (raw as StageGroup) : null;
+}
+
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 1 ? Math.floor(n) : 1;
 }
 
 /**
@@ -282,7 +291,7 @@ export default async function DashboardPage({
         </Suspense>
       ) : (
         <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} showAll={sp.n === "all"} statusGroup={parseStageGroup(sp.sg)} />
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} page={parsePage(sp.p)} statusGroup={parseStageGroup(sp.sg)} />
         </Suspense>
       )}
     </div>
@@ -295,7 +304,7 @@ function tabHref(tabKey: string, o: {
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
-  all?: boolean;
+  page?: number;
   sg?: StageGroup | null;
 }): string {
   const p = new URLSearchParams({ tab: tabKey });
@@ -303,7 +312,7 @@ function tabHref(tabKey: string, o: {
   if (o.creatorId) p.set("fu", String(o.creatorId));
   if (o.sourceId) p.set("fs", String(o.sourceId));
   if (o.locationId) p.set("fl", String(o.locationId));
-  if (o.all) p.set("n", "all");
+  if (o.page && o.page > 1) p.set("p", String(o.page));
   if (o.sg) p.set("sg", o.sg);
   return `/dashboard?${p.toString()}`;
 }
@@ -322,7 +331,6 @@ async function StageRow({
   creatorId,
   sourceId,
   locationId,
-  showAll,
 }: {
   tabKey: string;
   /** The tab's unfiltered-by-stage predicate — what the counts run over. */
@@ -332,7 +340,6 @@ async function StageRow({
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
-  showAll: boolean;
 }) {
   const rows = await prisma.lead.groupBy({
     by: ["status"],
@@ -344,7 +351,7 @@ async function StageRow({
       .filter((r) => (STAGE_GROUPS[g].statuses as LeadStatus[]).includes(r.status))
       .reduce((n, r) => n + r._count._all, 0);
   const link = (sg?: StageGroup) =>
-    tabHref(tabKey, { q, creatorId, sourceId, locationId, all: showAll, sg });
+    tabHref(tabKey, { q, creatorId, sourceId, locationId, sg });
 
   return (
     <div className="flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft">
@@ -365,6 +372,64 @@ async function StageRow({
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * Newer / Older pager. Rendered only when the list actually spills over a
+ * page, so short lists look exactly as they did before.
+ */
+function Pager({
+  page,
+  shown,
+  total,
+  hrefFor,
+}: {
+  page: number;
+  shown: number;
+  total: number;
+  hrefFor: (page: number) => string;
+}) {
+  const first = (page - 1) * LEAD_PAGE_SIZE + 1;
+  const last = first + shown - 1;
+  const hasPrev = page > 1;
+  const hasNext = last < total;
+  if (!hasPrev && !hasNext) return null;
+
+  return (
+    <div className="card flex items-center justify-between gap-2 p-2.5">
+      <PagerLink href={hrefFor(page - 1)} disabled={!hasPrev} label="← Newer" />
+      <span className="text-[11px] text-ink-600 tabular-nums">
+        {first}–{last} of {total}
+      </span>
+      <PagerLink href={hrefFor(page + 1)} disabled={!hasNext} label="Older →" />
+    </div>
+  );
+}
+
+function PagerLink({
+  href,
+  disabled,
+  label,
+}: {
+  href: string;
+  disabled: boolean;
+  label: string;
+}) {
+  if (disabled) {
+    return (
+      <span className="inline-flex h-8 items-center rounded-lg px-3 text-[11px] font-medium text-ink-300">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      className="inline-flex h-8 items-center rounded-lg px-3 text-[11px] font-medium text-ink-700 ring-1 ring-ink-200 hover:bg-ink-50"
+    >
+      {label}
+    </Link>
   );
 }
 
@@ -576,7 +641,7 @@ async function LeadsSection({
   creatorId,
   sourceId,
   locationId,
-  showAll,
+  page,
   statusGroup,
 }: {
   tab: DashTab;
@@ -586,7 +651,7 @@ async function LeadsSection({
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
-  showAll: boolean;
+  page: number;
   statusGroup: StageGroup | null;
 }) {
   const filterWhere = leadFilterWhere(creatorId, sourceId, locationId);
@@ -639,13 +704,15 @@ async function LeadsSection({
     const channelWhere: Prisma.LeadWhereInput = statusGroup
       ? { AND: [channelBase, { status: { in: STAGE_GROUPS[statusGroup].statuses } }] }
       : channelBase;
-    const [channelLeads, otherPrivateUsers] = await Promise.all([
+    const [channelLeads, channelTotal, otherPrivateUsers] = await Promise.all([
       prisma.lead.findMany({
         where: channelWhere,
         orderBy: [{ updatedAt: "desc" }],
-        take: showAll ? undefined : LEAD_PAGE_SIZE,
+        skip: (page - 1) * LEAD_PAGE_SIZE,
+        take: LEAD_PAGE_SIZE,
         select: leadSelect,
       }),
+      prisma.lead.count({ where: channelWhere }),
       // Handover targets for the channel owner's Assign button — every
       // other active team user (private or regular), excluding self.
       // Master is reachable via the "Master (private inbox)" option built
@@ -669,7 +736,6 @@ async function LeadsSection({
         creatorId={creatorId}
         sourceId={sourceId}
         locationId={locationId}
-        showAll={showAll}
       />
     );
     if (channelLeads.length === 0) {
@@ -694,6 +760,21 @@ async function LeadsSection({
           viewer={user}
           maxPickup={settings.maxPickup}
           reassignTargets={otherPrivateUsers}
+        />
+        <Pager
+          page={page}
+          shown={channelLeads.length}
+          total={channelTotal}
+          hrefFor={(n) =>
+            tabHref(privateChannelTabKey(tab.userId), {
+              q,
+              creatorId,
+              sourceId,
+              locationId,
+              page: n,
+              sg: statusGroup,
+            })
+          }
         />
       </div>
     );
@@ -726,7 +807,6 @@ async function LeadsSection({
         creatorId={creatorId}
         sourceId={sourceId}
         locationId={locationId}
-        showAll={showAll}
       />
     );
     // The tab badge counts every Own lead, so the list has to say when it
@@ -736,7 +816,8 @@ async function LeadsSection({
       prisma.lead.findMany({
         where: ownWhere,
         orderBy: [{ createdAt: "desc" }],
-        take: showAll ? undefined : LEAD_PAGE_SIZE,
+        skip: (page - 1) * LEAD_PAGE_SIZE,
+        take: LEAD_PAGE_SIZE,
         select: leadSelect,
       }),
       prisma.lead.count({ where: ownWhere }),
@@ -746,6 +827,15 @@ async function LeadsSection({
         <div className="space-y-3">
           {statusRow}
           <EmptyState tab="own" hasQuery={!!q} />
+          {/* Keeps a way back if a stale ?p= lands past the last page. */}
+          <Pager
+            page={page}
+            shown={0}
+            total={ownTotal}
+            hrefFor={(n) =>
+              tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup })
+            }
+          />
         </div>
       );
     }
@@ -760,19 +850,14 @@ async function LeadsSection({
           maxPickup={settings.maxPickup}
           reassignTargets={masterReassignTargets}
         />
-        {ownTotal > ownLeads.length && (
-          <div className="card mt-4 p-4 text-center">
-            <p className="text-sm text-ink-600">
-              Showing {ownLeads.length} of {ownTotal} leads.
-            </p>
-            <Link
-              href={tabHref("own", { q, creatorId, sourceId, locationId, all: true, sg: statusGroup })}
-              className="btn btn-outline mt-3 inline-flex h-9 text-xs"
-            >
-              Show all {ownTotal}
-            </Link>
-          </div>
-        )}
+        <Pager
+          page={page}
+          shown={ownLeads.length}
+          total={ownTotal}
+          hrefFor={(n) =>
+            tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup })
+          }
+        />
       </div>
     );
   }
