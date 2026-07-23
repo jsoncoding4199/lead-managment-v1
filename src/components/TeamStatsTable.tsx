@@ -67,10 +67,10 @@ export function TeamStatsTable({ rows }: { rows: UserStatsRow[] }) {
                     )}
                     title={`@${r.username}`}
                   >
-                    <div className="font-semibold text-ink-800 normal-case text-[11px] truncate max-w-[6rem]">
+                    <div className="font-semibold text-ink-800 normal-case text-[11px] break-words max-w-[6rem]">
                       {r.displayName}
                     </div>
-                    <div className="text-[9px] text-ink-400 normal-case truncate max-w-[6rem]">
+                    <div className="text-[9px] text-ink-400 normal-case break-all max-w-[6rem]">
                       @{r.username}
                     </div>
                   </th>

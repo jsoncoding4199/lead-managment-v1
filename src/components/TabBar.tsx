@@ -90,8 +90,8 @@ function TabLink({ tab, active, fill }: { tab: TabItem; active: boolean; fill?: 
       aria-current={active ? "page" : undefined}
     >
       <span className={cn("shrink-0", active ? "text-white" : "text-ink-500")}>{tab.icon}</span>
-      <span className="sm:hidden truncate">{tab.short}</span>
-      <span className="hidden sm:inline truncate">{tab.label}</span>
+      <span className="sm:hidden">{tab.short}</span>
+      <span className="hidden sm:inline">{tab.label}</span>
       <span
         className={cn(
           "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 tabular-nums leading-none",

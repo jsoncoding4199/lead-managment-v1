@@ -48,7 +48,10 @@ export function OwnLeadImport({ sources }: { sources: { id: number; name: string
           <Upload className="h-4 w-4" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-ink-900">Import from Excel</span>
+          <span className="block text-sm font-semibold text-ink-900">
+            <span className="md:hidden">Import</span>
+            <span className="hidden md:inline">Import from Excel</span>
+          </span>
           <span className="hidden md:block text-xs text-ink-500">
             Upload a .csv or .xlsx — one row per lead.
           </span>
@@ -92,7 +95,7 @@ export function OwnLeadImport({ sources }: { sources: { id: number; name: string
             }}
           />
         </label>
-        <span className="min-w-0 flex-1 truncate text-xs text-ink-600">
+        <span className="min-w-0 flex-1 break-all text-xs text-ink-600">
           {fileName ?? "No file chosen"}
         </span>
       </div>
@@ -153,7 +156,7 @@ export function OwnLeadImport({ sources }: { sources: { id: number; name: string
               {showSkipped && (
                 <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto">
                   {result.skippedDuplicates!.map((d) => (
-                    <li key={d} className="truncate">
+                    <li key={d} className="break-words">
                       {d}
                     </li>
                   ))}

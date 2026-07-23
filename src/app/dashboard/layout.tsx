@@ -79,7 +79,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               <Home className="h-4 w-4" />
             </Link>
             <span className="hidden md:inline text-sm text-ink-500">Signed in as</span>
-            <span className="text-sm font-medium text-ink-900 truncate max-w-[35vw] md:max-w-none">
+            <span className="text-xs sm:text-sm font-medium text-ink-900 break-words">
               {user.displayName}
             </span>
             <span

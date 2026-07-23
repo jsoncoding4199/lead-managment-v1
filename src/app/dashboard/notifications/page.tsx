@@ -126,7 +126,7 @@ export default async function NotificationsPage() {
 function Title({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-2">
-      <p className="truncate text-sm font-semibold text-ink-900">{title}</p>
+      <p className="break-words text-sm font-semibold text-ink-900">{title}</p>
       <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
     </div>
   );

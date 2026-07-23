@@ -91,10 +91,10 @@ const LEAD_PAGE_SIZE = 300;
  * side of it they landed on.
  */
 const STAGE_GROUPS = {
-  contact: { label: "Contact", statuses: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"] },
-  documents: { label: "Documents", statuses: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"] },
-  appointment: { label: "Appointment", statuses: ["APPOINTMENT_ABLE", "APPOINTMENT_NOT_ABLE"] },
-} satisfies Record<string, { label: string; statuses: LeadStatus[] }>;
+  contact: { label: "Contact", short: "Contact", statuses: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"] },
+  documents: { label: "Documents", short: "Docs", statuses: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"] },
+  appointment: { label: "Appointment", short: "Appt", statuses: ["APPOINTMENT_ABLE", "APPOINTMENT_NOT_ABLE"] },
+} satisfies Record<string, { label: string; short: string; statuses: LeadStatus[] }>;
 
 type StageGroup = keyof typeof STAGE_GROUPS;
 
@@ -358,6 +358,7 @@ async function StageRow({
         <StageChip
           key={g}
           label={STAGE_GROUPS[g].label}
+          short={STAGE_GROUPS[g].short}
           count={countOf(g)}
           href={link(g)}
           active={active === g}
@@ -370,11 +371,14 @@ async function StageRow({
 /** One stage chip in a StageRow. */
 function StageChip({
   label,
+  short,
   count,
   href,
   active,
 }: {
   label: string;
+  /** Abbreviation shown on phones, where the full word wouldn't fit. */
+  short?: string;
   count: number;
   href: string;
   active: boolean;
@@ -391,7 +395,8 @@ function StageChip({
           : "text-ink-700 ring-1 ring-ink-200 hover:bg-ink-50"
       )}
     >
-      <span className="truncate">{label}</span>
+      <span className="sm:hidden">{short ?? label}</span>
+      <span className="hidden sm:inline">{label}</span>
       <span
         className={cn(
           "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 tabular-nums leading-none",

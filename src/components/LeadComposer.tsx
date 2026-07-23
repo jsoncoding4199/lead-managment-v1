@@ -215,6 +215,9 @@ export function LeadComposer({
     : isPrivate
       ? `Drop a new lead into ${privateChannelLabel}'s pipeline`
       : "Drop a new lead";
+  // Short form for phones — the collapsed bar sits in a half-width cell
+  // on the Own tab, where the full sentence has nowhere to go.
+  const ctaShort = isOwn ? "Add lead" : isPrivate ? "Add lead" : "New lead";
   const ctaHint = isOwn
     ? "Private to you, grouped by day, with a 1-hour follow-up reminder."
     : isPrivate
@@ -234,7 +237,10 @@ export function LeadComposer({
           <Plus className="h-4 w-4 md:h-5 md:w-5" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-ink-900">{ctaLabel}</span>
+          <span className="block text-sm font-semibold text-ink-900">
+            <span className="md:hidden">{ctaShort}</span>
+            <span className="hidden md:inline">{ctaLabel}</span>
+          </span>
           <span className="hidden md:block text-xs text-ink-500">{ctaHint}</span>
         </span>
       </button>

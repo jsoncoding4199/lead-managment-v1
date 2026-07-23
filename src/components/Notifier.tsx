@@ -157,7 +157,7 @@ export function Notifier() {
               <div className="flex-1 min-w-0">
                 <p
                   className={cn(
-                    "text-[13px] leading-relaxed line-clamp-3",
+                    "text-[13px] leading-relaxed break-words max-h-40 overflow-y-auto",
                     t.kind === "approved"
                       ? "text-emerald-900"
                       : t.kind === "lead"

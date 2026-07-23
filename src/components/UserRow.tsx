@@ -118,7 +118,7 @@ export function UserRow({ user }: { user: User }) {
       <div className="px-4 md:px-6 py-3 md:py-4 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="font-medium text-ink-900 truncate">{user.displayName}</div>
+            <div className="font-medium text-ink-900 break-words">{user.displayName}</div>
             <span
               className={
                 "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 " +
@@ -135,7 +135,7 @@ export function UserRow({ user }: { user: User }) {
               </span>
             )}
           </div>
-          <div className="text-xs text-ink-500 truncate">@{user.username}</div>
+          <div className="text-xs text-ink-500 break-all">@{user.username}</div>
         </div>
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
           <button

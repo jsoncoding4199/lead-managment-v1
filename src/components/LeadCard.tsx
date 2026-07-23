@@ -396,7 +396,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
         >
           <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
-          <p className="line-clamp-2 text-[12px] leading-relaxed text-amber-900">
+          <p className="break-words text-[12px] leading-relaxed text-amber-900">
             {lead.remark}
           </p>
         </Link>
@@ -434,12 +434,12 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="inline-flex items-center gap-1 min-w-0">
             <UserCircle2 className="h-3 w-3 shrink-0" />
-            <span className="truncate"><strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong></span>
+            <span className="break-words"><strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong></span>
           </span>
           <span className="hidden md:inline text-ink-300">·</span>
           <span className="inline-flex items-center gap-1">
             <Calendar className="h-3 w-3 shrink-0" />
-            <span className="truncate">{formatDateTime(lead.createdAt)}</span>
+            <span className="whitespace-nowrap">{formatDateTime(lead.createdAt)}</span>
           </span>
           <span
             className={
@@ -460,7 +460,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
 
         {/* Action bar — one row, equal-width buttons that share the space so
             every action stays visible without horizontal scrolling. Labels
-            truncate on the narrowest phones; icons always show. */}
+            never clip — every label reads in full. */}
         <div className="flex items-center gap-1 pt-1">
           {/* OK / Pick — picks the lead up (if not already yours) and sends
               the acknowledgement in one tap. */}
@@ -480,7 +480,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             )}
           >
             <Check className="h-3 w-3 shrink-0" />
-            <span className="truncate">
+            <span className="whitespace-nowrap">
               {masterOkSent
                 ? "Sent"
                 : acked
@@ -507,7 +507,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
               className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-violet-200 bg-white px-1.5 text-[11px] font-medium text-violet-700 hover:bg-violet-50"
             >
               <Send className="h-3 w-3 shrink-0" />
-              <span className="truncate">Assign</span>
+              <span className="whitespace-nowrap">Assign</span>
             </button>
           )}
 
@@ -519,7 +519,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
               className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-amber-200 bg-white px-1.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
             >
               <BellRing className="h-3 w-3 shrink-0" />
-              <span className="truncate">{pinged ? "Sent" : "Ping"}</span>
+              <span className="whitespace-nowrap">{pinged ? "Sent" : "Ping"}</span>
             </button>
           )}
 
@@ -541,7 +541,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             }
           >
             <BellRing className="h-3 w-3 shrink-0" />
-            <span className="truncate">
+            <span className="whitespace-nowrap">
               {lead.myReminderAt
                 ? remindersRemainingLabel(lead.myReminderAt)
                 : "Remind"}
@@ -1360,14 +1360,14 @@ function ContactRow({
   );
 
   // Phone row: number and its actions sit on ONE line so the row stays
-  // compact. The number truncates if long; the action cluster never wraps.
+  // compact. A long value wraps to the next line; the buttons never wrap.
   if (phone) {
     return (
       <div className="flex items-center gap-1.5 px-2.5 py-1 md:py-1.5">
         <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
           {label}
         </span>
-        <span className="flex-1 min-w-0 truncate text-ink-800 font-medium">{value}</span>
+        <span className="flex-1 min-w-0 break-words text-ink-800 font-medium">{value}</span>
         <span className="flex shrink-0 items-center gap-1">
           {copyBtn}
           {phoneBtns}
@@ -1383,9 +1383,9 @@ function ContactRow({
         {label}
       </span>
       {value ? (
-        <span className="flex-1 min-w-0 truncate text-ink-800">{value}</span>
+        <span className="flex-1 min-w-0 break-words text-ink-800">{value}</span>
       ) : (
-        <span className="flex-1 min-w-0 truncate text-[11px] italic text-ink-400">Tap to set…</span>
+        <span className="flex-1 min-w-0 text-[11px] italic text-ink-400">Tap to set…</span>
       )}
       <span className="flex shrink-0 items-center gap-1">
         {value && copyBtn}
@@ -1465,7 +1465,7 @@ function LeadDetailsSheet({
               <StatusBadge status={lead.status} />
               <span className="text-[11px] text-ink-400">#{lead.id}</span>
             </div>
-            <h3 className="mt-1 truncate text-base font-semibold text-ink-900">
+            <h3 className="mt-1 break-words text-base font-semibold text-ink-900">
               {lead.name || "Lead details"}
             </h3>
           </div>
@@ -1591,11 +1591,11 @@ function SourceRow({
         <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
           Src
         </span>
-        <span className="flex-1 truncate">
+        <span className="flex-1 min-w-0">
           {source ? (
-            <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
+            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
               <Tag className="h-3 w-3 shrink-0" />
-              <span className="truncate">{source.name}</span>
+              <span className="break-words">{source.name}</span>
             </span>
           ) : (
             <span className="text-[11px] italic text-ink-400">Tap…</span>
@@ -1834,11 +1834,11 @@ function LocationRow({
         <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
           Loc
         </span>
-        <span className="flex-1 truncate">
+        <span className="flex-1 min-w-0">
           {location ? (
-            <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
+            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 ring-1 ring-brand-200">
               <MapPin className="h-3 w-3 shrink-0" />
-              <span className="truncate">{location.name}</span>
+              <span className="break-words">{location.name}</span>
             </span>
           ) : (
             <span className="text-[11px] italic text-ink-400">Tap…</span>
