@@ -12,6 +12,7 @@ import {
   AGE_BOUNDARY_DAYS,
 } from "@/lib/leadStatus";
 import { parsePrivateChannelTab, privateChannelTabKey } from "@/lib/channels";
+import { cn } from "@/lib/utils";
 import { LeadComposer } from "@/components/LeadComposer";
 import { OwnLeadImport } from "@/components/OwnLeadImport";
 import { LeadCard } from "@/components/LeadCard";
@@ -79,10 +80,27 @@ type DashTab =
   | { kind: "static"; key: DashStaticTab }
   | { kind: "private"; userId: number };
 
-type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; n?: string };
+type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; n?: string; sg?: string };
 
 /** Default rows per tab. `?n=all` lifts it — see the Own tab's footer. */
 const LEAD_PAGE_SIZE = 300;
+
+/**
+ * Own-tab status filter (`?sg=`): one chip per stage, Able and Not able
+ * counted together — the master wants "who's at Documents", not which
+ * side of it they landed on.
+ */
+const OWN_STATUS_GROUPS = {
+  contact: { label: "Contact", statuses: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"] },
+  documents: { label: "Documents", statuses: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"] },
+  appointment: { label: "Appointment", statuses: ["APPOINTMENT_ABLE", "APPOINTMENT_NOT_ABLE"] },
+} satisfies Record<string, { label: string; statuses: LeadStatus[] }>;
+
+type OwnStatusGroup = keyof typeof OWN_STATUS_GROUPS;
+
+function parseStatusGroup(raw: string | undefined): OwnStatusGroup | null {
+  return raw && raw in OWN_STATUS_GROUPS ? (raw as OwnStatusGroup) : null;
+}
 
 /**
  * Cross-tab filter clause: narrow leads to a specific creator (fu), lead
@@ -219,9 +237,11 @@ export default async function DashboardPage({
           any tab: on a private tab the lead lands in that channel, on any
           static tab it goes into the public Fresh pipeline. */}
       {/* "Own" tab (master-only): composer drops leads into the master's
-          private Own list + triggers the default 1-hour reminder. */}
+          private Own list + triggers the default 1-hour reminder. Compose
+          and import share one row; items-start so expanding one doesn't
+          stretch the other to match its height. */}
       {!q && tab.kind === "static" && tab.key === "own" && user.role === "MASTER" && (
-        <>
+        <div className="grid grid-cols-2 items-start gap-2">
           <LeadComposer
             assignableUsers={assignableUsers}
             sources={leadSources}
@@ -229,7 +249,7 @@ export default async function DashboardPage({
             isOwn
           />
           <OwnLeadImport sources={leadSources} />
-        </>
+        </div>
       )}
       {/* Other static tabs: every user gets the composer (paste auto-detect,
           source picker, assign chips). The lead always lands in the public
@@ -262,7 +282,7 @@ export default async function DashboardPage({
         </Suspense>
       ) : (
         <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} showAll={sp.n === "all"} />
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} showAll={sp.n === "all"} statusGroup={parseStatusGroup(sp.sg)} />
         </Suspense>
       )}
     </div>
@@ -276,6 +296,7 @@ function ownHref(o: {
   sourceId: number | null;
   locationId: number | null;
   all?: boolean;
+  sg?: OwnStatusGroup | null;
 }): string {
   const p = new URLSearchParams({ tab: "own" });
   if (o.q) p.set("q", o.q);
@@ -283,7 +304,45 @@ function ownHref(o: {
   if (o.sourceId) p.set("fs", String(o.sourceId));
   if (o.locationId) p.set("fl", String(o.locationId));
   if (o.all) p.set("n", "all");
+  if (o.sg) p.set("sg", o.sg);
   return `/dashboard?${p.toString()}`;
+}
+
+/** One stage chip in the Own tab's status row. */
+function OwnStatusChip({
+  label,
+  count,
+  href,
+  active,
+}: {
+  label: string;
+  count: number;
+  href: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "inline-flex h-9 flex-1 min-w-0 items-center justify-center gap-1 rounded-lg px-1.5",
+        "text-[12px] font-medium whitespace-nowrap transition-colors",
+        active
+          ? "bg-ink-900 text-white shadow-sm"
+          : "text-ink-700 ring-1 ring-ink-200 hover:bg-ink-50"
+      )}
+    >
+      <span className="truncate">{label}</span>
+      <span
+        className={cn(
+          "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 tabular-nums leading-none",
+          active ? "bg-white/15 text-white ring-white/25" : "bg-ink-100 text-ink-600 ring-ink-200"
+        )}
+      >
+        {count}
+      </span>
+    </Link>
+  );
 }
 
 function serializeTab(tab: DashTab): string {
@@ -454,6 +513,7 @@ async function LeadsSection({
   sourceId,
   locationId,
   showAll,
+  statusGroup,
 }: {
   tab: DashTab;
   q: string;
@@ -463,6 +523,7 @@ async function LeadsSection({
   sourceId: number | null;
   locationId: number | null;
   showAll: boolean;
+  statusGroup: OwnStatusGroup | null;
 }) {
   const filterWhere = leadFilterWhere(creatorId, sourceId, locationId);
   const settings = await getAppSettings();
@@ -585,7 +646,9 @@ async function LeadsSection({
     if (user.role !== "MASTER") {
       return <ChannelLockedNotice label="this list" />;
     }
-    const ownWhere: Prisma.LeadWhereInput = {
+    // Base = everything in Own that survives search + filters; the status
+    // chips narrow it further and are counted against this base.
+    const ownBase: Prisma.LeadWhereInput = {
       AND: [
         { isOwn: true },
         { privateChannelUserId: user.id },
@@ -593,6 +656,37 @@ async function LeadsSection({
         filterWhere,
       ],
     };
+    const ownWhere: Prisma.LeadWhereInput = statusGroup
+      ? { AND: [ownBase, { status: { in: OWN_STATUS_GROUPS[statusGroup].statuses } }] }
+      : ownBase;
+    const statusCounts = await prisma.lead.groupBy({
+      by: ["status"],
+      where: ownBase,
+      _count: { _all: true },
+    });
+    const countOf = (g: OwnStatusGroup) =>
+      statusCounts
+        .filter((r) => (OWN_STATUS_GROUPS[g].statuses as LeadStatus[]).includes(r.status))
+        .reduce((n, r) => n + r._count._all, 0);
+    const statusRow = (
+      <div className="flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft">
+        <OwnStatusChip
+          label="All"
+          count={statusCounts.reduce((n, r) => n + r._count._all, 0)}
+          href={ownHref({ q, creatorId, sourceId, locationId, all: showAll })}
+          active={statusGroup === null}
+        />
+        {(Object.keys(OWN_STATUS_GROUPS) as OwnStatusGroup[]).map((g) => (
+          <OwnStatusChip
+            key={g}
+            label={OWN_STATUS_GROUPS[g].label}
+            count={countOf(g)}
+            href={ownHref({ q, creatorId, sourceId, locationId, all: showAll, sg: g })}
+            active={statusGroup === g}
+          />
+        ))}
+      </div>
+    );
     // The tab badge counts every Own lead, so the list has to say when it
     // is showing fewer — otherwise 433 in the badge and 300 on screen just
     // looks like missing leads.
@@ -606,11 +700,17 @@ async function LeadsSection({
       prisma.lead.count({ where: ownWhere }),
     ]);
     if (ownLeads.length === 0) {
-      return <EmptyState tab="own" hasQuery={!!q} />;
+      return (
+        <div className="space-y-3">
+          {statusRow}
+          <EmptyState tab="own" hasQuery={!!q} />
+        </div>
+      );
     }
     const leads = await toLeadViewsForUser(ownLeads, user.id);
     return (
-      <>
+      <div className="space-y-3">
+        {statusRow}
         <OwnByDay
           leads={leads}
           viewer={user}
@@ -624,14 +724,14 @@ async function LeadsSection({
               Showing {ownLeads.length} of {ownTotal} leads.
             </p>
             <Link
-              href={ownHref({ q, creatorId, sourceId, locationId, all: true })}
+              href={ownHref({ q, creatorId, sourceId, locationId, all: true, sg: statusGroup })}
               className="btn btn-outline mt-3 inline-flex h-9 text-xs"
             >
               Show all {ownTotal}
             </Link>
           </div>
         )}
-      </>
+      </div>
     );
   }
 

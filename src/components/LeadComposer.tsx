@@ -228,7 +228,7 @@ export function LeadComposer({
           setOpen(true);
           setTimeout(() => ref.current?.focus(), 50);
         }}
-        className="card flex w-full items-center gap-2.5 p-2.5 md:p-5 text-left hover:shadow-lift transition-shadow"
+        className="card flex h-full w-full items-center gap-2.5 p-2.5 md:p-5 text-left hover:shadow-lift transition-shadow"
       >
         <span className="grid h-8 w-8 md:h-10 md:w-10 shrink-0 place-items-center rounded-xl bg-brand-600 text-white">
           <Plus className="h-4 w-4 md:h-5 md:w-5" />
@@ -322,7 +322,9 @@ export function LeadComposer({
     <form
       ref={formRef}
       action={submit}
-      className="card p-3.5 md:p-5 animate-in"
+      /* col-span-2: on the Own tab this sits in a 2-up grid beside the
+         importer — take the full row once expanded. No-op elsewhere. */
+      className="card p-3.5 md:p-5 animate-in col-span-2"
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">

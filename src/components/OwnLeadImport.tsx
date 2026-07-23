@@ -42,13 +42,13 @@ export function OwnLeadImport({ sources }: { sources: { id: number; name: string
     return (
       <button
         onClick={() => setOpen(true)}
-        className="card flex w-full items-center gap-2.5 p-2.5 md:p-4 text-left hover:bg-ink-50"
+        className="card flex h-full w-full items-center gap-2.5 p-2.5 md:p-4 text-left hover:bg-ink-50"
       >
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
           <Upload className="h-4 w-4" />
         </span>
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-ink-900">Import from Excel</span>
+          <span className="block truncate text-sm font-semibold text-ink-900">Import from Excel</span>
           <span className="hidden md:block text-xs text-ink-500">
             Upload a .csv or .xlsx — one row per lead.
           </span>
@@ -58,7 +58,8 @@ export function OwnLeadImport({ sources }: { sources: { id: number; name: string
   }
 
   return (
-    <form onSubmit={submit} className="card p-3.5 md:p-5 space-y-3">
+    // col-span-2 so expanding takes the full row of the Own tab's 2-up grid.
+    <form onSubmit={submit} className="card col-span-2 p-3.5 md:p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink-900">Import from Excel</h3>
         <button

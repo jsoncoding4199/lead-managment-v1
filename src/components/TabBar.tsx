@@ -50,9 +50,11 @@ export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCou
   return (
     <div className="w-full">
       <div className="rounded-xl bg-white/95 backdrop-blur p-1 ring-1 ring-ink-200 shadow-soft">
-        <div className="flex flex-wrap gap-1.5">
+        {/* Own / Fresh / Market always share one row — each cell shrinks
+            rather than wrapping onto a second line on a phone. */}
+        <div className="flex gap-1">
           {pipelineTabs.map((t) => (
-            <TabLink key={t.key} tab={t} active={activeTab === t.key} />
+            <TabLink key={t.key} tab={t} active={activeTab === t.key} fill />
           ))}
         </div>
 
@@ -73,13 +75,14 @@ export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCou
   );
 }
 
-function TabLink({ tab, active }: { tab: TabItem; active: boolean }) {
+function TabLink({ tab, active, fill }: { tab: TabItem; active: boolean; fill?: boolean }) {
   return (
     <Link
       href={tab.href}
       className={cn(
-        "inline-flex h-10 items-center justify-center gap-1.5 min-w-0",
-        "rounded-lg px-3 sm:px-4 text-[12px] sm:text-sm font-medium whitespace-nowrap transition-colors",
+        "inline-flex h-10 items-center justify-center gap-1 sm:gap-1.5 min-w-0",
+        fill && "flex-1",
+        "rounded-lg px-1.5 sm:px-4 text-[12px] sm:text-sm font-medium whitespace-nowrap transition-colors",
         active
           ? "bg-ink-900 text-white shadow-sm"
           : "text-ink-700 hover:bg-ink-50 active:bg-ink-100 ring-1 ring-ink-200"
