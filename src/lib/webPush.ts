@@ -62,6 +62,23 @@ export async function sendPushToUsers(opts: {
           kind: opts.payload.kind ?? null,
         })),
       });
+      // Keep only the newest 50 per recipient. ponytail: 2 queries per
+      // recipient, fine because a broadcast is a handful of team members.
+      // Move to a periodic sweep if the team ever grows large.
+      for (const userId of recipientIds) {
+        const nth = await prisma.notification.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          skip: 50,
+          take: 1,
+          select: { createdAt: true },
+        });
+        if (nth[0]) {
+          await prisma.notification.deleteMany({
+            where: { userId, createdAt: { lt: nth[0].createdAt } },
+          });
+        }
+      }
     } catch {
       /* feed write failure shouldn't block push delivery */
     }

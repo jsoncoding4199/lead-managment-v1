@@ -50,3 +50,29 @@ export async function markNotificationReadAction(formData: FormData): Promise<vo
   revalidatePath("/dashboard");
   if (parsed.data.url) redirect(parsed.data.url);
 }
+
+const DeleteOneSchema = z.object({ id: z.coerce.number().int().positive() });
+
+/**
+ * Permanently remove one notification. Read or unread — deletion is the
+ * only thing that takes a row out of the history; marking read just dims
+ * it. userId in the WHERE clause scopes it to the caller's own rows.
+ */
+export async function deleteNotificationAction(formData: FormData): Promise<void> {
+  const me = await requireUser();
+  const parsed = DeleteOneSchema.safeParse({ id: formData.get("id") });
+  if (!parsed.success) return;
+  await prisma.notification.deleteMany({
+    where: { id: parsed.data.id, userId: me.id },
+  });
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/dashboard");
+}
+
+/** Clear the whole history for the current user. */
+export async function deleteAllNotificationsAction(): Promise<void> {
+  const me = await requireUser();
+  await prisma.notification.deleteMany({ where: { userId: me.id } });
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/dashboard");
+}

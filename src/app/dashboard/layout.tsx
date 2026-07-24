@@ -4,7 +4,6 @@ import { Home } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_STATUSES } from "@/lib/leadStatus";
-import { logoutAction } from "@/app/login/actions";
 import { Sidebar } from "@/components/Sidebar";
 import { Notifier } from "@/components/Notifier";
 import { PushEnableButton } from "@/components/PushEnableButton";
@@ -98,11 +97,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <NotificationsBell unreadCount={unreadCount} />
             <PushEnableButton serverSubscribed={hasPush} />
             <Notifier />
-            <form action={logoutAction}>
-              <button className="btn btn-ghost h-9 px-2 md:px-4 text-xs md:text-sm">
-                Sign out
-              </button>
-            </form>
           </div>
         </header>
         <main className="flex-1 px-3 py-3 md:p-6 lg:p-8">

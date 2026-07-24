@@ -27,7 +27,9 @@ import {
   FileText,
   CalendarDays,
   ChevronDown,
+  LogOut,
 } from "lucide-react";
+import { logoutAction } from "@/app/login/actions";
 
 type Props = {
   user: { displayName: string; role: "MASTER" | "USER" };
@@ -305,7 +307,20 @@ function SidebarInner({
           </>
         )}
       </nav>
-      <div className="p-4 text-xs text-white/40">© {new Date().getFullYear()} Leadboard</div>
+      <div className="p-3 border-t border-white/10">
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/70 transition-colors hover:bg-white/5 hover:text-white"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="flex-1 text-left">Sign out</span>
+          </button>
+        </form>
+        <p className="px-3 pt-2 text-xs text-white/40">
+          © {new Date().getFullYear()} Leadboard
+        </p>
+      </div>
     </>
   );
 }
