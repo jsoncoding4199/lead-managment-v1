@@ -501,6 +501,18 @@ type LeadView = {
   myReminderAt: string | null;
 };
 
+/**
+ * A public lead that has been assigned to master has been handed into the
+ * master pipeline (it shows in the AH inbox via that assignment). It has
+ * left the open market, so keep it out of Fresh / Open Market / the status
+ * tabs — otherwise the same lead appears in both places. "Send to master"
+ * sets privateChannelUserId and never hits this; the composer/Assign path
+ * only creates the assignment, which is what this catches.
+ */
+const notInMasterPipeline: Prisma.LeadWhereInput = {
+  NOT: { assignments: { some: { user: { role: "MASTER" } } } },
+};
+
 function freshOrMarketVisibility(user: CurrentUser): Prisma.LeadWhereInput {
   if (user.role === "MASTER") return {};
   return {
@@ -916,6 +928,7 @@ async function LeadsSection({
         where: {
           AND: [
             { privateChannelUserId: null },
+            notInMasterPipeline,
             { status },
             // The "Able" statuses are active work — visible only to the
             // assignee (or master). freshOrMarketVisibility encodes that and
@@ -993,6 +1006,7 @@ async function LeadsSection({
       where: {
         AND: [
           { privateChannelUserId: null },
+          notInMasterPipeline,
           dateFilter,
           visibilityFilter,
           leadSearchFilter(q),
@@ -1274,6 +1288,7 @@ async function TabBarWithCounts({
       where: {
         AND: [
           { privateChannelUserId: null },
+          notInMasterPipeline,
           user.role === "MASTER" ? {} : freshOrMarketVisibility(user),
         ],
       },
