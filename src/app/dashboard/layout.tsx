@@ -21,11 +21,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const [pushSubCount, unreadCount, publicByStatus, myActiveByStatus] = await Promise.all([
     prisma.pushSubscription.count({ where: { userId: user.id } }),
     prisma.notification.count({ where: { userId: user.id, readAt: null } }),
-    // Per-status counts for the sidebar badges. Public leads only —
-    // mirrors the status-tab queries in the dashboard page.
+    // Per-status counts for the sidebar badges. Must mirror the status-tab
+    // queries in page.tsx exactly, or a badge won't match its tab. Public
+    // only, AND not handed to master — a lead assigned to master lives in
+    // the AH inbox, not the public status tabs (see notInMasterPipeline).
     prisma.lead.groupBy({
       by: ["status"],
-      where: { privateChannelUserId: null },
+      where: {
+        privateChannelUserId: null,
+        NOT: { assignments: { some: { user: { role: "MASTER" } } } },
+      },
       _count: { _all: true },
     }),
     // Non-master only sees "Able" (active) leads they're assigned to, so
@@ -38,6 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             privateChannelUserId: null,
             status: { in: ACTIVE_STATUSES },
             assignments: { some: { userId: user.id } },
+            NOT: { assignments: { some: { user: { role: "MASTER" } } } },
           },
           _count: { _all: true },
         }),
