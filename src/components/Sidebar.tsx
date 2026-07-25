@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid,
@@ -49,15 +49,24 @@ type Props = {
 export function Sidebar({ user, statusCounts = {} }: Props) {
   const pathname = usePathname() ?? "";
   const params = useSearchParams();
+  const router = useRouter();
   const tab = params.get("tab") ?? "fresh";
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const onDashboardRoot = pathname === "/dashboard";
 
-  // Close on route / tab change.
+  // Close the drawer on route / tab change, and re-fetch the layout so the
+  // per-status badges reflect current data. The counts live in the shared
+  // dashboard layout, which the App Router keeps from the client cache
+  // across navigations — router.refresh() re-runs it. Skip the first mount
+  // (the page just loaded fresh). refresh() changes neither pathname nor
+  // tab, so this effect can't loop.
+  const mounted = useRef(false);
   useEffect(() => {
     setMobileOpen(false);
-  }, [pathname, tab]);
+    if (mounted.current) router.refresh();
+    else mounted.current = true;
+  }, [pathname, tab, router]);
 
   // Lock body scroll while drawer is open.
   useEffect(() => {

@@ -603,7 +603,9 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
     }),
   ]);
 
-  revalidatePath("/dashboard");
+  // 'layout' so the sidebar's per-status count badges (computed in the
+  // dashboard layout) refresh too, not just the lead list on the page.
+  revalidatePath("/dashboard", "layout");
   revalidatePath(`/dashboard/leads/${lead.id}`);
 
   // Push runs after the response is sent.
