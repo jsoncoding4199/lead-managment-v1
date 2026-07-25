@@ -11,7 +11,7 @@ export const STATUS_LABEL: Record<LeadStatus, string> = {
   SPAM_OR_MISSING: "Spam / Missing",
   REJECTED: "Rejected",
   APPROVED: "Approved",
-  RECYCLED: "Recycled to Archive",
+  RECYCLED: "Recycle Bin",
 };
 
 // "Active work" — the three "Able" statuses. Visible only to the lead's

@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid,
-  Archive,
+  Trash2,
   Store,
   Users,
   KeyRound,
@@ -267,11 +267,11 @@ function SidebarInner({
         </NavLink>
         <NavLink
           href="/dashboard?tab=archive"
-          icon={Archive}
+          icon={Trash2}
           active={onDashboardRoot && tab === "archive"}
           count={n("archive")}
         >
-          Archive
+          Recycle Bin
         </NavLink>
 
         <div className="px-3 pt-6 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">

@@ -4,11 +4,7 @@ import { ArrowLeft, Hand } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/settings";
-import {
-  STATUS_LABEL,
-  ACTIVE_STATUSES,
-  ALWAYS_ARCHIVED_STATUSES,
-} from "@/lib/leadStatus";
+import { STATUS_LABEL, ACTIVE_STATUSES } from "@/lib/leadStatus";
 import { canAccessLead } from "@/lib/channels";
 import { formatDateTime } from "@/lib/utils";
 import { LeadCard } from "@/components/LeadCard";
@@ -55,14 +51,13 @@ export default async function LeadDetailPage({
   if (!canAccessLead(user, lead.privateChannelUserId)) notFound();
 
   // Non-master visibility per status:
-  //   - ALWAYS_ARCHIVED (APPROVED / REJECTED): master-only, hard 404.
-  //     The Archive tab itself is hidden from non-master users now.
+  //   - ALWAYS_ARCHIVED (APPROVED / RECYCLED): the Recycle Bin tab is open
+  //     to everyone now, so these public leads are viewable by all.
   //   - ABLE (Contact/Documents/Appointment): only assignees can view.
   //   - NEW: assignees, plus anyone if there's still a pickup slot.
   //   - Soft-negative (NOT_ABLE / SPAM): visible to everyone — they stay
-  //     in Open Market for the team to keep retrying. No archive lockout.
+  //     in Open Market for the team to keep retrying.
   if (user.role !== "MASTER") {
-    if (ALWAYS_ARCHIVED_STATUSES.includes(lead.status)) notFound();
     const iAmAssigned = lead.assignments.some((a) => a.user.id === user.id);
     if (ACTIVE_STATUSES.includes(lead.status) && !iAmAssigned) notFound();
     if (lead.status === "NEW" && !iAmAssigned && lead.assignments.length >= settings.maxPickup) {

@@ -816,7 +816,7 @@ function StatusMenu({
                   onClick={() => onChoose("RECYCLED")}
                   className="w-full rounded-xl border border-brand-200 bg-brand-50 px-3 py-3 text-left text-sm font-bold text-brand-700 hover:bg-brand-100"
                 >
-                  Recycle to Archive
+                  Move to Recycle Bin
                 </button>
               </div>
             </div>

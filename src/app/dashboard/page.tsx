@@ -958,12 +958,8 @@ async function LeadsSection({
     return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
   }
 
-  /* ---------- Archive tab — master only ---------- */
+  /* ---------- Recycle Bin tab — visible to everyone ---------- */
   if (tab.key === "archive") {
-    if (user.role !== "MASTER") {
-      return <ArchiveLockedNotice />;
-    }
-
     const [archivable, teamUsers] = await Promise.all([
       prisma.lead.findMany({
         where: {
@@ -978,11 +974,14 @@ async function LeadsSection({
         take: 200,
         select: leadSelect,
       }),
-      prisma.user.findMany({
-        where: { active: true, role: "USER" },
-        select: { id: true, displayName: true },
-        orderBy: { displayName: "asc" },
-      }),
+      // Reassign targets are a master-only affordance in this view.
+      user.role === "MASTER"
+        ? prisma.user.findMany({
+            where: { active: true, role: "USER" },
+            select: { id: true, displayName: true },
+            orderBy: { displayName: "asc" },
+          })
+        : Promise.resolve([] as { id: number; displayName: string }[]),
     ]);
 
     const filtered = archivable.filter((l) => isArchiveBound(l));
@@ -1223,23 +1222,6 @@ function ChannelLeadList({
           ))}
         </ul>
       </CollapsibleSection>
-    </div>
-  );
-}
-
-function ArchiveLockedNotice() {
-  return (
-    <div className="card p-12 text-center">
-      <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
-        🔒
-      </div>
-      <h3 className="mt-4 text-base font-semibold text-ink-900">Archive is for the master only</h3>
-      <p className="mt-1 text-sm text-ink-500">
-        Closed leads that have reached pickup capacity live here. Ask your master if you need access.
-      </p>
-      <Link href="/dashboard?tab=fresh" className="btn btn-outline mt-4 inline-flex">
-        Back to Fresh
-      </Link>
     </div>
   );
 }
@@ -1742,7 +1724,7 @@ function MyPicksByStatus({
                       SPAM_OR_MISSING: "Spam or Missing",
                       REJECTED: "Rejected",
                       APPROVED: "Approved",
-                      RECYCLED: "Recycled",
+                      RECYCLED: "Recycle Bin",
                     }[s]}
                   </h3>
                 </div>
@@ -1834,7 +1816,7 @@ function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }
           : tab === "picks"
             ? "Nothing picked up yet"
             : tab === "archive"
-              ? "Archive is empty"
+              ? "Recycle Bin is empty"
               : "No leads with this status yet";
   const body = hasQuery
     ? "Try a different search term."
@@ -1847,7 +1829,7 @@ function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }
           : tab === "picks"
             ? "Pick up a lead from Fresh or Open Market and it'll show up here."
             : tab === "archive"
-              ? "Nothing has been moved to the long-term archive yet."
+              ? "Approved and recycled leads land here."
               : "Leads set to this status will land here.";
   return (
     <div className="card p-12 text-center">
