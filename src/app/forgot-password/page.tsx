@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ForgotPasswordForm } from "@/components/ForgotPasswordForm";
+import { MasterRecoverForm } from "@/components/MasterRecoverForm";
 
 export default function ForgotPasswordPage() {
   return (
@@ -13,6 +14,9 @@ export default function ForgotPasswordPage() {
           </p>
           <div className="mt-6">
             <ForgotPasswordForm />
+          </div>
+          <div className="mt-6 border-t border-ink-100 pt-4">
+            <MasterRecoverForm />
           </div>
         </div>
         <p className="mt-4 text-center text-xs text-ink-500">
