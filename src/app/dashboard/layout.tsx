@@ -18,7 +18,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Two tiny indexed counts run in parallel: one for the nudge banner,
   // one for the bell badge. Both are ~1ms; running them with the layout
   // means every navigation refreshes both without any client polling.
-  const [pushSubCount, unreadCount, publicByStatus, myActiveByStatus] = await Promise.all([
+  const [pushSubCount, unreadCount, publicByStatus, myActiveByStatus, archivedCounts] = await Promise.all([
     prisma.pushSubscription.count({ where: { userId: user.id } }),
     prisma.notification.count({ where: { userId: user.id, readAt: null } }),
     // Per-status counts for the sidebar badges. Must mirror the status-tab
@@ -47,10 +47,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
           },
           _count: { _all: true },
         }),
+    // Approved + Recycle Bin tabs are open to everyone and do NOT apply the
+    // master-assignee exclusion (approved leads keep their assignee), so
+    // their badges need their own count. Public leads only.
+    prisma.lead.groupBy({
+      by: ["status"],
+      where: { privateChannelUserId: null, status: { in: ["APPROVED", "RECYCLED"] } },
+      _count: { _all: true },
+    }),
   ]);
   const hasPush = pushSubCount > 0;
 
   const byStatus = new Map(publicByStatus.map((r) => [r.status, r._count._all]));
+  const archivedByStatus = new Map(archivedCounts.map((r) => [r.status, r._count._all]));
   if (myActiveByStatus) {
     for (const s of ACTIVE_STATUSES) byStatus.set(s, 0);
     for (const r of myActiveByStatus) byStatus.set(r.status, r._count._all);
@@ -64,7 +73,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     not_appt: byStatus.get("APPOINTMENT_NOT_ABLE") ?? 0,
     spam: byStatus.get("SPAM_OR_MISSING") ?? 0,
     reject: byStatus.get("REJECTED") ?? 0,
-    archive: (byStatus.get("APPROVED") ?? 0) + (byStatus.get("RECYCLED") ?? 0),
+    approved: archivedByStatus.get("APPROVED") ?? 0,
+    archive: archivedByStatus.get("RECYCLED") ?? 0,
   };
 
   return (

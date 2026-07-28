@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid,
+  CheckCircle2,
   Trash2,
   Store,
   Users,
@@ -273,6 +274,14 @@ function SidebarInner({
           count={n("reject")}
         >
           Rejected
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=approved"
+          icon={CheckCircle2}
+          active={onDashboardRoot && tab === "approved"}
+          count={n("approved")}
+        >
+          Approved
         </NavLink>
         <NavLink
           href="/dashboard?tab=archive"

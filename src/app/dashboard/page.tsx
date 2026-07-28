@@ -52,6 +52,7 @@ type DashStaticTab =
   | "fresh"
   | "market"
   | "picks"
+  | "approved"
   | "archive"
   | "able_contact"
   | "able_docs"
@@ -135,6 +136,7 @@ function parseTab(raw: string | undefined): DashTab {
     case "own":
     case "market":
     case "picks":
+    case "approved":
     case "archive":
     case "able_contact":
     case "able_docs":
@@ -958,14 +960,16 @@ async function LeadsSection({
     return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
   }
 
-  /* ---------- Recycle Bin tab — visible to everyone ---------- */
-  if (tab.key === "archive") {
+  /* ---------- Approved + Recycle Bin tabs — visible to everyone ---------- */
+  if (tab.key === "approved" || tab.key === "archive") {
+    // Approved deals get their own tab; the Recycle Bin holds recycled ones.
+    const wantStatus: LeadStatus = tab.key === "approved" ? "APPROVED" : "RECYCLED";
     const [archivable, teamUsers] = await Promise.all([
       prisma.lead.findMany({
         where: {
           AND: [
             { privateChannelUserId: null },
-            { status: { in: ALWAYS_ARCHIVED_STATUSES } },
+            { status: wantStatus },
             leadSearchFilter(q),
             filterWhere,
           ],
@@ -984,11 +988,10 @@ async function LeadsSection({
         : Promise.resolve([] as { id: number; displayName: string }[]),
     ]);
 
-    const filtered = archivable.filter((l) => isArchiveBound(l));
-    if (filtered.length === 0) {
-      return <EmptyState tab="archive" hasQuery={!!q} />;
+    if (archivable.length === 0) {
+      return <EmptyState tab={tab.key} hasQuery={!!q} />;
     }
-    const leads = await toLeadViewsForUser(filtered, user.id);
+    const leads = await toLeadViewsForUser(archivable, user.id);
     return <ArchiveByAssignee leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
   }
 
@@ -1815,9 +1818,11 @@ function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }
           ? "Open Market is empty"
           : tab === "picks"
             ? "Nothing picked up yet"
-            : tab === "archive"
-              ? "Recycle Bin is empty"
-              : "No leads with this status yet";
+            : tab === "approved"
+              ? "No approved leads yet"
+              : tab === "archive"
+                ? "Recycle Bin is empty"
+                : "No leads with this status yet";
   const body = hasQuery
     ? "Try a different search term."
     : tab === "own"
@@ -1828,9 +1833,11 @@ function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }
           ? "Closed leads will appear here once the team starts moving them out of New."
           : tab === "picks"
             ? "Pick up a lead from Fresh or Open Market and it'll show up here."
-            : tab === "archive"
-              ? "Approved and recycled leads land here."
-              : "Leads set to this status will land here.";
+            : tab === "approved"
+              ? "Leads marked Approved land here for everyone to see."
+              : tab === "archive"
+                ? "Leads moved to the Recycle Bin land here."
+                : "Leads set to this status will land here.";
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
