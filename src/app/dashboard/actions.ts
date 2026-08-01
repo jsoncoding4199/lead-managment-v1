@@ -823,6 +823,75 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
   });
 }
 
+/**
+ * The non-master "OK / Pick" button in one shot: pick the lead up (if not
+ * already assigned and there's capacity) AND mark it seen, then fire a
+ * SINGLE notification instead of one for the pickup and one for the ack.
+ * Recipients are the lead's creator + the masters, deduped. The message
+ * reads "seen and picked up" when a pickup happened this tap, or just
+ * "seen" when the user already held the lead.
+ */
+export async function okPickLeadAction(formData: FormData): Promise<{ error?: string } | void> {
+  const me = await requireUser();
+  const parsed = PickUpSchema.safeParse({ leadId: formData.get("leadId") });
+  if (!parsed.success) return { error: "Invalid lead." };
+
+  const [lead, settings, existing] = await Promise.all([
+    prisma.lead.findUnique({ where: { id: parsed.data.leadId } }),
+    prisma.appSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1, maxPickup: 2 } }),
+    prisma.leadAssignment.findUnique({
+      where: { leadId_userId: { leadId: parsed.data.leadId, userId: me.id } },
+    }),
+  ]);
+  if (!lead) return { error: "Lead not found." };
+  if (!canAccessLead(me, lead.privateChannelUserId)) return { error: "Lead not found." };
+  if (lead.status === "APPROVED" && me.role !== "MASTER") {
+    return { error: "This lead is already closed." };
+  }
+
+  let didPickUp = false;
+  if (!existing) {
+    const count = await prisma.leadAssignment.count({ where: { leadId: lead.id } });
+    if (count >= settings.maxPickup) {
+      return { error: `This lead is already at capacity (${settings.maxPickup}).` };
+    }
+    await prisma.$transaction([
+      prisma.leadAssignment.create({
+        data: { leadId: lead.id, userId: me.id, assignedById: me.id },
+      }),
+      prisma.user.update({ where: { id: me.id }, data: { pickUpsCount: { increment: 1 } } }),
+      prisma.lead.update({ where: { id: lead.id }, data: { pickUpsCount: { increment: 1 } } }),
+    ]);
+    didPickUp = true;
+  }
+
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: { ackedAt: new Date(), ackedById: me.id },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${lead.id}`);
+
+  after(async () => {
+    const recipients = new Set<number>([lead.createdById]);
+    for (const mid of await getMasterIds()) recipients.add(mid);
+    recipients.delete(me.id);
+    if (recipients.size === 0) return;
+    const what = didPickUp ? "seen and picked up" : "seen";
+    await sendPushToUsers({
+      userIds: Array.from(recipients),
+      payload: {
+        title: didPickUp ? "Lead seen and picked up" : "Lead seen",
+        body: `${me.displayName} ${what} #${lead.id}`,
+        url: `/dashboard/leads/${lead.id}`,
+        kind: "lead",
+        tag: `lead-${lead.id}-okpick`,
+      },
+    });
+  });
+}
+
 /** Master-only — update the global max-pickup setting. */
 const MaxPickupSchema = z.object({
   maxPickup: z.coerce.number().int().min(1).max(10),

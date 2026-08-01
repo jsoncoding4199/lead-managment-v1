@@ -38,7 +38,7 @@ import {
   reassignPrivateLeadAction,
   setContactStateAction,
   pingLeadAction,
-  ackLeadAction,
+  okPickLeadAction,
   masterOkLeadAction,
   setReminderAction,
   setLeadPhoneAction,
@@ -186,18 +186,16 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     setError(null);
     const shouldPick = !iAmAssigned && !(atCapacity && viewer.role !== "MASTER");
     startTransition(async () => {
-      if (shouldPick) {
-        const fd = new FormData();
-        fd.set("leadId", String(lead.id));
-        const res = await pickUpLeadAction(fd);
-        if (res?.error) {
-          setError(res.error);
-          return;
-        }
-      }
       const fd = new FormData();
       fd.set("leadId", String(lead.id));
       if (viewer.role === "MASTER") {
+        if (shouldPick) {
+          const res = await pickUpLeadAction(fd);
+          if (res?.error) {
+            setError(res.error);
+            return;
+          }
+        }
         const res = await masterOkLeadAction(fd);
         if (res?.error) {
           setError(res.error);
@@ -206,7 +204,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         setMasterOkSent(true);
         setTimeout(() => setMasterOkSent(false), 1500);
       } else {
-        const res = await ackLeadAction(fd);
+        // Single action does pickup + acknowledge and sends ONE "seen and
+        // picked up" notification instead of two.
+        const res = await okPickLeadAction(fd);
         if (res?.error) {
           setError(res.error);
           return;
