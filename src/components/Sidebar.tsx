@@ -159,7 +159,7 @@ function SidebarInner({
         Leadboard
       </div>
 
-      <nav className="px-3 mt-2 space-y-1 flex-1 overflow-y-auto">
+      <nav className="px-3 mt-2 space-y-0.5 flex-1 overflow-y-auto">
         {/* Explicit ?tab=fresh — bare /dashboard triggers the master
             default-tab redirect to the AH pipeline, which would swallow
             this click. */}
@@ -292,7 +292,7 @@ function SidebarInner({
           Recycle Bin
         </NavLink>
 
-        <div className="px-3 pt-6 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+        <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
           Account
         </div>
         <NavLink
@@ -305,7 +305,7 @@ function SidebarInner({
 
         {user.role === "MASTER" && (
           <>
-            <div className="px-3 pt-6 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+            <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
               Master
             </div>
             <NavLink
@@ -366,7 +366,7 @@ function NavGroup({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+          "flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors",
           activeChild
             ? "bg-white/10 text-white"
             : "text-white/70 hover:bg-white/5 hover:text-white"
@@ -380,7 +380,7 @@ function NavGroup({
           className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
         />
       </button>
-      {open && <div className="mt-1 ml-4 space-y-1">{children}</div>}
+      {open && <div className="mt-0.5 ml-4 space-y-0.5">{children}</div>}
     </div>
   );
 }
@@ -402,7 +402,7 @@ function NavLink({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+        "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors",
         active ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
       )}
     >

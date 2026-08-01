@@ -30,7 +30,10 @@ async function notifyLeadCreator(opts: {
   title: string;
   body: string;
   url?: string;
-  kind?: "status" | "lead" | "approved";
+  // Drives the notification-feed tabs: "assign" (into my channel),
+  // "pickup" (OK/pick-up), "status" (status changes). "lead"/"approved"
+  // are legacy/general and fall into the Status tab.
+  kind?: "status" | "lead" | "approved" | "pickup" | "assign";
 }): Promise<void> {
   if (opts.creatorId === opts.actorId) return;
   await sendPushToUsers({
@@ -494,7 +497,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
           title: "New private-channel lead",
           body: `Master added lead #${lead.id} to your private pipeline${detailBlock}`,
           url: `/dashboard/leads/${lead.id}`,
-          kind: "lead",
+          kind: "assign",
           tag: `lead-${lead.id}`,
         },
       });
@@ -520,7 +523,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
           title: "Lead assigned to you",
           body: `${user.displayName} assigned you lead #${lead.id}${detailBlock}`,
           url: `/dashboard/leads/${lead.id}`,
-          kind: "lead",
+          kind: "assign",
           tag: `lead-${lead.id}-assign`,
         },
       });
@@ -819,6 +822,7 @@ export async function pickUpLeadAction(formData: FormData): Promise<{ error?: st
       actorId: me.id,
       title: "Your lead was picked up",
       body: `${me.displayName} picked up #${lead.id}`,
+      kind: "pickup",
     });
   });
 }
@@ -885,7 +889,7 @@ export async function okPickLeadAction(formData: FormData): Promise<{ error?: st
         title: didPickUp ? "Lead seen and picked up" : "Lead seen",
         body: `${me.displayName} ${what} #${lead.id}`,
         url: `/dashboard/leads/${lead.id}`,
-        kind: "lead",
+        kind: "pickup",
         tag: `lead-${lead.id}-okpick`,
       },
     });
@@ -1568,7 +1572,7 @@ export async function reassignPrivateLeadAction(
           title: "Lead reassigned",
           body: `${me.displayName} handed lead #${lead.id} to ${targetLabel}`,
           url: `/dashboard/leads/${lead.id}`,
-          kind: "lead",
+          kind: "assign",
           tag: `lead-${lead.id}`,
         },
       });
@@ -1653,7 +1657,7 @@ export async function ackLeadAction(formData: FormData): Promise<{ error?: strin
         title: "Lead acknowledged",
         body: `${me.displayName} has seen lead #${parsed.data.leadId}`,
         url: `/dashboard/leads/${parsed.data.leadId}`,
-        kind: "lead",
+        kind: "pickup",
         tag: `lead-${parsed.data.leadId}-ack`,
       },
     });
@@ -1725,6 +1729,7 @@ export async function masterOkLeadAction(formData: FormData): Promise<{ error?: 
       actorId: master.id,
       title: "Lead confirmed",
       body: `${master.displayName} marked your lead #${lead.id} as OK`,
+      kind: "pickup",
     });
   });
 }

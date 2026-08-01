@@ -29,7 +29,9 @@ export type PushPayload = {
   title: string;
   body: string;
   url?: string;
-  kind?: "status" | "lead" | "approved";
+  // Feed-tab category: "assign" (into my channel), "pickup" (OK/pick-up),
+  // "status" (status change). "lead"/"approved" are legacy/general.
+  kind?: "status" | "lead" | "approved" | "pickup" | "assign";
   tag?: string;
 };
 
