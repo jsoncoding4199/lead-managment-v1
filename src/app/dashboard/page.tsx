@@ -258,6 +258,7 @@ export default async function DashboardPage({
             sources={leadSources}
             locations={leadLocations}
             isOwn
+            canManage={user.role === "MASTER"}
           />
           <OwnLeadImport sources={leadSources} />
         </div>
@@ -267,7 +268,7 @@ export default async function DashboardPage({
           Fresh pipeline regardless of which tab it was composed from. */}
       {!q && tab.kind === "static" && tab.key !== "own" && (
         <LeadComposer assignableUsers={assignableUsers} sources={leadSources}
-          locations={leadLocations} />
+          locations={leadLocations} canManage={user.role === "MASTER"} />
       )}
       {/* Private tab composer: master anywhere, or the channel owner on
           their own tab — so private users can paste leads (with the
@@ -280,6 +281,7 @@ export default async function DashboardPage({
             assignableUsers={assignableUsers}
             sources={leadSources}
           locations={leadLocations}
+            canManage={user.role === "MASTER"}
             privateChannelUserId={privateUser.id}
             privateChannelLabel={
               privateUser.id === user.id ? "my pipeline" : privateUser.displayName

@@ -1,8 +1,14 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Plus, ClipboardPaste, Loader2, Check, Users, Tag, X, ScanSearch, MapPin } from "lucide-react";
-import { createLeadAction, addLeadSourceAction, addLeadLocationAction } from "@/app/dashboard/actions";
+import { Plus, ClipboardPaste, Loader2, Check, Users, Tag, X, ScanSearch, MapPin, Trash2 } from "lucide-react";
+import {
+  createLeadAction,
+  addLeadSourceAction,
+  addLeadLocationAction,
+  deleteLeadSourceAction,
+  deleteLeadLocationAction,
+} from "@/app/dashboard/actions";
 import { cn } from "@/lib/utils";
 
 type Assignable = {
@@ -29,6 +35,8 @@ type Props = {
   locations?: LocationOption[];
   /** When true, the lead goes into the master's private "Own" list. */
   isOwn?: boolean;
+  /** Master-only: show the Delete toggle on the source/location pickers. */
+  canManage?: boolean;
 };
 
 export function LeadComposer({
@@ -38,6 +46,7 @@ export function LeadComposer({
   sources = [],
   locations = [],
   isOwn = false,
+  canManage = false,
 }: Props = {}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +57,7 @@ export function LeadComposer({
   const [localSources, setLocalSources] = useState<SourceOption[]>(sources);
   const [sourceId, setSourceId] = useState<number | null>(null);
   const [addingSource, setAddingSource] = useState(false);
+  const [managingSource, setManagingSource] = useState(false);
   const [newSourceName, setNewSourceName] = useState("");
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [localLocations, setLocalLocations] = useState<LocationOption[]>(locations);
@@ -56,6 +66,7 @@ export function LeadComposer({
     () => locations.find((l) => l.name === DEFAULT_LOCATION_NAME)?.id ?? null
   );
   const [addingLocation, setAddingLocation] = useState(false);
+  const [managingLocation, setManagingLocation] = useState(false);
   const [newLocationName, setNewLocationName] = useState("");
   const [locationError, setLocationError] = useState<string | null>(null);
   const [autofilled, setAutofilled] = useState<null | string[]>(null);
@@ -324,6 +335,40 @@ export function LeadComposer({
     });
   };
 
+  // Master-only registry deletes. Clear the picked value if it was the one
+  // removed, then drop it from the local list.
+  const removeSource = (id: number, sname: string) => {
+    if (!confirm(`Delete source "${sname}"? It will be cleared from any leads using it.`)) return;
+    setSourceError(null);
+    const fd = new FormData();
+    fd.set("id", String(id));
+    startTransition(async () => {
+      const res = await deleteLeadSourceAction(fd);
+      if (res?.error) {
+        setSourceError(res.error);
+        return;
+      }
+      setLocalSources((prev) => prev.filter((s) => s.id !== id));
+      setSourceId((cur) => (cur === id ? null : cur));
+    });
+  };
+
+  const removeLocation = (id: number, lname: string) => {
+    if (!confirm(`Delete location "${lname}"? It will be cleared from any leads using it.`)) return;
+    setLocationError(null);
+    const fd = new FormData();
+    fd.set("id", String(id));
+    startTransition(async () => {
+      const res = await deleteLeadLocationAction(fd);
+      if (res?.error) {
+        setLocationError(res.error);
+        return;
+      }
+      setLocalLocations((prev) => prev.filter((l) => l.id !== id));
+      setLocationId((cur) => (cur === id ? null : cur));
+    });
+  };
+
   return (
     <form
       ref={formRef}
@@ -370,6 +415,21 @@ export function LeadComposer({
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {localSources.map((s) => {
             const active = sourceId === s.id;
+            if (managingSource) {
+              return (
+                <button
+                  type="button"
+                  key={s.id}
+                  onClick={() => removeSource(s.id, s.name)}
+                  disabled={pending}
+                  title={`Delete ${s.name}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {s.name}
+                </button>
+              );
+            }
             return (
               <button
                 type="button"
@@ -388,6 +448,22 @@ export function LeadComposer({
               </button>
             );
           })}
+          {canManage && !addingSource && localSources.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setManagingSource((v) => !v)}
+              disabled={pending}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                managingSource
+                  ? "border-ink-300 bg-ink-100 text-ink-700"
+                  : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+              )}
+            >
+              <Trash2 className="h-3 w-3" />
+              {managingSource ? "Done" : "Delete"}
+            </button>
+          )}
           {addingSource ? (
             <div className="flex items-center gap-1.5">
               <input
@@ -432,7 +508,7 @@ export function LeadComposer({
                 <X className="h-3 w-3" />
               </button>
             </div>
-          ) : (
+          ) : managingSource ? null : (
             <button
               type="button"
               onClick={() => setAddingSource(true)}
@@ -443,6 +519,9 @@ export function LeadComposer({
             </button>
           )}
         </div>
+        {managingSource && (
+          <p className="mt-1.5 text-[11px] text-ink-500">Tap a source to delete it.</p>
+        )}
         {sourceError && (
           <div className="mt-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
             {sourceError}
@@ -457,6 +536,21 @@ export function LeadComposer({
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {localLocations.map((l) => {
             const active = locationId === l.id;
+            if (managingLocation) {
+              return (
+                <button
+                  type="button"
+                  key={l.id}
+                  onClick={() => removeLocation(l.id, l.name)}
+                  disabled={pending}
+                  title={`Delete ${l.name}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {l.name}
+                </button>
+              );
+            }
             return (
               <button
                 type="button"
@@ -475,6 +569,22 @@ export function LeadComposer({
               </button>
             );
           })}
+          {canManage && !addingLocation && localLocations.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setManagingLocation((v) => !v)}
+              disabled={pending}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                managingLocation
+                  ? "border-ink-300 bg-ink-100 text-ink-700"
+                  : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+              )}
+            >
+              <Trash2 className="h-3 w-3" />
+              {managingLocation ? "Done" : "Delete"}
+            </button>
+          )}
           {addingLocation ? (
             <div className="flex items-center gap-1.5">
               <input
@@ -519,7 +629,7 @@ export function LeadComposer({
                 <X className="h-3 w-3" />
               </button>
             </div>
-          ) : (
+          ) : managingLocation ? null : (
             <button
               type="button"
               onClick={() => setAddingLocation(true)}
@@ -530,6 +640,9 @@ export function LeadComposer({
             </button>
           )}
         </div>
+        {managingLocation && (
+          <p className="mt-1.5 text-[11px] text-ink-500">Tap a location to delete it.</p>
+        )}
         {locationError && (
           <div className="mt-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
             {locationError}
