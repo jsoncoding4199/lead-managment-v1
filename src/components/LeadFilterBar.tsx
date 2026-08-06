@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { X } from "lucide-react";
+import { X, ArrowDownWideNarrow } from "lucide-react";
 
 type UserOption = { id: number; displayName: string };
 type SourceOption = { id: number; name: string };
@@ -14,6 +14,7 @@ type Props = {
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
+  sort: "new" | "old";
 };
 
 /**
@@ -28,12 +29,13 @@ export function LeadFilterBar({
   creatorId,
   sourceId,
   locationId,
+  sort,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
 
-  const setParam = (key: "fu" | "fs" | "fl", value: string) => {
+  const setParam = (key: "fu" | "fs" | "fl" | "sort", value: string) => {
     const next = new URLSearchParams(params.toString());
     if (value) next.set(key, value);
     else next.delete(key);
@@ -93,6 +95,21 @@ export function LeadFilterBar({
           </option>
         ))}
       </select>
+
+      {/* Date sort — newest or oldest (longest-waiting) first. "new" is the
+          default, so we drop the param for it to keep URLs clean. */}
+      <span className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-ink-200 bg-white pl-1.5">
+        <ArrowDownWideNarrow className="h-3.5 w-3.5 shrink-0 text-ink-400" />
+        <select
+          value={sort}
+          onChange={(e) => setParam("sort", e.target.value === "old" ? "old" : "")}
+          className="h-8 min-w-0 flex-1 bg-transparent pr-1 text-xs text-ink-800"
+          aria-label="Sort by date"
+        >
+          <option value="new">Newest</option>
+          <option value="old">Oldest</option>
+        </select>
+      </span>
 
       {active && (
         <button

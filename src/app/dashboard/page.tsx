@@ -81,7 +81,17 @@ type DashTab =
   | { kind: "static"; key: DashStaticTab }
   | { kind: "private"; userId: number };
 
-type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; p?: string; sg?: string };
+type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; p?: string; sg?: string; sort?: string };
+
+/** Date sort for every pipeline list. "new" = newest first (default),
+ *  "old" = oldest first (longest-waiting / most days). */
+type SortKey = "new" | "old";
+function parseSort(raw: string | undefined): SortKey {
+  return raw === "old" ? "old" : "new";
+}
+function leadOrderBy(sort: SortKey): Prisma.LeadOrderByWithRelationInput[] {
+  return [{ createdAt: sort === "old" ? "asc" : "desc" }];
+}
 
 /**
  * Rows per page. Every lead is a stateful client component, so this is the
@@ -241,6 +251,7 @@ export default async function DashboardPage({
         creatorId={filterCreatorId}
         sourceId={filterSourceId}
         locationId={filterLocationId}
+        sort={parseSort(sp.sort)}
       />
 
       {/* Composer rules — hide while searching globally. Non-masters only
@@ -290,12 +301,12 @@ export default async function DashboardPage({
         )}
 
       {q ? (
-        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
-          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} />
+        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorId}:${filterSourceId}:${filterLocationId}:${sp.sort ?? ""}`}>
+          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} sort={parseSort(sp.sort)} />
         </Suspense>
       ) : (
-        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} page={parsePage(sp.p)} statusGroup={parseStageGroup(sp.sg)} />
+        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}:${sp.sort ?? ""}:${sp.p ?? ""}`}>
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} page={parsePage(sp.p)} statusGroup={parseStageGroup(sp.sg)} sort={parseSort(sp.sort)} />
         </Suspense>
       )}
     </div>
@@ -310,6 +321,7 @@ function tabHref(tabKey: string, o: {
   locationId: number | null;
   page?: number;
   sg?: StageGroup | null;
+  sort?: SortKey;
 }): string {
   const p = new URLSearchParams({ tab: tabKey });
   if (o.q) p.set("q", o.q);
@@ -318,6 +330,7 @@ function tabHref(tabKey: string, o: {
   if (o.locationId) p.set("fl", String(o.locationId));
   if (o.page && o.page > 1) p.set("p", String(o.page));
   if (o.sg) p.set("sg", o.sg);
+  if (o.sort && o.sort !== "new") p.set("sort", o.sort);
   return `/dashboard?${p.toString()}`;
 }
 
@@ -335,6 +348,7 @@ async function StageRow({
   creatorId,
   sourceId,
   locationId,
+  sort,
 }: {
   tabKey: string;
   /** The tab's unfiltered-by-stage predicate — what the counts run over. */
@@ -344,6 +358,7 @@ async function StageRow({
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
+  sort: SortKey;
 }) {
   const rows = await prisma.lead.groupBy({
     by: ["status"],
@@ -355,7 +370,7 @@ async function StageRow({
       .filter((r) => (STAGE_GROUPS[g].statuses as LeadStatus[]).includes(r.status))
       .reduce((n, r) => n + r._count._all, 0);
   const link = (sg?: StageGroup) =>
-    tabHref(tabKey, { q, creatorId, sourceId, locationId, sg });
+    tabHref(tabKey, { q, creatorId, sourceId, locationId, sg, sort });
 
   return (
     <div className="flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft">
@@ -579,19 +594,21 @@ async function GlobalSearchResults({
   creatorId,
   sourceId,
   locationId,
+  sort,
 }: {
   q: string;
   user: CurrentUser;
   creatorId: number | null;
   sourceId: number | null;
   locationId: number | null;
+  sort: SortKey;
 }) {
   const settings = await getAppSettings();
 
   const [matches, teamUsers, masterReassignTargets] = await Promise.all([
     prisma.lead.findMany({
       where: { AND: [globalLeadVisibility(user), leadSearchFilter(q), leadFilterWhere(creatorId, sourceId, locationId)] },
-      orderBy: [{ updatedAt: "desc" }],
+      orderBy: leadOrderBy(sort),
       take: 200,
       select: leadSelect,
     }),
@@ -659,6 +676,7 @@ async function LeadsSection({
   locationId,
   page,
   statusGroup,
+  sort,
 }: {
   tab: DashTab;
   q: string;
@@ -669,6 +687,7 @@ async function LeadsSection({
   locationId: number | null;
   page: number;
   statusGroup: StageGroup | null;
+  sort: SortKey;
 }) {
   const filterWhere = leadFilterWhere(creatorId, sourceId, locationId);
   const settings = await getAppSettings();
@@ -723,7 +742,7 @@ async function LeadsSection({
     const [channelLeads, channelTotal, otherPrivateUsers] = await Promise.all([
       prisma.lead.findMany({
         where: channelWhere,
-        orderBy: [{ updatedAt: "desc" }],
+        orderBy: leadOrderBy(sort),
         skip: (page - 1) * LEAD_PAGE_SIZE,
         take: LEAD_PAGE_SIZE,
         select: leadSelect,
@@ -752,6 +771,7 @@ async function LeadsSection({
         creatorId={creatorId}
         sourceId={sourceId}
         locationId={locationId}
+        sort={sort}
       />
     );
     if (channelLeads.length === 0) {
@@ -789,6 +809,7 @@ async function LeadsSection({
               locationId,
               page: n,
               sg: statusGroup,
+              sort,
             })
           }
         />
@@ -823,6 +844,7 @@ async function LeadsSection({
         creatorId={creatorId}
         sourceId={sourceId}
         locationId={locationId}
+        sort={sort}
       />
     );
     // The tab badge counts every Own lead, so the list has to say when it
@@ -831,7 +853,7 @@ async function LeadsSection({
     const [ownLeads, ownTotal] = await Promise.all([
       prisma.lead.findMany({
         where: ownWhere,
-        orderBy: [{ createdAt: "desc" }],
+        orderBy: leadOrderBy(sort),
         skip: (page - 1) * LEAD_PAGE_SIZE,
         take: LEAD_PAGE_SIZE,
         select: leadSelect,
@@ -849,7 +871,7 @@ async function LeadsSection({
             shown={0}
             total={ownTotal}
             hrefFor={(n) =>
-              tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup })
+              tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup, sort })
             }
           />
         </div>
@@ -871,7 +893,7 @@ async function LeadsSection({
           shown={ownLeads.length}
           total={ownTotal}
           hrefFor={(n) =>
-            tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup })
+            tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup, sort })
           }
         />
       </div>
@@ -900,7 +922,7 @@ async function LeadsSection({
             filterWhere,
           ],
         },
-        orderBy: [{ updatedAt: "desc" }],
+        orderBy: leadOrderBy(sort),
         take: 200,
         select: leadSelect,
       }),
@@ -943,7 +965,7 @@ async function LeadsSection({
             filterWhere,
           ],
         },
-        orderBy: [{ updatedAt: "desc" }],
+        orderBy: leadOrderBy(sort),
         take: 200,
         select: leadSelect,
       }),
@@ -976,7 +998,7 @@ async function LeadsSection({
             filterWhere,
           ],
         },
-        orderBy: [{ updatedAt: "desc" }],
+        orderBy: leadOrderBy(sort),
         take: 200,
         select: leadSelect,
       }),
@@ -1017,7 +1039,7 @@ async function LeadsSection({
           filterWhere,
         ],
       },
-      orderBy: [{ updatedAt: "desc" }],
+      orderBy: leadOrderBy(sort),
       take: 200,
       select: leadSelect,
     }),
