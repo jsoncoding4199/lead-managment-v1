@@ -23,6 +23,7 @@ import {
   Tag,
   Plus,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
 import { timeAgo, daysAgo, formatDateTime, waNumber, cn } from "@/lib/utils";
@@ -46,6 +47,8 @@ import {
   setLeadSourceAction,
   addLeadSourceAction,
   listLeadSourcesAction,
+  deleteLeadSourceAction,
+  deleteLeadLocationAction,
   setLeadLocationAction,
   addLeadLocationAction,
   listLeadLocationsAction,
@@ -357,10 +360,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       <div className="mt-2 md:mt-3 rounded-lg border border-ink-100 bg-white text-[12px] overflow-hidden">
         <div className="flex md:block">
           <div className="flex-1 min-w-0 border-b border-r md:border-r-0 border-ink-100">
-            <SourceRow leadId={lead.id} source={lead.source ?? null} />
+            <SourceRow leadId={lead.id} source={lead.source ?? null} canManage={viewer.role === "MASTER"} />
           </div>
           <div className="flex-1 min-w-0 border-b border-ink-100">
-            <LocationRow leadId={lead.id} location={lead.location ?? null} />
+            <LocationRow leadId={lead.id} location={lead.location ?? null} canManage={viewer.role === "MASTER"} />
           </div>
         </div>
         <div className="border-b border-ink-100">
@@ -1576,9 +1579,11 @@ function LeadDetailsSheet({
 function SourceRow({
   leadId,
   source,
+  canManage,
 }: {
   leadId: number;
   source: { id: number; name: string } | null;
+  canManage?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -1607,6 +1612,7 @@ function SourceRow({
         <SourcePicker
           leadId={leadId}
           currentSourceId={source?.id ?? null}
+          canManage={canManage}
           onClose={() => setOpen(false)}
         />
       )}
@@ -1617,18 +1623,33 @@ function SourceRow({
 function SourcePicker({
   leadId,
   currentSourceId,
+  canManage,
   onClose,
 }: {
   leadId: number;
   currentSourceId: number | null;
+  canManage?: boolean;
   onClose: () => void;
 }) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
   const [sources, setSources] = useState<{ id: number; name: string }[] | null>(null);
   const [adding, setAdding] = useState(false);
+  const [managing, setManaging] = useState(false);
   const [newName, setNewName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const removeSource = (id: number, name: string) => {
+    if (!confirm(`Delete source "${name}"? It will be cleared from any leads using it.`)) return;
+    setError(null);
+    const fd = new FormData();
+    fd.set("id", String(id));
+    startTransition(async () => {
+      const res = await deleteLeadSourceAction(fd);
+      if (res?.error) setError(res.error);
+      else setSources((prev) => (prev ?? []).filter((s) => s.id !== id));
+    });
+  };
 
   useEffect(() => {
     setPortalNode(document.body);
@@ -1716,6 +1737,21 @@ function SourcePicker({
             <div className="flex flex-wrap gap-2">
               {sources.map((s) => {
                 const active = s.id === currentSourceId;
+                if (managing) {
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => removeSource(s.id, s.name)}
+                      disabled={pending}
+                      className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                      title={`Delete ${s.name}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      {s.name}
+                    </button>
+                  );
+                }
                 return (
                   <button
                     key={s.id}
@@ -1791,17 +1827,38 @@ function SourcePicker({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              disabled={pending}
-              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50"
-            >
-              <Plus className="h-3 w-3" />
-              Add new
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                disabled={pending || managing}
+                className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50"
+              >
+                <Plus className="h-3 w-3" />
+                Add new
+              </button>
+              {canManage && (sources?.length ?? 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setManaging((v) => !v)}
+                  disabled={pending}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium",
+                    managing
+                      ? "border-ink-300 bg-ink-100 text-ink-700"
+                      : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+                  )}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {managing ? "Done" : "Delete"}
+                </button>
+              )}
+            </div>
           )}
 
+          {managing && (
+            <p className="text-[11px] text-ink-500">Tap a source to delete it.</p>
+          )}
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] text-rose-700">
               {error}
@@ -1819,9 +1876,11 @@ function SourcePicker({
 function LocationRow({
   leadId,
   location,
+  canManage,
 }: {
   leadId: number;
   location: { id: number; name: string } | null;
+  canManage?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -1850,6 +1909,7 @@ function LocationRow({
         <LocationPicker
           leadId={leadId}
           currentLocationId={location?.id ?? null}
+          canManage={canManage}
           onClose={() => setOpen(false)}
         />
       )}
@@ -1860,18 +1920,33 @@ function LocationRow({
 function LocationPicker({
   leadId,
   currentLocationId,
+  canManage,
   onClose,
 }: {
   leadId: number;
   currentLocationId: number | null;
+  canManage?: boolean;
   onClose: () => void;
 }) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
   const [locations, setLocations] = useState<{ id: number; name: string }[] | null>(null);
   const [adding, setAdding] = useState(false);
+  const [managing, setManaging] = useState(false);
   const [newName, setNewName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const removeLocation = (id: number, name: string) => {
+    if (!confirm(`Delete location "${name}"? It will be cleared from any leads using it.`)) return;
+    setError(null);
+    const fd = new FormData();
+    fd.set("id", String(id));
+    startTransition(async () => {
+      const res = await deleteLeadLocationAction(fd);
+      if (res?.error) setError(res.error);
+      else setLocations((prev) => (prev ?? []).filter((l) => l.id !== id));
+    });
+  };
 
   useEffect(() => {
     setPortalNode(document.body);
@@ -1958,6 +2033,21 @@ function LocationPicker({
             <div className="flex flex-wrap gap-2">
               {locations.map((l) => {
                 const active = l.id === currentLocationId;
+                if (managing) {
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => removeLocation(l.id, l.name)}
+                      disabled={pending}
+                      className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                      title={`Delete ${l.name}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      {l.name}
+                    </button>
+                  );
+                }
                 return (
                   <button
                     key={l.id}
@@ -2033,17 +2123,38 @@ function LocationPicker({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              disabled={pending}
-              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50"
-            >
-              <Plus className="h-3 w-3" />
-              Add more
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                disabled={pending || managing}
+                className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50"
+              >
+                <Plus className="h-3 w-3" />
+                Add more
+              </button>
+              {canManage && (locations?.length ?? 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setManaging((v) => !v)}
+                  disabled={pending}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium",
+                    managing
+                      ? "border-ink-300 bg-ink-100 text-ink-700"
+                      : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+                  )}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {managing ? "Done" : "Delete"}
+                </button>
+              )}
+            </div>
           )}
 
+          {managing && (
+            <p className="text-[11px] text-ink-500">Tap a location to delete it.</p>
+          )}
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] text-rose-700">
               {error}

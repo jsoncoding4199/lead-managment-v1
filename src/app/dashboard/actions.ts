@@ -209,6 +209,28 @@ export async function setLeadSourceAction(
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
 
+/**
+ * Delete a source from the team-wide registry. Master-only — it's a shared
+ * option, so one user shouldn't be able to remove "Ezy" for everyone. Any
+ * leads currently tagged with it have their source cleared (set null)
+ * first, so the delete never fails on the foreign key.
+ */
+const DeleteNamedSchema = z.object({ id: z.coerce.number().int().positive() });
+
+export async function deleteLeadSourceAction(
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  await requireMaster();
+  const parsed = DeleteNamedSchema.safeParse({ id: formData.get("id") });
+  if (!parsed.success) return { error: "Invalid source." };
+  await prisma.$transaction([
+    prisma.lead.updateMany({ where: { sourceId: parsed.data.id }, data: { sourceId: null } }),
+    prisma.leadSource.delete({ where: { id: parsed.data.id } }),
+  ]);
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 /* ---------- Lead location (mirrors source) ---------- */
 
 /** Return all LeadLocation rows for the picker. Alphabetical. */
@@ -284,6 +306,22 @@ export async function setLeadLocationAction(
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
+/** Delete a location from the team-wide registry (master-only, mirrors
+ *  deleteLeadSourceAction — clears it off any leads first). */
+export async function deleteLeadLocationAction(
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  await requireMaster();
+  const parsed = DeleteNamedSchema.safeParse({ id: formData.get("id") });
+  if (!parsed.success) return { error: "Invalid location." };
+  await prisma.$transaction([
+    prisma.lead.updateMany({ where: { locationId: parsed.data.id }, data: { locationId: null } }),
+    prisma.leadLocation.delete({ where: { id: parsed.data.id } }),
+  ]);
+  revalidatePath("/dashboard");
+  return { ok: true };
 }
 
 /**
