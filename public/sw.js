@@ -21,7 +21,7 @@
  * so old caches get purged on activate.
  */
 
-const CACHE_VERSION = "leadboard-shell-v6";
+const CACHE_VERSION = "leadboard-shell-v7";
 const OFFLINE_URL = "/offline";
 
 // File extensions that are safe to cache long-term. Static assets the user
