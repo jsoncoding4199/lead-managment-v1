@@ -1069,7 +1069,7 @@ async function LeadsSection({
   }
 
   const leads = await toLeadViewsForUser(visibleLeads, user.id);
-  return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />;
+  return <OpenGrouped leads={leads} viewer={user} teamUsers={teamUsers} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} flat={tab.key === "market"} />;
 }
 
 /* ---------- Shared Prisma select + projection ---------- */
@@ -1428,12 +1428,15 @@ function OpenGrouped({
   teamUsers,
   maxPickup,
   reassignTargets = [],
+  flat = false,
 }: {
   leads: LeadView[];
   viewer: CurrentUser;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
   reassignTargets?: { id: number; displayName: string }[];
+  /** Skip the per-creator grouping and render one flat grid (Open Market). */
+  flat?: boolean;
 }) {
   const visibleLeads = viewer.role === "MASTER"
     ? leads
@@ -1458,6 +1461,19 @@ function OpenGrouped({
             )}
         </p>
       </div>
+    );
+  }
+
+  // Flat mode (Open Market): one grid, no per-creator sections.
+  if (flat) {
+    return (
+      <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {visibleLeads.map((lead) => (
+          <li key={lead.id}>
+            <LeadCard lead={lead} viewer={viewer} teamUsers={teamUsers} maxPickup={maxPickup} reassignTargets={reassignTargets} />
+          </li>
+        ))}
+      </ul>
     );
   }
 
