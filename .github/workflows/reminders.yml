@@ -1,0 +1,38 @@
+name: Fire lead reminders
+
+# Sweeps due LeadReminder rows and sends their push notifications by hitting
+# the app's /api/cron/reminders endpoint. Vercel's Hobby plan blocks
+# sub-daily cron, so GitHub Actions drives the schedule instead.
+#
+# Requires a repo secret CRON_SECRET matching the CRON_SECRET env var set in
+# Vercel (Project → Settings → Environment Variables). If CRON_SECRET is
+# unset in Vercel the endpoint accepts any call, but set it in both so the
+# sweep can't be triggered by outsiders.
+#
+# Note: GitHub's scheduled runs fire at most every 5 minutes and can be
+# delayed several minutes under load — a 15-minute alarm typically lands
+# within ~15–20 minutes, not to the exact second.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+# If a run is still going when the next fires, skip rather than pile up.
+concurrency:
+  group: fire-reminders
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sweep due reminders
+        run: |
+          code=$(curl -s -o /tmp/body -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://lead-managment-v1.vercel.app/api/cron/reminders")
+          echo "HTTP $code"
+          cat /tmp/body || true
+          echo
+          test "$code" = "200"
