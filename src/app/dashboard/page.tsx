@@ -128,15 +128,24 @@ function parsePage(raw: string | undefined): number {
  * set so it's a no-op alongside the other AND filters.
  */
 function leadFilterWhere(
-  creatorId: number | null,
-  sourceId: number | null,
-  locationId: number | null
+  creatorIds: number[],
+  sourceIds: number[],
+  locationIds: number[]
 ): Prisma.LeadWhereInput {
   const and: Prisma.LeadWhereInput[] = [];
-  if (creatorId) and.push({ createdById: creatorId });
-  if (sourceId) and.push({ sourceId });
-  if (locationId) and.push({ locationId });
+  if (creatorIds.length) and.push({ createdById: { in: creatorIds } });
+  if (sourceIds.length) and.push({ sourceId: { in: sourceIds } });
+  if (locationIds.length) and.push({ locationId: { in: locationIds } });
   return and.length ? { AND: and } : {};
+}
+
+/** "1,3,5" → [1,3,5]; drops blanks/non-positives. Used for the multi-select
+ *  filters whose fu/fs/fl params hold a comma-separated id list. */
+function parseIds(raw: string | undefined): number[] {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => Number(s))
+    .filter((n) => Number.isFinite(n) && n > 0);
 }
 
 function parseTab(raw: string | undefined): DashTab {
@@ -170,9 +179,9 @@ export default async function DashboardPage({
   const user = await requireUser();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const filterCreatorId = Number(sp.fu) > 0 ? Number(sp.fu) : null;
-  const filterSourceId = Number(sp.fs) > 0 ? Number(sp.fs) : null;
-  const filterLocationId = Number(sp.fl) > 0 ? Number(sp.fl) : null;
+  const filterCreatorIds = parseIds(sp.fu);
+  const filterSourceIds = parseIds(sp.fs);
+  const filterLocationIds = parseIds(sp.fl);
 
   // Everyone — master included — lands on Fresh by default (parseTab
   // returns "fresh" when no tab param is present).
@@ -248,9 +257,9 @@ export default async function DashboardPage({
         users={assignableUsers.map((u) => ({ id: u.id, displayName: u.displayName }))}
         sources={leadSources}
         locations={leadLocations}
-        creatorId={filterCreatorId}
-        sourceId={filterSourceId}
-        locationId={filterLocationId}
+        creatorIds={filterCreatorIds}
+        sourceIds={filterSourceIds}
+        locationIds={filterLocationIds}
         sort={parseSort(sp.sort)}
       />
 
@@ -265,7 +274,6 @@ export default async function DashboardPage({
       {!q && tab.kind === "static" && tab.key === "own" && user.role === "MASTER" && (
         <div className="grid grid-cols-2 items-start gap-2">
           <LeadComposer
-            assignableUsers={assignableUsers}
             sources={leadSources}
             locations={leadLocations}
             isOwn
@@ -278,7 +286,7 @@ export default async function DashboardPage({
           source picker, assign chips). The lead always lands in the public
           Fresh pipeline regardless of which tab it was composed from. */}
       {!q && tab.kind === "static" && tab.key !== "own" && (
-        <LeadComposer assignableUsers={assignableUsers} sources={leadSources}
+        <LeadComposer sources={leadSources}
           locations={leadLocations} canManage={user.role === "MASTER"} />
       )}
       {/* Private tab composer: master anywhere, or the channel owner on
@@ -289,7 +297,6 @@ export default async function DashboardPage({
         privateUser &&
         (user.role === "MASTER" || user.id === privateUser.id) && (
           <LeadComposer
-            assignableUsers={assignableUsers}
             sources={leadSources}
           locations={leadLocations}
             canManage={user.role === "MASTER"}
@@ -301,12 +308,12 @@ export default async function DashboardPage({
         )}
 
       {q ? (
-        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorId}:${filterSourceId}:${filterLocationId}:${sp.sort ?? ""}`}>
-          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} sort={parseSort(sp.sort)} />
+        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorIds}:${filterSourceIds}:${filterLocationIds}:${sp.sort ?? ""}`}>
+          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorIds} sourceId={filterSourceIds} locationId={filterLocationIds} sort={parseSort(sp.sort)} />
         </Suspense>
       ) : (
-        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorId}:${filterSourceId}:${filterLocationId}:${sp.sort ?? ""}:${sp.p ?? ""}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorId} sourceId={filterSourceId} locationId={filterLocationId} page={parsePage(sp.p)} statusGroup={parseStageGroup(sp.sg)} sort={parseSort(sp.sort)} />
+        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorIds}:${filterSourceIds}:${filterLocationIds}:${sp.sort ?? ""}:${sp.p ?? ""}`}>
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorIds} sourceId={filterSourceIds} locationId={filterLocationIds} page={parsePage(sp.p)} statusGroup={parseStageGroup(sp.sg)} sort={parseSort(sp.sort)} />
         </Suspense>
       )}
     </div>
@@ -316,18 +323,18 @@ export default async function DashboardPage({
 /** Tab URL that keeps the active search + filters. */
 function tabHref(tabKey: string, o: {
   q: string;
-  creatorId: number | null;
-  sourceId: number | null;
-  locationId: number | null;
+  creatorId: number[];
+  sourceId: number[];
+  locationId: number[];
   page?: number;
   sg?: StageGroup | null;
   sort?: SortKey;
 }): string {
   const p = new URLSearchParams({ tab: tabKey });
   if (o.q) p.set("q", o.q);
-  if (o.creatorId) p.set("fu", String(o.creatorId));
-  if (o.sourceId) p.set("fs", String(o.sourceId));
-  if (o.locationId) p.set("fl", String(o.locationId));
+  if (o.creatorId.length) p.set("fu", o.creatorId.join(","));
+  if (o.sourceId.length) p.set("fs", o.sourceId.join(","));
+  if (o.locationId.length) p.set("fl", o.locationId.join(","));
   if (o.page && o.page > 1) p.set("p", String(o.page));
   if (o.sg) p.set("sg", o.sg);
   if (o.sort && o.sort !== "new") p.set("sort", o.sort);
@@ -355,9 +362,9 @@ async function StageRow({
   where: Prisma.LeadWhereInput;
   active: StageGroup | null;
   q: string;
-  creatorId: number | null;
-  sourceId: number | null;
-  locationId: number | null;
+  creatorId: number[];
+  sourceId: number[];
+  locationId: number[];
   sort: SortKey;
 }) {
   const rows = await prisma.lead.groupBy({
@@ -598,9 +605,9 @@ async function GlobalSearchResults({
 }: {
   q: string;
   user: CurrentUser;
-  creatorId: number | null;
-  sourceId: number | null;
-  locationId: number | null;
+  creatorId: number[];
+  sourceId: number[];
+  locationId: number[];
   sort: SortKey;
 }) {
   const settings = await getAppSettings();
@@ -682,9 +689,9 @@ async function LeadsSection({
   q: string;
   user: CurrentUser;
   privateUser: { id: number; displayName: string } | null;
-  creatorId: number | null;
-  sourceId: number | null;
-  locationId: number | null;
+  creatorId: number[];
+  sourceId: number[];
+  locationId: number[];
   page: number;
   statusGroup: StageGroup | null;
   sort: SortKey;

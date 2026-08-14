@@ -1,44 +1,54 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { X, ArrowDownWideNarrow } from "lucide-react";
+import { X, ArrowDownWideNarrow, ChevronDown, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 
+type Option = { id: number; label: string };
 type UserOption = { id: number; displayName: string };
-type SourceOption = { id: number; name: string };
-type LocationOption = { id: number; name: string };
+type NamedOption = { id: number; name: string };
 
 type Props = {
   users: UserOption[];
-  sources: SourceOption[];
-  locations: LocationOption[];
-  creatorId: number | null;
-  sourceId: number | null;
-  locationId: number | null;
+  sources: NamedOption[];
+  locations: NamedOption[];
+  creatorIds: number[];
+  sourceIds: number[];
+  locationIds: number[];
   sort: "new" | "old";
 };
 
 /**
- * Cross-tab filter bar: narrow the visible leads by who added them
- * (creator) and/or their source. Writes `fu` / `fs` URL params, keeping
- * the current tab + search so the filter applies to whatever tab is open.
+ * Cross-tab filter bar. Each dimension (user / source / location) is a
+ * multi-select dropdown — pick several and leads matching ANY of them in
+ * that dimension show. Selections are written to fu / fs / fl as
+ * comma-separated id lists, keeping the current tab + search + sort.
  */
 export function LeadFilterBar({
   users,
   sources,
   locations,
-  creatorId,
-  sourceId,
-  locationId,
+  creatorIds,
+  sourceIds,
+  locationIds,
   sort,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
 
-  const setParam = (key: "fu" | "fs" | "fl" | "sort", value: string) => {
+  const setList = (key: "fu" | "fs" | "fl", ids: number[]) => {
     const next = new URLSearchParams(params.toString());
-    if (value) next.set(key, value);
+    if (ids.length) next.set(key, ids.join(","));
     else next.delete(key);
+    router.push(`${pathname}?${next.toString()}`);
+  };
+
+  const setSort = (value: string) => {
+    const next = new URLSearchParams(params.toString());
+    if (value === "old") next.set("sort", "old");
+    else next.delete("sort");
     router.push(`${pathname}?${next.toString()}`);
   };
 
@@ -50,59 +60,34 @@ export function LeadFilterBar({
     router.push(`${pathname}?${next.toString()}`);
   };
 
-  const active = creatorId !== null || sourceId !== null || locationId !== null;
+  const active = creatorIds.length > 0 || sourceIds.length > 0 || locationIds.length > 0;
 
   return (
     <div className="flex items-center gap-1.5 rounded-xl bg-white/95 backdrop-blur p-1.5 ring-1 ring-ink-200 shadow-soft">
-      <select
-        value={creatorId ?? ""}
-        onChange={(e) => setParam("fu", e.target.value)}
-        className="h-8 min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-1.5 text-xs text-ink-800"
-        aria-label="Filter by user"
-      >
-        <option value="">All users</option>
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.displayName}
-          </option>
-        ))}
-      </select>
+      <MultiSelect
+        label="Users"
+        options={users.map((u) => ({ id: u.id, label: u.displayName }))}
+        selected={creatorIds}
+        onChange={(ids) => setList("fu", ids)}
+      />
+      <MultiSelect
+        label="Sources"
+        options={sources.map((s) => ({ id: s.id, label: s.name }))}
+        selected={sourceIds}
+        onChange={(ids) => setList("fs", ids)}
+      />
+      <MultiSelect
+        label="Locations"
+        options={locations.map((l) => ({ id: l.id, label: l.name }))}
+        selected={locationIds}
+        onChange={(ids) => setList("fl", ids)}
+      />
 
-      <select
-        value={sourceId ?? ""}
-        onChange={(e) => setParam("fs", e.target.value)}
-        className="h-8 min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-1.5 text-xs text-ink-800"
-        aria-label="Filter by source"
-      >
-        <option value="">All sources</option>
-        {sources.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={locationId ?? ""}
-        onChange={(e) => setParam("fl", e.target.value)}
-        className="h-8 min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-1.5 text-xs text-ink-800"
-        aria-label="Filter by location"
-      >
-        <option value="">All locations</option>
-        {locations.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.name}
-          </option>
-        ))}
-      </select>
-
-      {/* Date sort — newest or oldest (longest-waiting) first. "new" is the
-          default, so we drop the param for it to keep URLs clean. */}
       <span className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-ink-200 bg-white pl-1.5">
         <ArrowDownWideNarrow className="h-3.5 w-3.5 shrink-0 text-ink-400" />
         <select
           value={sort}
-          onChange={(e) => setParam("sort", e.target.value === "old" ? "old" : "")}
+          onChange={(e) => setSort(e.target.value)}
           className="h-8 min-w-0 flex-1 bg-transparent pr-1 text-xs text-ink-800"
           aria-label="Sort by date"
         >
@@ -121,6 +106,113 @@ export function LeadFilterBar({
         >
           <X className="h-4 w-4" />
         </button>
+      )}
+    </div>
+  );
+}
+
+/** Checkbox dropdown for one filter dimension. Closes on outside click. */
+function MultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: Option[];
+  selected: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const selectedSet = new Set(selected);
+  const toggle = (id: number) => {
+    const next = new Set(selectedSet);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange([...next]);
+  };
+
+  const count = selected.length;
+
+  return (
+    <div ref={wrapRef} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={cn(
+          "flex h-8 w-full items-center gap-1 rounded-md border px-1.5 text-xs",
+          count > 0
+            ? "border-brand-300 bg-brand-50 text-brand-800"
+            : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
+        )}
+      >
+        <span className="truncate">{label}</span>
+        {count > 0 && (
+          <span className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white tabular-nums">
+            {count}
+          </span>
+        )}
+        <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-ink-400" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-9 z-30 max-h-64 w-52 max-w-[70vw] overflow-y-auto rounded-lg border border-ink-200 bg-white p-1 shadow-lift">
+          {options.length === 0 ? (
+            <div className="px-2 py-2 text-xs text-ink-400">Nothing to filter by.</div>
+          ) : (
+            <>
+              {count > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onChange([])}
+                  className="mb-1 w-full rounded-md px-2 py-1 text-left text-[11px] font-medium text-rose-600 hover:bg-rose-50"
+                >
+                  Clear {label.toLowerCase()}
+                </button>
+              )}
+              {options.map((o) => {
+                const on = selectedSet.has(o.id);
+                return (
+                  <button
+                    type="button"
+                    key={o.id}
+                    onClick={() => toggle(o.id)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-800 hover:bg-ink-50"
+                  >
+                    <span
+                      className={cn(
+                        "grid h-4 w-4 shrink-0 place-items-center rounded border",
+                        on ? "border-brand-500 bg-brand-500 text-white" : "border-ink-300 bg-white"
+                      )}
+                    >
+                      {on && <Check className="h-3 w-3" />}
+                    </span>
+                    <span className="truncate">{o.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

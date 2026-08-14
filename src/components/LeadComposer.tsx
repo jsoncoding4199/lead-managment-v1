@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Plus, ClipboardPaste, Loader2, Check, Users, Tag, X, ScanSearch, MapPin, Trash2 } from "lucide-react";
+import { Plus, ClipboardPaste, Loader2, Check, Tag, X, ScanSearch, MapPin, Trash2 } from "lucide-react";
 import {
   createLeadAction,
   addLeadSourceAction,
@@ -10,12 +10,6 @@ import {
   deleteLeadLocationAction,
 } from "@/app/dashboard/actions";
 import { cn } from "@/lib/utils";
-
-type Assignable = {
-  id: number;
-  displayName: string;
-  role?: "MASTER" | "USER";
-};
 
 type SourceOption = { id: number; name: string };
 type LocationOption = { id: number; name: string };
@@ -27,8 +21,6 @@ type Props = {
   privateChannelUserId?: number;
   /** Display label for the private channel (the user's displayName). */
   privateChannelLabel?: string;
-  /** Users the creator can assign to. Everyone active, master included. */
-  assignableUsers?: Assignable[];
   /** Team-wide lead sources shown in the picker. */
   sources?: SourceOption[];
   /** Team-wide lead locations shown in the picker. */
@@ -42,7 +34,6 @@ type Props = {
 export function LeadComposer({
   privateChannelUserId,
   privateChannelLabel,
-  assignableUsers = [],
   sources = [],
   locations = [],
   isOwn = false,
@@ -51,7 +42,6 @@ export function LeadComposer({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [assignees, setAssignees] = useState<Set<number>>(new Set());
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [localSources, setLocalSources] = useState<SourceOption[]>(sources);
@@ -211,15 +201,6 @@ export function LeadComposer({
     }
   };
 
-  const toggleAssignee = (id: number) => {
-    setAssignees((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const isPrivate = privateChannelUserId !== undefined;
   const ctaLabel = isOwn
     ? "Add a lead to your Own list"
@@ -260,9 +241,6 @@ export function LeadComposer({
 
   const submit = (fd: FormData) => {
     setError(null);
-    // FormData.set stomps, so use append to send multiple values under the
-    // same key (matches formData.getAll on the server).
-    for (const uid of assignees) fd.append("assignedUserIds", String(uid));
     if (sourceId !== null) fd.set("sourceId", String(sourceId));
     if (locationId !== null) fd.set("locationId", String(locationId));
     startTransition(async () => {
@@ -270,7 +248,6 @@ export function LeadComposer({
       if (res?.error) setError(res.error);
       else {
         formRef.current?.reset();
-        setAssignees(new Set());
         setName("");
         setPhone("");
         setAutofilled(null);
@@ -377,7 +354,7 @@ export function LeadComposer({
          importer — take the full row once expanded. No-op elsewhere. */
       className="card p-3.5 md:p-5 animate-in col-span-2"
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
           <ClipboardPaste className="h-4 w-4 text-brand-600" />
           {isPrivate ? `New private lead for ${privateChannelLabel}` : "New lead"}
@@ -397,7 +374,7 @@ export function LeadComposer({
       {isPrivate && (
         <div className="mb-3">
           <label className="label">Initial status</label>
-          <select name="initialNote" defaultValue="" className="input h-11">
+          <select name="initialNote" defaultValue="" className="input h-10">
             <option value="">New (no prior contact)</option>
             <option value="CALLED_BEFORE">Called before</option>
             <option value="WHATSAPP_BEFORE">WhatsApp before</option>
@@ -407,7 +384,8 @@ export function LeadComposer({
           </p>
         </div>
       )}
-      <div className="mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mb-3">
+      <div>
         <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
           <Tag className="h-3.5 w-3.5 text-brand-600" />
           Source
@@ -528,7 +506,7 @@ export function LeadComposer({
           </div>
         )}
       </div>
-      <div className="mb-3">
+      <div>
         <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
           <MapPin className="h-3.5 w-3.5 text-brand-600" />
           Location
@@ -649,6 +627,7 @@ export function LeadComposer({
           </div>
         )}
       </div>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
         <label className="block">
           <span className="label">Name</span>
@@ -659,7 +638,7 @@ export function LeadComposer({
             onChange={(e) => setName(e.target.value)}
             autoComplete="off"
             placeholder="Jane Doe"
-            className="input h-11"
+            className="input h-10"
           />
         </label>
         <label className="block">
@@ -671,7 +650,7 @@ export function LeadComposer({
             onChange={(e) => setPhone(e.target.value)}
             autoComplete="off"
             placeholder="+60 12-345 6789"
-            className="input h-11"
+            className="input h-10"
           />
         </label>
       </div>
@@ -709,7 +688,7 @@ export function LeadComposer({
       <textarea
         ref={ref}
         name="content"
-        rows={5}
+        rows={3}
         required
         placeholder={
           "Paste the lead here (from Gmail, WhatsApp, etc.). Any Name / IC / Phone we spot fills the boxes above."
@@ -768,48 +747,6 @@ export function LeadComposer({
       {autofilled && autofilled.length > 0 && (
         <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
           Auto-filled from paste: <strong>{autofilled.join(", ")}</strong>. Review and adjust if needed.
-        </div>
-      )}
-      {assignableUsers.length > 0 && (
-        <div className="mt-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
-            <Users className="h-3.5 w-3.5 text-brand-600" />
-            Assign to (optional)
-          </div>
-          <p className="mt-0.5 text-[11px] text-ink-500">
-            Skip to leave the lead in Fresh for anyone to pick up.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {assignableUsers.map((u) => {
-              const checked = assignees.has(u.id);
-              return (
-                <button
-                  type="button"
-                  key={u.id}
-                  onClick={() => toggleAssignee(u.id)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
-                    checked
-                      ? "border-brand-500 bg-brand-500 text-white"
-                      : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50"
-                  )}
-                >
-                  {checked && <Check className="h-3 w-3" />}
-                  {u.displayName}
-                  {u.role === "MASTER" && (
-                    <span
-                      className={cn(
-                        "rounded px-1 text-[9px] font-semibold",
-                        checked ? "bg-white/20" : "bg-brand-50 text-brand-700"
-                      )}
-                    >
-                      MASTER
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
       {error && (
