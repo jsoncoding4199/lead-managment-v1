@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { X, ArrowDownWideNarrow, ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -124,19 +125,41 @@ function MultiSelect({
   onChange: (ids: number[]) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
+  useEffect(() => setPortalNode(document.body), []);
+
+  // Position the menu under the button in viewport coordinates (it renders
+  // in a body portal so it can never be clipped or painted under the lead
+  // list). Reposition on scroll/resize while open.
   useEffect(() => {
     if (!open) return;
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const width = 208; // ~w-52
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+      setPos({ top: r.bottom + 4, left });
+    };
+    place();
     const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
@@ -153,8 +176,9 @@ function MultiSelect({
   const count = selected.length;
 
   return (
-    <div ref={wrapRef} className="relative min-w-0 flex-1">
+    <div className="relative min-w-0 flex-1">
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -174,8 +198,12 @@ function MultiSelect({
         <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-ink-400" />
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-9 z-30 max-h-64 w-52 max-w-[70vw] overflow-y-auto rounded-lg border border-ink-200 bg-white p-1 shadow-lift">
+      {open && portalNode && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left, width: 208 }}
+          className="z-[120] max-h-64 max-w-[80vw] overflow-y-auto rounded-lg border border-ink-200 bg-white p-1 shadow-lift"
+        >
           {options.length === 0 ? (
             <div className="px-2 py-2 text-xs text-ink-400">Nothing to filter by.</div>
           ) : (
@@ -212,7 +240,8 @@ function MultiSelect({
               })}
             </>
           )}
-        </div>
+        </div>,
+        portalNode
       )}
     </div>
   );

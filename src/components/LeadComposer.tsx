@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { Plus, ClipboardPaste, Loader2, Check, Tag, X, ScanSearch, MapPin, Trash2 } from "lucide-react";
 import {
   createLeadAction,
@@ -68,6 +69,24 @@ export function LeadComposer({
   const [detectEmpty, setDetectEmpty] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // The expanded form renders in a portal modal (floating window) rather
+  // than pushing page content down. Lock body scroll + close on Escape.
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+  useEffect(() => setPortalNode(document.body), []);
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   /**
    * Best-effort parser: given a chunk of pasted text (e.g. a Gmail lead
@@ -216,28 +235,29 @@ export function LeadComposer({
       ? `Goes into ${privateChannelLabel}'s private pipeline — only they and master see it.`
       : "Paste any text — contact info, message, or notes.";
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => {
-          setOpen(true);
-          setTimeout(() => ref.current?.focus(), 50);
-        }}
-        className="card flex h-full w-full items-center gap-2.5 p-2.5 md:p-5 text-left hover:shadow-lift transition-shadow"
-      >
-        <span className="grid h-8 w-8 md:h-10 md:w-10 shrink-0 place-items-center rounded-xl bg-brand-600 text-white">
-          <Plus className="h-4 w-4 md:h-5 md:w-5" />
+  // Collapsed trigger — always in the layout so opening the form doesn't
+  // leave an empty gap; the form itself floats in a portal modal.
+  const trigger = (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(true);
+        setTimeout(() => ref.current?.focus(), 50);
+      }}
+      className="card flex h-full w-full items-center gap-2.5 p-2.5 md:p-5 text-left hover:shadow-lift transition-shadow"
+    >
+      <span className="grid h-8 w-8 md:h-10 md:w-10 shrink-0 place-items-center rounded-xl bg-brand-600 text-white">
+        <Plus className="h-4 w-4 md:h-5 md:w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-ink-900">
+          <span className="md:hidden">{ctaShort}</span>
+          <span className="hidden md:inline">{ctaLabel}</span>
         </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold text-ink-900">
-            <span className="md:hidden">{ctaShort}</span>
-            <span className="hidden md:inline">{ctaLabel}</span>
-          </span>
-          <span className="hidden md:block text-xs text-ink-500">{ctaHint}</span>
-        </span>
-      </button>
-    );
-  }
+        <span className="hidden md:block text-xs text-ink-500">{ctaHint}</span>
+      </span>
+    </button>
+  );
 
   const submit = (fd: FormData) => {
     setError(null);
@@ -347,26 +367,49 @@ export function LeadComposer({
   };
 
   return (
-    <form
-      ref={formRef}
-      action={submit}
-      /* col-span-2: on the Own tab this sits in a 2-up grid beside the
-         importer — take the full row once expanded. No-op elsewhere. */
-      className="card p-3.5 md:p-5 animate-in col-span-2"
-    >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-          <ClipboardPaste className="h-4 w-4 text-brand-600" />
-          {isPrivate ? `New private lead for ${privateChannelLabel}` : "New lead"}
-        </div>
-        <span className="text-xs text-ink-400">
-          {isPrivate ? (
-            <>Pipeline: <strong className="text-ink-700">{privateChannelLabel}</strong></>
-          ) : (
-            <>Status starts as <strong className="text-ink-700">New</strong></>
-          )}
-        </span>
+    <>
+      {trigger}
+      {open && portalNode && createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={() => setOpen(false)}
+        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-in"
+      />
+      <form
+        ref={formRef}
+        action={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="relative flex w-full md:w-[560px] max-h-[90vh] flex-col bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
+      >
+      <div className="md:hidden flex justify-center pt-2">
+        <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
       </div>
+      <div className="flex items-start justify-between gap-2 px-5 pt-3 pb-2 border-b border-ink-100">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+            <ClipboardPaste className="h-4 w-4 text-brand-600" />
+            {isPrivate ? `New private lead for ${privateChannelLabel}` : "New lead"}
+          </div>
+          <span className="text-xs text-ink-400">
+            {isPrivate ? (
+              <>Pipeline: <strong className="text-ink-700">{privateChannelLabel}</strong></>
+            ) : (
+              <>Status starts as <strong className="text-ink-700">New</strong></>
+            )}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="Close"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-500 hover:bg-ink-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 md:px-5 py-3">
       {isPrivate && (
         <input type="hidden" name="privateChannelUserId" value={privateChannelUserId} />
       )}
@@ -754,7 +797,8 @@ export function LeadComposer({
           {error}
         </div>
       )}
-      <div className="mt-4 flex items-center justify-end gap-2">
+      </div>
+      <div className="border-t border-ink-100 px-4 md:px-5 py-3 flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => setOpen(false)}
@@ -767,6 +811,10 @@ export function LeadComposer({
           {pending ? <><Loader2 className="h-4 w-4 animate-spin" /> Adding…</> : "Add to pipeline"}
         </button>
       </div>
-    </form>
+      </form>
+    </div>,
+    portalNode
+      )}
+    </>
   );
 }
