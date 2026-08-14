@@ -64,6 +64,26 @@ type DashStaticTab =
   | "spam"
   | "reject";
 
+// Short, phone-friendly heading per static tab (the page <h2>). Kept
+// concise so it never wraps awkwardly on a narrow screen.
+const STATIC_TAB_TITLE: Record<string, string> = {
+  own: "Own",
+  general: "General",
+  fresh: "Fresh",
+  market: "Open Market",
+  picks: "My Pick Up",
+  approved: "Approved",
+  archive: "Recycle Bin",
+  able_contact: "Contact · Able",
+  able_docs: "Documents · Able",
+  able_appt: "Appointment · Able",
+  not_contact: "Contact · Not able",
+  not_docs: "Documents · Not able",
+  not_appt: "Appointment · Not able",
+  spam: "Spam / Missing",
+  reject: "Rejected",
+};
+
 // One-status tabs → status enum they filter on. Order matches display order.
 const STATUS_TAB_TO_STATUS = {
   able_contact: "CONTACT_ABLE",
@@ -218,14 +238,27 @@ export default async function DashboardPage({
     }),
   ]);
 
+  // On a phone the descriptive subtitle is hidden, so the heading names the
+  // current view (short) instead of a generic "Leads" — you can tell where
+  // you are from the title alone.
+  const heading = q
+    ? "Search"
+    : tab.kind === "private"
+      ? privateUser?.displayName ?? "Private"
+      : STATIC_TAB_TITLE[tab.key] ?? "Leads";
+
   return (
     <div className="space-y-3 md:space-y-6 max-w-6xl">
       <div>
-        <h2 className="text-lg md:text-3xl font-semibold text-ink-900 tracking-tight">Leads</h2>
+        <h2 className="text-lg md:text-3xl font-semibold text-ink-900 tracking-tight break-words">
+          {heading}
+        </h2>
         <p className="hidden md:block text-ink-500 mt-1 text-xs md:text-sm">
           {q && `Searching all visible leads for “${q}”.`}
           {!q && tab.kind === "static" && tab.key === "own" &&
             "Your private list — visible only to you, grouped by day. New leads get a 1-hour follow-up reminder."}
+          {!q && tab.kind === "static" && tab.key === "general" &&
+            "Every private-channel lead in one place — AH, AHA and AHB combined."}
           {!q && tab.kind === "static" && tab.key === "fresh" &&
             (user.role === "MASTER"
               ? "Fresh leads in the active pipeline."
@@ -233,13 +266,15 @@ export default async function DashboardPage({
           {tab.kind === "static" && tab.key === "market" &&
             (user.role === "MASTER"
               ? "Leads that have moved out of New, grouped by status."
-              : "Leads the team has moved out of New. Approved leads are master-only.")}
+              : "Leads the team has moved out of New.")}
           {tab.kind === "static" && tab.key === "picks" &&
             (user.role === "MASTER"
               ? "Every lead picked up by the team, grouped by who has it."
               : "Leads you've personally picked up.")}
+          {tab.kind === "static" && tab.key === "approved" &&
+            "Approved leads — visible to everyone."}
           {tab.kind === "static" && tab.key === "archive" &&
-            "Closed and approved leads — master only."}
+            "Recycled leads — visible to everyone."}
           {tab.kind === "private" &&
             (privateUser
               ? `Private pipeline for ${privateUser.displayName} — visible only to them and master.`
