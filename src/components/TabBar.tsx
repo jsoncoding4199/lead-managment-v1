@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Sparkles, Store, Crown, Lock } from "lucide-react";
+import { Sparkles, Store, Crown, Lock, Layers } from "lucide-react";
 
 type PrivateChannel = {
   key: string;
@@ -15,6 +15,9 @@ type Props = {
   ownCount?: number;
   freshCount: number;
   marketCount: number;
+  /** Master-only "General" tab — aggregate of every private channel. */
+  showGeneral?: boolean;
+  generalCount?: number;
   privateChannels: PrivateChannel[];
 };
 
@@ -27,7 +30,7 @@ type TabItem = {
   icon: React.ReactNode;
 };
 
-export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCount, privateChannels }: Props) {
+export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCount, showGeneral, generalCount = 0, privateChannels }: Props) {
   const pipelineTabs: TabItem[] = [
     // Master-only "Own" tab in front of Fresh — master's private list.
     ...(showOwn
@@ -38,14 +41,20 @@ export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCou
     { key: "market", href: "/dashboard?tab=market", label: "Open Market", short: "Market", count: marketCount, icon: <Store className="h-4 w-4" /> },
   ];
 
-  const privateTabs: TabItem[] = privateChannels.map((ch) => ({
-    key: ch.key,
-    href: `/dashboard?tab=${ch.key}`,
-    label: ch.label,
-    short: ch.label.split(/\s+/)[0] ?? ch.label,
-    count: ch.count,
-    icon: <Crown className="h-4 w-4" />,
-  }));
+  const privateTabs: TabItem[] = [
+    // "General" — master-only aggregate of every private channel, before AH.
+    ...(showGeneral
+      ? [{ key: "general", href: "/dashboard?tab=general", label: "General", short: "General", count: generalCount, icon: <Layers className="h-4 w-4" /> }]
+      : []),
+    ...privateChannels.map((ch) => ({
+      key: ch.key,
+      href: `/dashboard?tab=${ch.key}`,
+      label: ch.label,
+      short: ch.label.split(/\s+/)[0] ?? ch.label,
+      count: ch.count,
+      icon: <Crown className="h-4 w-4" />,
+    })),
+  ];
 
   return (
     <div className="w-full">

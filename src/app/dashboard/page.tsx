@@ -49,6 +49,7 @@ function leadSearchFilter(q: string): Prisma.LeadWhereInput {
 
 type DashStaticTab =
   | "own"
+  | "general"
   | "fresh"
   | "market"
   | "picks"
@@ -153,6 +154,7 @@ function parseTab(raw: string | undefined): DashTab {
   if (privateId !== null) return { kind: "private", userId: privateId };
   switch (raw) {
     case "own":
+    case "general":
     case "market":
     case "picks":
     case "approved":
@@ -285,7 +287,7 @@ export default async function DashboardPage({
       {/* Other static tabs: every user gets the composer (paste auto-detect,
           source picker, assign chips). The lead always lands in the public
           Fresh pipeline regardless of which tab it was composed from. */}
-      {!q && tab.kind === "static" && tab.key !== "own" && (
+      {!q && tab.kind === "static" && tab.key !== "own" && tab.key !== "general" && (
         <LeadComposer sources={leadSources}
           locations={leadLocations} canManage={user.role === "MASTER"} />
       )}
@@ -824,6 +826,64 @@ async function LeadsSection({
     );
   }
 
+  /* ---------- "General" tab — master-only view of every private channel ---------- */
+  if (tab.key === "general") {
+    if (user.role !== "MASTER") {
+      return <ChannelLockedNotice label="this view" />;
+    }
+    const privateUsers = await prisma.user.findMany({
+      where: { active: true, role: "USER", isPrivateChannel: true },
+      select: { id: true },
+    });
+    // Every private channel: the master's own inbox + each private-channel
+    // user. Union of channel-owned and assigned leads, minus Own-list leads.
+    const channelUserIds = [user.id, ...privateUsers.map((u) => u.id)];
+    const generalWhere: Prisma.LeadWhereInput = {
+      AND: [
+        {
+          OR: [
+            { privateChannelUserId: { in: channelUserIds } },
+            { assignments: { some: { userId: { in: channelUserIds } } } },
+          ],
+        },
+        { isOwn: false },
+        leadSearchFilter(q),
+        filterWhere,
+      ],
+    };
+    const [generalLeads, generalTotal] = await Promise.all([
+      prisma.lead.findMany({
+        where: generalWhere,
+        orderBy: leadOrderBy(sort),
+        skip: (page - 1) * LEAD_PAGE_SIZE,
+        take: LEAD_PAGE_SIZE,
+        select: leadSelect,
+      }),
+      prisma.lead.count({ where: generalWhere }),
+    ]);
+    if (generalLeads.length === 0) {
+      return <EmptyState tab="general" hasQuery={!!q} />;
+    }
+    const leads = await toLeadViewsForUser(generalLeads, user.id);
+    return (
+      <div className="space-y-3">
+        <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {leads.map((lead) => (
+            <li key={lead.id}>
+              <LeadCard lead={lead} viewer={user} teamUsers={[]} maxPickup={settings.maxPickup} reassignTargets={masterReassignTargets} />
+            </li>
+          ))}
+        </ul>
+        <Pager
+          page={page}
+          shown={generalLeads.length}
+          total={generalTotal}
+          hrefFor={(n) => tabHref("general", { q, creatorId, sourceId, locationId, page: n, sort })}
+        />
+      </div>
+    );
+  }
+
   /* ---------- "Own" tab — master's private list, grouped by day ---------- */
   if (tab.key === "own") {
     if (user.role !== "MASTER") {
@@ -1354,6 +1414,25 @@ async function TabBarWithCounts({
     privateCountsMap.set(r.userId, r.count);
   }
 
+  // "General" badge — every private-channel lead (union across channels),
+  // matching the General tab body. Master only.
+  const generalCount =
+    user.role === "MASTER"
+      ? await prisma.lead.count({
+          where: {
+            AND: [
+              {
+                OR: [
+                  { privateChannelUserId: { in: visiblePrivateUsers.map((u) => u.id) } },
+                  { assignments: { some: { userId: { in: visiblePrivateUsers.map((u) => u.id) } } } },
+                ],
+              },
+              { isOwn: false },
+            ],
+          },
+        })
+      : 0;
+
   // Master-only "Own" tab badge count. Awaited alongside the batch above
   // rather than after it.
   const ownCount = await ownCountPromise;
@@ -1389,6 +1468,8 @@ async function TabBarWithCounts({
       ownCount={ownCount}
       freshCount={freshCount}
       marketCount={marketCount}
+      showGeneral={user.role === "MASTER"}
+      generalCount={generalCount}
       privateChannels={visiblePrivateUsers.map((u) => ({
         key: privateChannelTabKey(u.id),
         label: u.displayName,
@@ -1867,9 +1948,11 @@ function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }
             ? "Nothing picked up yet"
             : tab === "approved"
               ? "No approved leads yet"
-              : tab === "archive"
-                ? "Recycle Bin is empty"
-                : "No leads with this status yet";
+              : tab === "general"
+                ? "No private-channel leads yet"
+                : tab === "archive"
+                  ? "Recycle Bin is empty"
+                  : "No leads with this status yet";
   const body = hasQuery
     ? "Try a different search term."
     : tab === "own"
@@ -1882,9 +1965,11 @@ function EmptyState({ tab, hasQuery }: { tab: DashStaticTab; hasQuery: boolean }
             ? "Pick up a lead from Fresh or Open Market and it'll show up here."
             : tab === "approved"
               ? "Leads marked Approved land here for everyone to see."
-              : tab === "archive"
-                ? "Leads moved to the Recycle Bin land here."
-                : "Leads set to this status will land here.";
+              : tab === "general"
+                ? "Leads across every private channel appear here."
+                : tab === "archive"
+                  ? "Leads moved to the Recycle Bin land here."
+                  : "Leads set to this status will land here.";
   return (
     <div className="card p-12 text-center">
       <div className="mx-auto h-12 w-12 rounded-full bg-ink-100 grid place-items-center text-ink-400">
