@@ -3,8 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { X, ArrowDownWideNarrow, ChevronDown, Check } from "lucide-react";
+import { X, ArrowDownWideNarrow, ChevronDown, Check, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const AGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Any age" },
+  { value: "1_14", label: "1–14 days" },
+  { value: "15_29", label: "15–29 days" },
+  { value: "30_59", label: "30–59 days" },
+  { value: "60_89", label: "60–89 days" },
+  { value: "90_up", label: "90+ days" },
+];
 
 type Option = { id: number; label: string };
 type UserOption = { id: number; displayName: string };
@@ -17,6 +26,7 @@ type Props = {
   creatorIds: number[];
   sourceIds: number[];
   locationIds: number[];
+  age: string | null;
   sort: "new" | "old";
 };
 
@@ -33,6 +43,7 @@ export function LeadFilterBar({
   creatorIds,
   sourceIds,
   locationIds,
+  age,
   sort,
 }: Props) {
   const router = useRouter();
@@ -43,6 +54,13 @@ export function LeadFilterBar({
     const next = new URLSearchParams(params.toString());
     if (ids.length) next.set(key, ids.join(","));
     else next.delete(key);
+    router.push(`${pathname}?${next.toString()}`);
+  };
+
+  const setAge = (value: string) => {
+    const next = new URLSearchParams(params.toString());
+    if (value) next.set("age", value);
+    else next.delete("age");
     router.push(`${pathname}?${next.toString()}`);
   };
 
@@ -58,10 +76,12 @@ export function LeadFilterBar({
     next.delete("fu");
     next.delete("fs");
     next.delete("fl");
+    next.delete("age");
     router.push(`${pathname}?${next.toString()}`);
   };
 
-  const active = creatorIds.length > 0 || sourceIds.length > 0 || locationIds.length > 0;
+  const active =
+    creatorIds.length > 0 || sourceIds.length > 0 || locationIds.length > 0 || !!age;
 
   return (
     <div className="flex items-center gap-1.5 rounded-xl bg-white/95 backdrop-blur p-1.5 ring-1 ring-ink-200 shadow-soft">
@@ -83,6 +103,30 @@ export function LeadFilterBar({
         selected={locationIds}
         onChange={(ids) => setList("fl", ids)}
       />
+
+      <span
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-1 rounded-md border pl-1.5",
+          age ? "border-brand-300 bg-brand-50" : "border-ink-200 bg-white"
+        )}
+      >
+        <Clock className={cn("h-3.5 w-3.5 shrink-0", age ? "text-brand-500" : "text-ink-400")} />
+        <select
+          value={age ?? ""}
+          onChange={(e) => setAge(e.target.value)}
+          className={cn(
+            "h-8 min-w-0 flex-1 bg-transparent pr-1 text-xs",
+            age ? "text-brand-800" : "text-ink-800"
+          )}
+          aria-label="Filter by lead age"
+        >
+          {AGE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </span>
 
       <span className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-ink-200 bg-white pl-1.5">
         <ArrowDownWideNarrow className="h-3.5 w-3.5 shrink-0 text-ink-400" />

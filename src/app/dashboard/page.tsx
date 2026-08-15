@@ -102,7 +102,30 @@ type DashTab =
   | { kind: "static"; key: DashStaticTab }
   | { kind: "private"; userId: number };
 
-type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; p?: string; sg?: string; sort?: string };
+type Search = { tab?: string; q?: string; fu?: string; fs?: string; fl?: string; age?: string; p?: string; sg?: string; sort?: string };
+
+/** Lead-aging buckets (days since createdAt), filtered via `?age=`. */
+const AGE_BUCKETS = {
+  "1_14": { label: "1–14 days", min: 1, max: 14 },
+  "15_29": { label: "15–29 days", min: 15, max: 29 },
+  "30_59": { label: "30–59 days", min: 30, max: 59 },
+  "60_89": { label: "60–89 days", min: 60, max: 89 },
+  "90_up": { label: "90+ days", min: 90, max: null },
+} satisfies Record<string, { label: string; min: number; max: number | null }>;
+type AgeKey = keyof typeof AGE_BUCKETS;
+function parseAge(raw: string | undefined): AgeKey | null {
+  return raw && raw in AGE_BUCKETS ? (raw as AgeKey) : null;
+}
+/** createdAt range for an aging bucket. age N days ⟺ createdAt N days ago. */
+function leadAgeWhere(age: AgeKey | null): Prisma.LeadWhereInput {
+  if (!age) return {};
+  const { min, max } = AGE_BUCKETS[age];
+  const day = 86_400_000;
+  const now = Date.now();
+  const createdAt: Prisma.DateTimeFilter = { lte: new Date(now - min * day) };
+  if (max !== null) createdAt.gte = new Date(now - (max + 1) * day);
+  return { createdAt };
+}
 
 /** Date sort for every pipeline list. "new" = newest first (default),
  *  "old" = oldest first (longest-waiting / most days). */
@@ -151,12 +174,15 @@ function parsePage(raw: string | undefined): number {
 function leadFilterWhere(
   creatorIds: number[],
   sourceIds: number[],
-  locationIds: number[]
+  locationIds: number[],
+  age: AgeKey | null = null
 ): Prisma.LeadWhereInput {
   const and: Prisma.LeadWhereInput[] = [];
   if (creatorIds.length) and.push({ createdById: { in: creatorIds } });
   if (sourceIds.length) and.push({ sourceId: { in: sourceIds } });
   if (locationIds.length) and.push({ locationId: { in: locationIds } });
+  const ageWhere = leadAgeWhere(age);
+  if (ageWhere.createdAt) and.push(ageWhere);
   return and.length ? { AND: and } : {};
 }
 
@@ -204,6 +230,7 @@ export default async function DashboardPage({
   const filterCreatorIds = parseIds(sp.fu);
   const filterSourceIds = parseIds(sp.fs);
   const filterLocationIds = parseIds(sp.fl);
+  const filterAge = parseAge(sp.age);
 
   // Everyone — master included — lands on Fresh by default (parseTab
   // returns "fresh" when no tab param is present).
@@ -297,6 +324,7 @@ export default async function DashboardPage({
         creatorIds={filterCreatorIds}
         sourceIds={filterSourceIds}
         locationIds={filterLocationIds}
+        age={filterAge}
         sort={parseSort(sp.sort)}
       />
 
@@ -345,12 +373,12 @@ export default async function DashboardPage({
         )}
 
       {q ? (
-        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorIds}:${filterSourceIds}:${filterLocationIds}:${sp.sort ?? ""}`}>
-          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorIds} sourceId={filterSourceIds} locationId={filterLocationIds} sort={parseSort(sp.sort)} />
+        <Suspense fallback={<LeadsSkeleton />} key={`search:${q}:${filterCreatorIds}:${filterSourceIds}:${filterLocationIds}:${filterAge ?? ""}:${sp.sort ?? ""}`}>
+          <GlobalSearchResults q={q} user={user} creatorId={filterCreatorIds} sourceId={filterSourceIds} locationId={filterLocationIds} age={filterAge} sort={parseSort(sp.sort)} />
         </Suspense>
       ) : (
-        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorIds}:${filterSourceIds}:${filterLocationIds}:${sp.sort ?? ""}:${sp.p ?? ""}`}>
-          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorIds} sourceId={filterSourceIds} locationId={filterLocationIds} page={parsePage(sp.p)} statusGroup={parseStageGroup(sp.sg)} sort={parseSort(sp.sort)} />
+        <Suspense fallback={<LeadsSkeleton />} key={`${serializeTab(tab)}:${filterCreatorIds}:${filterSourceIds}:${filterLocationIds}:${filterAge ?? ""}:${sp.sort ?? ""}:${sp.p ?? ""}`}>
+          <LeadsSection tab={tab} q={q} user={user} privateUser={privateUser} creatorId={filterCreatorIds} sourceId={filterSourceIds} locationId={filterLocationIds} age={filterAge} page={parsePage(sp.p)} statusGroup={parseStageGroup(sp.sg)} sort={parseSort(sp.sort)} />
         </Suspense>
       )}
     </div>
@@ -363,6 +391,7 @@ function tabHref(tabKey: string, o: {
   creatorId: number[];
   sourceId: number[];
   locationId: number[];
+  age?: AgeKey | null;
   page?: number;
   sg?: StageGroup | null;
   sort?: SortKey;
@@ -372,6 +401,7 @@ function tabHref(tabKey: string, o: {
   if (o.creatorId.length) p.set("fu", o.creatorId.join(","));
   if (o.sourceId.length) p.set("fs", o.sourceId.join(","));
   if (o.locationId.length) p.set("fl", o.locationId.join(","));
+  if (o.age) p.set("age", o.age);
   if (o.page && o.page > 1) p.set("p", String(o.page));
   if (o.sg) p.set("sg", o.sg);
   if (o.sort && o.sort !== "new") p.set("sort", o.sort);
@@ -392,6 +422,7 @@ async function StageRow({
   creatorId,
   sourceId,
   locationId,
+  age,
   sort,
 }: {
   tabKey: string;
@@ -402,6 +433,7 @@ async function StageRow({
   creatorId: number[];
   sourceId: number[];
   locationId: number[];
+  age: AgeKey | null;
   sort: SortKey;
 }) {
   const rows = await prisma.lead.groupBy({
@@ -414,7 +446,7 @@ async function StageRow({
       .filter((r) => (STAGE_GROUPS[g].statuses as LeadStatus[]).includes(r.status))
       .reduce((n, r) => n + r._count._all, 0);
   const link = (sg?: StageGroup) =>
-    tabHref(tabKey, { q, creatorId, sourceId, locationId, sg, sort });
+    tabHref(tabKey, { q, creatorId, sourceId, locationId, age, sg, sort });
 
   return (
     <div className="flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft">
@@ -638,6 +670,7 @@ async function GlobalSearchResults({
   creatorId,
   sourceId,
   locationId,
+  age,
   sort,
 }: {
   q: string;
@@ -645,13 +678,14 @@ async function GlobalSearchResults({
   creatorId: number[];
   sourceId: number[];
   locationId: number[];
+  age: AgeKey | null;
   sort: SortKey;
 }) {
   const settings = await getAppSettings();
 
   const [matches, teamUsers, masterReassignTargets] = await Promise.all([
     prisma.lead.findMany({
-      where: { AND: [globalLeadVisibility(user), leadSearchFilter(q), leadFilterWhere(creatorId, sourceId, locationId)] },
+      where: { AND: [globalLeadVisibility(user), leadSearchFilter(q), leadFilterWhere(creatorId, sourceId, locationId, age)] },
       orderBy: leadOrderBy(sort),
       take: 200,
       select: leadSelect,
@@ -718,6 +752,7 @@ async function LeadsSection({
   creatorId,
   sourceId,
   locationId,
+  age,
   page,
   statusGroup,
   sort,
@@ -729,11 +764,12 @@ async function LeadsSection({
   creatorId: number[];
   sourceId: number[];
   locationId: number[];
+  age: AgeKey | null;
   page: number;
   statusGroup: StageGroup | null;
   sort: SortKey;
 }) {
-  const filterWhere = leadFilterWhere(creatorId, sourceId, locationId);
+  const filterWhere = leadFilterWhere(creatorId, sourceId, locationId, age);
   const settings = await getAppSettings();
   const cutoff = ageBoundaryDate();
   // Master can reassign any lead to any pipeline — fetch the list of
@@ -815,6 +851,7 @@ async function LeadsSection({
         creatorId={creatorId}
         sourceId={sourceId}
         locationId={locationId}
+        age={age}
         sort={sort}
       />
     );
@@ -839,6 +876,7 @@ async function LeadsSection({
             creatorId,
             sourceId,
             locationId,
+            age,
             page: n,
             sg: statusGroup,
             sort,
@@ -947,7 +985,7 @@ async function LeadsSection({
           page={page}
           shown={generalLeads.length}
           total={generalTotal}
-          hrefFor={(n) => tabHref("general", { q, creatorId, sourceId, locationId, page: n, sort })}
+          hrefFor={(n) => tabHref("general", { q, creatorId, sourceId, locationId, age, page: n, sort })}
         />
       </div>
     );
@@ -980,6 +1018,7 @@ async function LeadsSection({
         creatorId={creatorId}
         sourceId={sourceId}
         locationId={locationId}
+        age={age}
         sort={sort}
       />
     );
@@ -1007,7 +1046,7 @@ async function LeadsSection({
             shown={0}
             total={ownTotal}
             hrefFor={(n) =>
-              tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup, sort })
+              tabHref("own", { q, creatorId, sourceId, locationId, age, page: n, sg: statusGroup, sort })
             }
           />
         </div>
@@ -1029,7 +1068,7 @@ async function LeadsSection({
           shown={ownLeads.length}
           total={ownTotal}
           hrefFor={(n) =>
-            tabHref("own", { q, creatorId, sourceId, locationId, page: n, sg: statusGroup, sort })
+            tabHref("own", { q, creatorId, sourceId, locationId, age, page: n, sg: statusGroup, sort })
           }
         />
       </div>
