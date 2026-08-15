@@ -828,9 +828,58 @@ async function LeadsSection({
     }
     const leads = await toLeadViewsForUser(channelLeads, user.id);
 
-    // Every private tab — master's inbox included — is a flat list under
-    // the stage row. Grouping by who assigned the lead was replaced by
-    // grouping by how far the lead got.
+    const pager = (
+      <Pager
+        page={page}
+        shown={channelLeads.length}
+        total={channelTotal}
+        hrefFor={(n) =>
+          tabHref(privateChannelTabKey(tab.userId), {
+            q,
+            creatorId,
+            sourceId,
+            locationId,
+            page: n,
+            sg: statusGroup,
+            sort,
+          })
+        }
+      />
+    );
+
+    // The master's own inbox (the "AH" tab) groups leads by who sent them,
+    // so the master can see who handed over each lead. Other channels
+    // (AHA / AHB) and a private user viewing their own stay a flat list.
+    const isMasterInbox = user.role === "MASTER" && tab.userId === user.id;
+    if (isMasterInbox) {
+      const assigns = await prisma.leadAssignment.findMany({
+        where: { userId: user.id, leadId: { in: leads.map((l) => l.id) } },
+        select: {
+          leadId: true,
+          assignedById: true,
+          assignedBy: { select: { id: true, displayName: true } },
+        },
+      });
+      const assignerByLead = new Map<number, { id: number; displayName: string } | null>();
+      for (const a of assigns) {
+        // Self-assignment (master picked it up themselves) → no external sender.
+        assignerByLead.set(a.leadId, a.assignedById === user.id ? null : a.assignedBy);
+      }
+      return (
+        <div className="space-y-3">
+          {channelStageRow}
+          <MasterInboxByAssigner
+            leads={leads}
+            assignerByLead={assignerByLead}
+            viewer={user}
+            maxPickup={settings.maxPickup}
+            reassignTargets={otherPrivateUsers}
+          />
+          {pager}
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-3">
         {channelStageRow}
@@ -841,22 +890,7 @@ async function LeadsSection({
           maxPickup={settings.maxPickup}
           reassignTargets={otherPrivateUsers}
         />
-        <Pager
-          page={page}
-          shown={channelLeads.length}
-          total={channelTotal}
-          hrefFor={(n) =>
-            tabHref(privateChannelTabKey(tab.userId), {
-              q,
-              creatorId,
-              sourceId,
-              locationId,
-              page: n,
-              sg: statusGroup,
-              sort,
-            })
-          }
-        />
+        {pager}
       </div>
     );
   }
@@ -1351,6 +1385,102 @@ function ChannelLeadList({
           ))}
         </ul>
       </CollapsibleSection>
+    </div>
+  );
+}
+
+/**
+ * Master inbox ("AH") renderer: groups leads by who assigned them to the
+ * master, so the master sees who gave each lead. One collapsible section
+ * per sender, plus a trailing "Picked up / direct" bucket for leads the
+ * master picked up themselves or that landed with no sender recorded.
+ */
+function MasterInboxByAssigner({
+  leads,
+  assignerByLead,
+  viewer,
+  maxPickup,
+  reassignTargets = [],
+}: {
+  leads: LeadView[];
+  assignerByLead: Map<number, { id: number; displayName: string } | null>;
+  viewer: CurrentUser;
+  maxPickup: number;
+  reassignTargets?: { id: number; displayName: string }[];
+}) {
+  const ownPickup: LeadView[] = [];
+  const byAssigner = new Map<number, { label: string; items: LeadView[] }>();
+  for (const lead of leads) {
+    const sender = assignerByLead.get(lead.id) ?? null;
+    if (!sender) {
+      ownPickup.push(lead);
+      continue;
+    }
+    const bucket = byAssigner.get(sender.id) ?? { label: sender.displayName, items: [] };
+    bucket.items.push(lead);
+    byAssigner.set(sender.id, bucket);
+  }
+  const entries = Array.from(byAssigner.entries()).sort((a, b) =>
+    a[1].label.localeCompare(b[1].label)
+  );
+
+  const grid = (items: LeadView[]) => (
+    <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {items.map((lead) => (
+        <li key={lead.id}>
+          <LeadCard lead={lead} viewer={viewer} teamUsers={[]} maxPickup={maxPickup} reassignTargets={reassignTargets} />
+        </li>
+      ))}
+    </ul>
+  );
+
+  return (
+    <div className="space-y-4 md:space-y-6">
+      {entries.map(([id, bucket]) => (
+        <CollapsibleSection
+          key={id}
+          storageKey={`ah:assigner:${id}`}
+          count={bucket.items.length}
+          defaultOpen
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                {initials(bucket.label)}
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">From {bucket.label}</h3>
+                <p className="text-xs text-ink-500">
+                  {bucket.items.length} lead{bucket.items.length === 1 ? "" : "s"} sent to you
+                </p>
+              </div>
+            </div>
+          }
+        >
+          {grid(bucket.items)}
+        </CollapsibleSection>
+      ))}
+      {ownPickup.length > 0 && (
+        <CollapsibleSection
+          storageKey="ah:own-pickup"
+          count={ownPickup.length}
+          defaultOpen
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-ink-100 text-sm font-semibold text-ink-500">
+                —
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">Picked up / direct</h3>
+                <p className="text-xs text-ink-500">
+                  {ownPickup.length} lead{ownPickup.length === 1 ? "" : "s"} not sent by a user
+                </p>
+              </div>
+            </div>
+          }
+        >
+          {grid(ownPickup)}
+        </CollapsibleSection>
+      )}
     </div>
   );
 }
