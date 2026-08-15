@@ -344,14 +344,24 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           )}
         </div>
 
-        <button
-          onClick={() => setMenuOpen(true)}
-          disabled={pending}
-          className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50 shrink-0"
-        >
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Status"}
-          <ChevronDown className="h-3 w-3" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen(true)}
+            className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2 py-1 text-[11px] font-semibold text-brand-700 hover:bg-brand-100"
+          >
+            Details
+            <ArrowRight className="h-3 w-3" />
+          </button>
+          <button
+            onClick={() => setMenuOpen(true)}
+            disabled={pending}
+            className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50"
+          >
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Status"}
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </div>
       </header>
 
       {/* Source + Location + Name + Phone rows. On phones, Source and
@@ -380,18 +390,8 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         )}
       </div>
 
-      {/* No inline content preview — the full lead opens in a floating
-          window instead, keeping the card compact. */}
-      <div className="mt-2 md:mt-3">
-        <button
-          type="button"
-          onClick={() => setDetailsOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm ring-1 ring-brand-700/20 hover:bg-brand-700 active:bg-brand-800 transition-colors"
-        >
-          Open details
-          <ArrowRight className="h-3 w-3" />
-        </button>
-      </div>
+      {/* "Details" opens the full lead in a floating window — the button
+          lives in the header now, keeping the card short. */}
 
       {lead.remark && (
         <Link
@@ -440,7 +440,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <span className="break-words"><strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong></span>
           </span>
           <span className="hidden md:inline text-ink-300">·</span>
-          <span className="inline-flex items-center gap-1">
+          {/* Full created date is desktop-only; the aging pill below already
+              signals recency on a phone, saving a wrapped line. */}
+          <span className="hidden md:inline-flex items-center gap-1">
             <Calendar className="h-3 w-3 shrink-0" />
             <span className="whitespace-nowrap">{formatDateTime(lead.createdAt)}</span>
           </span>
