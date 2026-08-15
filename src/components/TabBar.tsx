@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Sparkles, Store, Crown, Lock, Layers } from "lucide-react";
+import { Sparkles, Store, Crown, Lock } from "lucide-react";
 
 type PrivateChannel = {
   key: string;
@@ -27,7 +27,7 @@ type TabItem = {
   label: string;
   short: string;
   count: number;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
 };
 
 export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCount, showGeneral, generalCount = 0, privateChannels }: Props) {
@@ -44,7 +44,7 @@ export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCou
   const privateTabs: TabItem[] = [
     // "General" — master-only aggregate of every private channel, before AH.
     ...(showGeneral
-      ? [{ key: "general", href: "/dashboard?tab=general", label: "General", short: "General", count: generalCount, icon: <Layers className="h-4 w-4" /> }]
+      ? [{ key: "general", href: "/dashboard?tab=general", label: "General", short: "General", count: generalCount }]
       : []),
     ...privateChannels.map((ch) => ({
       key: ch.key,
@@ -100,7 +100,7 @@ function TabLink({ tab, active, fill }: { tab: TabItem; active: boolean; fill?: 
       )}
       aria-current={active ? "page" : undefined}
     >
-      <span className={cn("shrink-0", active ? "text-white" : "text-ink-500")}>{tab.icon}</span>
+      {tab.icon && <span className={cn("shrink-0", active ? "text-white" : "text-ink-500")}>{tab.icon}</span>}
       <span className="sm:hidden">{tab.short}</span>
       <span className="hidden sm:inline">{tab.label}</span>
       <span
