@@ -25,7 +25,7 @@ body {
 
 @layer components {
   .btn {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium
+    @apply inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3.5 text-sm font-medium
            transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
@@ -42,11 +42,11 @@ body {
   }
 
   .input {
-    @apply block w-full rounded-lg border border-ink-200 bg-white px-3.5 py-2.5 text-sm
+    @apply block w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm
            placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100;
   }
   .label {
-    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500;
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-500;
   }
   .card {
     @apply rounded-2xl border border-ink-200/70 bg-white/80 backdrop-blur shadow-soft;

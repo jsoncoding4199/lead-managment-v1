@@ -248,9 +248,9 @@ export default async function DashboardPage({
       : STATIC_TAB_TITLE[tab.key] ?? "Leads";
 
   return (
-    <div className="space-y-3 md:space-y-6 max-w-6xl">
+    <div className="space-y-2.5 md:space-y-4 max-w-6xl">
       <div>
-        <h2 className="text-lg md:text-3xl font-semibold text-ink-900 tracking-tight break-words">
+        <h2 className="text-lg md:text-2xl font-semibold text-ink-900 tracking-tight break-words">
           {heading}
         </h2>
         <p className="hidden md:block text-ink-500 mt-1 text-xs md:text-sm">
