@@ -72,9 +72,11 @@ export function TabBar({ activeTab, showOwn, ownCount = 0, freshCount, marketCou
             <div className="px-1.5 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">
               Private pipelines
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            {/* One row — each cell shares the width and shrinks (min-w-0)
+                rather than wrapping onto a second line. */}
+            <div className="flex gap-1">
               {privateTabs.map((t) => (
-                <TabLink key={t.key} tab={t} active={activeTab === t.key} />
+                <TabLink key={t.key} tab={t} active={activeTab === t.key} fill />
               ))}
             </div>
           </>
