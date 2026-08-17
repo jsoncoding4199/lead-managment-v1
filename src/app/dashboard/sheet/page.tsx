@@ -1,7 +1,8 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, LeadStatus } from "@prisma/client";
 import { requireMaster } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { STATUS_LABEL } from "@/lib/leadStatus";
 import {
   parseIds,
   parseAge,
@@ -16,7 +17,22 @@ export const dynamic = "force-dynamic";
 
 const SHEET_PAGE_SIZE = 100;
 
-type Search = { q?: string; fu?: string; fs?: string; fl?: string; age?: string; sort?: string; p?: string };
+type Search = { q?: string; fu?: string; fs?: string; fl?: string; age?: string; sort?: string; p?: string; st?: string; ch?: string };
+
+/** Header Status filter (`?st=`): a single LeadStatus, or nothing = all. */
+function parseStatus(raw: string | undefined): LeadStatus | null {
+  return raw && raw in STATUS_LABEL ? (raw as LeadStatus) : null;
+}
+
+/** Header "Under" filter (`?ch=`): where the lead sits.
+ *  "public" = shared pool, "own" = master's Own list, "<userId>" = that user's channel. */
+function placementWhere(ch: string | undefined): Prisma.LeadWhereInput {
+  if (ch === "public") return { privateChannelUserId: null };
+  if (ch === "own") return { isOwn: true };
+  const id = Number(ch);
+  if (Number.isFinite(id) && id > 0) return { privateChannelUserId: id, isOwn: false };
+  return {};
+}
 
 function searchFilter(q: string): Prisma.LeadWhereInput {
   if (!q) return {};
@@ -43,6 +59,8 @@ function pageHref(sp: Search, p: number): string {
   if (sp.fl) q.set("fl", sp.fl);
   if (sp.age) q.set("age", sp.age);
   if (sp.sort) q.set("sort", sp.sort);
+  if (sp.st) q.set("st", sp.st);
+  if (sp.ch) q.set("ch", sp.ch);
   if (p > 1) q.set("p", String(p));
   const s = q.toString();
   return s ? `/dashboard/sheet?${s}` : "/dashboard/sheet";
@@ -58,9 +76,16 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
   const age = parseAge(sp.age);
   const sort = parseSort(sp.sort);
   const page = parsePage(sp.p);
+  const status = parseStatus(sp.st);
+  const under = sp.ch ?? "";
 
   const where: Prisma.LeadWhereInput = {
-    AND: [leadFilterWhere(creatorIds, sourceIds, locationIds, age), searchFilter(q)],
+    AND: [
+      leadFilterWhere(creatorIds, sourceIds, locationIds, age),
+      searchFilter(q),
+      status ? { status } : {},
+      placementWhere(under || undefined),
+    ],
   };
 
   const [leads, total, users, sources, locations] = await Promise.all([
@@ -137,11 +162,18 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
         sort={sort}
       />
 
-      {rows.length === 0 ? (
-        <div className="card p-10 text-center text-sm text-ink-500">No leads match.</div>
-      ) : (
-        <LeadSheet rows={rows} sources={sources} locations={locations} />
-      )}
+      <LeadSheet
+        rows={rows}
+        sources={sources}
+        locations={locations}
+        users={users}
+        filters={{
+          status: status ?? "",
+          source: sourceIds.length === 1 ? String(sourceIds[0]) : "",
+          location: locationIds.length === 1 ? String(locationIds[0]) : "",
+          under,
+        }}
+      />
 
       {(hasPrev || hasNext) && (
         <div className="card flex items-center justify-between gap-2 p-2.5">
