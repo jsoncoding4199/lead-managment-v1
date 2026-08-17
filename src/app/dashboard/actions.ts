@@ -1714,38 +1714,6 @@ export async function pingLeadAction(formData: FormData): Promise<{ error?: stri
   });
 }
 
-/** Any user taps OK on a lead → master gets "seen it" confirmation. */
-export async function ackLeadAction(formData: FormData): Promise<{ error?: string } | void> {
-  const me = await requireUser();
-  const parsed = PingSchema.safeParse({ leadId: formData.get("leadId") });
-  if (!parsed.success) return { error: "Invalid lead." };
-
-  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, me);
-  if (!meta) return { error: "Lead not found." };
-
-  await prisma.lead.update({
-    where: { id: parsed.data.leadId },
-    data: { ackedAt: new Date(), ackedById: me.id },
-  });
-
-  revalidatePath("/dashboard");
-  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
-
-  after(async () => {
-    const masterIds = (await getMasterIds()).filter((id) => id !== me.id);
-    await sendPushToUsers({
-      userIds: masterIds,
-      payload: {
-        title: "Lead acknowledged",
-        body: `${me.displayName} has seen lead #${parsed.data.leadId}`,
-        url: `/dashboard/leads/${parsed.data.leadId}`,
-        kind: "pickup",
-        tag: `lead-${parsed.data.leadId}-ack`,
-      },
-    });
-  });
-}
-
 /**
  * Set (or clear) a personal follow-up reminder on a lead. `hours` must be
  * one of 1|2|3|4, or 0 to clear. Anyone with access to the lead can set
