@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { X, ArrowDownWideNarrow, ChevronDown, Check, Clock } from "lucide-react";
+import { X, ArrowDownWideNarrow, ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const AGE_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "Any age" },
-  { value: "1_14", label: "1–14 days" },
-  { value: "15_29", label: "15–29 days" },
-  { value: "30_59", label: "30–59 days" },
-  { value: "60_89", label: "60–89 days" },
-  { value: "90_up", label: "90+ days" },
+/** Aging buckets for the combined sort/age dropdown. */
+const AGE_BUCKETS: { value: string; label: string }[] = [
+  { value: "1_14", label: "1–14 days old" },
+  { value: "15_29", label: "15–29 days old" },
+  { value: "30_59", label: "30–59 days old" },
+  { value: "60_89", label: "60–89 days old" },
+  { value: "90_up", label: "90+ days old" },
 ];
 
 type Option = { id: number; label: string };
@@ -57,17 +57,18 @@ export function LeadFilterBar({
     router.push(`${pathname}?${next.toString()}`);
   };
 
-  const setAge = (value: string) => {
+  // One dropdown drives both order and aging. "new"/"old" order the list and
+  // clear any age filter; a bucket value filters by age (order stays newest).
+  const setView = (value: string) => {
     const next = new URLSearchParams(params.toString());
-    if (value) next.set("age", value);
-    else next.delete("age");
-    router.push(`${pathname}?${next.toString()}`);
-  };
-
-  const setSort = (value: string) => {
-    const next = new URLSearchParams(params.toString());
-    if (value === "old") next.set("sort", "old");
-    else next.delete("sort");
+    if (value === "new" || value === "old") {
+      next.delete("age");
+      if (value === "old") next.set("sort", "old");
+      else next.delete("sort");
+    } else {
+      next.set("age", value);
+      next.delete("sort");
+    }
     router.push(`${pathname}?${next.toString()}`);
   };
 
@@ -110,34 +111,29 @@ export function LeadFilterBar({
           age ? "border-brand-300 bg-brand-50" : "border-ink-200 bg-white"
         )}
       >
-        <Clock className={cn("h-3.5 w-3.5 shrink-0", age ? "text-brand-500" : "text-ink-400")} />
+        <ArrowDownWideNarrow
+          className={cn("h-3.5 w-3.5 shrink-0", age ? "text-brand-500" : "text-ink-400")}
+        />
         <select
-          value={age ?? ""}
-          onChange={(e) => setAge(e.target.value)}
+          value={age ?? sort}
+          onChange={(e) => setView(e.target.value)}
           className={cn(
             "h-8 min-w-0 flex-1 bg-transparent pr-1 text-xs",
             age ? "text-brand-800" : "text-ink-800"
           )}
-          aria-label="Filter by lead age"
+          aria-label="Sort or filter by lead age"
         >
-          {AGE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </span>
-
-      <span className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-ink-200 bg-white pl-1.5">
-        <ArrowDownWideNarrow className="h-3.5 w-3.5 shrink-0 text-ink-400" />
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          className="h-8 min-w-0 flex-1 bg-transparent pr-1 text-xs text-ink-800"
-          aria-label="Sort by date"
-        >
-          <option value="new">Newest</option>
-          <option value="old">Oldest</option>
+          <optgroup label="Sort by date">
+            <option value="new">Newest</option>
+            <option value="old">Oldest</option>
+          </optgroup>
+          <optgroup label="Aging">
+            {AGE_BUCKETS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </span>
 
