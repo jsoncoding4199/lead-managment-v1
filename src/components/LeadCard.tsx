@@ -635,6 +635,10 @@ function RejectReasonStep({
   onConfirm,
   onClose,
   droppingToo,
+  title,
+  description,
+  placeholder,
+  confirmLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -642,16 +646,24 @@ function RejectReasonStep({
   onConfirm: (text: string) => void;
   onClose: () => void;
   droppingToo?: boolean;
+  title?: string;
+  description?: React.ReactNode;
+  placeholder?: string;
+  confirmLabel?: string;
 }) {
   const canSubmit = value.trim().length > 0;
   return (
     <>
       <div className="flex items-center justify-between px-5 pt-4 pb-2">
         <div>
-          <h3 className="text-base font-semibold text-ink-900">Why reject?</h3>
+          <h3 className="text-base font-semibold text-ink-900">{title ?? "Why reject?"}</h3>
           <p className="text-xs text-ink-500 mt-0.5">
-            A short reason is required {droppingToo ? "before the lead can be dropped" : "to mark a lead as Rejected"}.
-            Saved in the status history for audit.
+            {description ?? (
+              <>
+                A short reason is required {droppingToo ? "before the lead can be dropped" : "to mark a lead as Rejected"}.
+                Saved in the status history for audit.
+              </>
+            )}
           </p>
         </div>
         <button
@@ -669,7 +681,7 @@ function RejectReasonStep({
           onChange={(e) => onChange(e.target.value)}
           rows={5}
           maxLength={500}
-          placeholder="e.g. Customer not interested, doesn't qualify, wrong contact info…"
+          placeholder={placeholder ?? "e.g. Customer not interested, doesn't qualify, wrong contact info…"}
           className="input w-full resize-y text-sm"
         />
         <div className="flex items-center justify-between text-[10px] text-ink-400">
@@ -685,7 +697,7 @@ function RejectReasonStep({
             disabled={!canSubmit}
             className="btn btn-accent h-9 px-3 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {droppingToo ? "Reject & drop" : "Reject lead"}
+            {confirmLabel ?? (droppingToo ? "Reject & drop" : "Reject lead")}
           </button>
         </div>
       </div>
@@ -708,6 +720,7 @@ function StatusMenu({
 }) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
   const [rejectReason, setRejectReason] = useState<string | null>(null);
+  const [recycleReason, setRecycleReason] = useState<string | null>(null);
   useEffect(() => {
     setPortalNode(document.body);
     const onKey = (e: KeyboardEvent) => {
@@ -749,7 +762,19 @@ function StatusMenu({
           <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
         </div>
 
-        {rejectReason !== null ? (
+        {recycleReason !== null ? (
+          <RejectReasonStep
+            value={recycleReason}
+            onChange={setRecycleReason}
+            onBack={() => setRecycleReason(null)}
+            onConfirm={(text) => onChoose("RECYCLED", text)}
+            onClose={onClose}
+            title="Move to Recycle Bin"
+            description="Add a remark saying why — it's saved to the lead's remarks so anyone opening the details can see it."
+            placeholder="e.g. Duplicate, bad number, revisit next quarter…"
+            confirmLabel="Recycle lead"
+          />
+        ) : rejectReason !== null ? (
           <RejectReasonStep
             value={rejectReason}
             onChange={setRejectReason}
@@ -818,7 +843,7 @@ function StatusMenu({
                   Reset to Open Market
                 </button>
                 <button
-                  onClick={() => onChoose("RECYCLED")}
+                  onClick={() => setRecycleReason("")}
                   className="w-full rounded-xl border border-brand-200 bg-brand-50 px-3 py-3 text-left text-sm font-bold text-brand-700 hover:bg-brand-100"
                 >
                   Move to Recycle Bin
