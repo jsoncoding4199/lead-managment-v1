@@ -28,6 +28,7 @@ import {
   FileText,
   CalendarDays,
   ChevronDown,
+  Table,
   LogOut,
 } from "lucide-react";
 import { logoutAction } from "@/app/login/actions";
@@ -308,6 +309,13 @@ function SidebarInner({
             <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
               Master
             </div>
+            <NavLink
+              href="/dashboard/sheet"
+              icon={Table}
+              active={pathname === "/dashboard/sheet"}
+            >
+              Bulk Edit
+            </NavLink>
             <NavLink
               href="/dashboard/admin"
               icon={Users}
