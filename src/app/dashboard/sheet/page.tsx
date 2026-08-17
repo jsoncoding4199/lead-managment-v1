@@ -76,7 +76,9 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
         status: true,
         sourceId: true,
         locationId: true,
-        createdBy: { select: { displayName: true } },
+        isOwn: true,
+        privateChannelUserId: true,
+        privateChannelUser: { select: { displayName: true } },
       },
     }),
     prisma.lead.count({ where }),
@@ -92,7 +94,7 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
     status: l.status,
     sourceId: l.sourceId,
     locationId: l.locationId,
-    createdBy: l.createdBy.displayName,
+    placement: l.isOwn ? "Own" : l.privateChannelUser?.displayName ?? "Public",
   }));
 
   const first = (page - 1) * SHEET_PAGE_SIZE + 1;
