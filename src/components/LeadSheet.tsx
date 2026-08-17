@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import type { LeadStatus } from "@prisma/client";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import {
@@ -11,6 +12,7 @@ import {
   setLeadLocationAction,
   changeStatusAction,
   addLeadRemarkAction,
+  deleteLeadAction,
 } from "@/app/dashboard/actions";
 
 export type SheetRow = {
@@ -70,9 +72,44 @@ export function LeadSheet({
     next.delete("p");
     router.push(`${pathname}?${next.toString()}`);
   };
+  // Source filter is special: "none" means "leads with no source" (`nos=1`,
+  // clears the id filter); an id means that source (`fs`, clears nos).
+  const setSourceFilter = (value: string) => {
+    const next = new URLSearchParams(params.toString());
+    next.delete("p");
+    if (value === "none") {
+      next.set("nos", "1");
+      next.delete("fs");
+    } else if (value) {
+      next.set("fs", value);
+      next.delete("nos");
+    } else {
+      next.delete("fs");
+      next.delete("nos");
+    }
+    router.push(`${pathname}?${next.toString()}`);
+  };
 
   const [, startTransition] = useTransition();
   const [state, setState] = useState<Record<number, { s: SaveState; msg?: string }>>({});
+  // Rows deleted this session — hidden immediately so the grid reflects the
+  // delete without a full reload.
+  const [removed, setRemoved] = useState<Set<number>>(new Set());
+
+  const del = (id: number) => {
+    if (!window.confirm(`Delete lead #${id}? This removes it from wherever it lives and can't be undone.`)) return;
+    setState((m) => ({ ...m, [id]: { s: "saving" } }));
+    startTransition(async () => {
+      const f = new FormData();
+      f.set("leadId", String(id));
+      const res = await deleteLeadAction(f);
+      if (res?.error) {
+        setState((m) => ({ ...m, [id]: { s: "error", msg: res.error } }));
+      } else {
+        setRemoved((prev) => new Set(prev).add(id));
+      }
+    });
+  };
   // Last value we persisted per cell, so an onBlur that didn't actually change
   // anything doesn't fire a redundant write.
   const lastSaved = useRef<Record<string, string>>({});
@@ -110,6 +147,7 @@ export function LeadSheet({
             <th className="px-2 py-2 font-semibold">Add remark</th>
             <th className="px-2 py-2 font-semibold">Under</th>
             <th className="px-2 py-2 font-semibold">Saved</th>
+            <th className="px-2 py-2 font-semibold">Del</th>
           </tr>
           {/* Per-column filter row — pick a value to narrow the grid. */}
           <tr className="border-b border-ink-200 bg-white">
@@ -132,11 +170,12 @@ export function LeadSheet({
             <th className="px-1 py-1">
               <select
                 value={filters.source}
-                onChange={(e) => setParam("fs", e.target.value)}
+                onChange={(e) => setSourceFilter(e.target.value)}
                 className="input h-7 w-full min-w-[110px] px-1.5 py-0.5 text-xs"
                 aria-label="Filter by source"
               >
                 <option value="">All sources</option>
+                <option value="none">(No source)</option>
                 {sources.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -172,17 +211,19 @@ export function LeadSheet({
               </select>
             </th>
             <th className="px-1 py-1" />
+            <th className="px-1 py-1" />
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && (
+          {rows.filter((r) => !removed.has(r.id)).length === 0 && (
             <tr>
-              <td colSpan={9} className="px-3 py-8 text-center text-sm text-ink-500">
+              <td colSpan={10} className="px-3 py-8 text-center text-sm text-ink-500">
                 No leads match these filters.
               </td>
             </tr>
           )}
           {rows.map((r) => {
+            if (removed.has(r.id)) return null;
             const st = state[r.id];
             return (
               <tr key={r.id} className="border-b border-ink-100 last:border-0 align-top">
@@ -296,6 +337,17 @@ export function LeadSheet({
                   {st?.s === "error" && (
                     <span className="text-rose-600" title={st.msg}>⚠ {st.msg ?? "error"}</span>
                   )}
+                </td>
+                <td className="px-2 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => del(r.id)}
+                    aria-label={`Delete lead ${r.id}`}
+                    title="Delete lead"
+                    className="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </td>
               </tr>
             );

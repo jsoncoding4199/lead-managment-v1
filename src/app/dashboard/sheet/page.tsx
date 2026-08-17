@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import type { Prisma, LeadStatus } from "@prisma/client";
 import { requireMaster } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 const SHEET_PAGE_SIZE = 100;
 
-type Search = { q?: string; fu?: string; fs?: string; fl?: string; age?: string; sort?: string; p?: string; st?: string; ch?: string };
+type Search = { q?: string; fu?: string; fs?: string; fl?: string; age?: string; sort?: string; p?: string; st?: string; ch?: string; nos?: string };
 
 /** Header Status filter (`?st=`): a single LeadStatus, or nothing = all. */
 function parseStatus(raw: string | undefined): LeadStatus | null {
@@ -61,9 +62,20 @@ function pageHref(sp: Search, p: number): string {
   if (sp.sort) q.set("sort", sp.sort);
   if (sp.st) q.set("st", sp.st);
   if (sp.ch) q.set("ch", sp.ch);
+  if (sp.nos) q.set("nos", sp.nos);
   if (p > 1) q.set("p", String(p));
   const s = q.toString();
   return s ? `/dashboard/sheet?${s}` : "/dashboard/sheet";
+}
+
+/** Export link carries the active filters (all pages, no `p`). */
+function exportHref(sp: Search): string {
+  const q = new URLSearchParams();
+  for (const k of ["q", "fu", "fs", "fl", "age", "sort", "st", "ch", "nos"] as const) {
+    if (sp[k]) q.set(k, sp[k] as string);
+  }
+  const s = q.toString();
+  return s ? `/dashboard/sheet/export?${s}` : "/dashboard/sheet/export";
 }
 
 export default async function SheetPage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -78,6 +90,7 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
   const page = parsePage(sp.p);
   const status = parseStatus(sp.st);
   const under = sp.ch ?? "";
+  const noSource = sp.nos === "1";
 
   const where: Prisma.LeadWhereInput = {
     AND: [
@@ -85,6 +98,7 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
       searchFilter(q),
       status ? { status } : {},
       placementWhere(under || undefined),
+      noSource ? { sourceId: null } : {},
     ],
   };
 
@@ -129,9 +143,19 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <h1 className="text-lg font-semibold text-ink-900">Bulk Edit</h1>
-        <p className="text-xs text-ink-500">Edit a cell — it saves to the lead automatically.</p>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold text-ink-900">Bulk Edit</h1>
+          <p className="text-xs text-ink-500">Edit a cell — it saves to the lead automatically.</p>
+        </div>
+        <a
+          href={exportHref(sp)}
+          className="btn btn-outline h-9 shrink-0 gap-1.5 text-xs"
+          title="Download the filtered leads as a CSV (opens in Excel)"
+        >
+          <Download className="h-4 w-4" />
+          Export
+        </a>
       </div>
 
       <form action="/dashboard/sheet" className="relative w-full">
@@ -169,7 +193,7 @@ export default async function SheetPage({ searchParams }: { searchParams: Promis
         users={users}
         filters={{
           status: status ?? "",
-          source: sourceIds.length === 1 ? String(sourceIds[0]) : "",
+          source: noSource ? "none" : sourceIds.length === 1 ? String(sourceIds[0]) : "",
           location: locationIds.length === 1 ? String(locationIds[0]) : "",
           under,
         }}
