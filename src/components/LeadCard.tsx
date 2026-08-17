@@ -1625,8 +1625,7 @@ function SourceRow({
         </span>
         <span className="flex-1 min-w-0">
           {source ? (
-            <span className="inline-flex max-w-full items-start gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-semibold leading-tight text-brand-700 ring-1 ring-brand-200">
-              <Tag className="h-3 w-3 shrink-0" />
+            <span className="inline-flex max-w-full items-start rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-semibold leading-tight text-brand-700 ring-1 ring-brand-200">
               <span className="break-words">{source.name}</span>
             </span>
           ) : (
@@ -1922,8 +1921,7 @@ function LocationRow({
         </span>
         <span className="flex-1 min-w-0">
           {location ? (
-            <span className="inline-flex max-w-full items-start gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-semibold leading-tight text-brand-700 ring-1 ring-brand-200">
-              <MapPin className="h-3 w-3 shrink-0" />
+            <span className="inline-flex max-w-full items-start rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-semibold leading-tight text-brand-700 ring-1 ring-brand-200">
               <span className="break-words">{location.name}</span>
             </span>
           ) : (
