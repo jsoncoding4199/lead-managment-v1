@@ -66,7 +66,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     user.role === "MASTER"
       ? [
           { value: "public", label: "Public pool" },
-          { value: "own", label: "Own (master)" },
+          { value: "own", label: "Own (master's list)" },
+          { value: "master", label: `${user.displayName} (AH inbox)` },
           ...(
             await prisma.user.findMany({
               where: { active: true, role: "USER" },

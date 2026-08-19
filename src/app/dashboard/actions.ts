@@ -1548,6 +1548,11 @@ export async function bulkMovePipelineAction(
   } else if (target === "own") {
     data = { privateChannelUserId: master.id, isOwn: true };
     label = "Own";
+  } else if (target === "master") {
+    // Master's private inbox (the "AH" tab): same channel as Own but WITHOUT
+    // the isOwn marker, so the lead lands in the inbox, not the Own list.
+    data = { privateChannelUserId: master.id, isOwn: false };
+    label = "AH inbox";
   } else {
     const id = Number(target);
     if (!Number.isFinite(id) || id <= 0) return { error: "Pick a pipeline." };
