@@ -381,9 +381,9 @@ export function LeadComposer({
         ref={formRef}
         action={submit}
         onClick={(e) => e.stopPropagation()}
-        className="relative flex w-full md:w-[560px] max-h-[90vh] flex-col bg-white shadow-lift animate-in rounded-t-2xl md:rounded-2xl pb-[env(safe-area-inset-bottom)]"
+        className="relative flex w-full md:w-[560px] h-[100dvh] md:h-auto md:max-h-[90vh] flex-col bg-white shadow-lift animate-in rounded-none md:rounded-2xl"
       >
-      <div className="md:hidden flex justify-center pt-2">
+      <div className="md:hidden flex justify-center pt-[calc(env(safe-area-inset-top)+0.5rem)]">
         <span className="h-1 w-10 rounded-full bg-ink-200" aria-hidden />
       </div>
       <div className="flex items-start justify-between gap-2 px-5 pt-3 pb-2 border-b border-ink-100">
@@ -409,7 +409,7 @@ export function LeadComposer({
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 md:px-5 py-3">
+      <div className="flex-1 overflow-y-auto px-4 md:px-5 py-3 pb-4">
       {isPrivate && (
         <input type="hidden" name="privateChannelUserId" value={privateChannelUserId} />
       )}
@@ -798,7 +798,7 @@ export function LeadComposer({
         </div>
       )}
       </div>
-      <div className="border-t border-ink-100 px-4 md:px-5 py-3 flex items-center justify-end gap-2">
+      <div className="border-t border-ink-100 px-4 md:px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-3 flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => setOpen(false)}
