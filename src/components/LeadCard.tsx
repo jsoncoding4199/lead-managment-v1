@@ -54,6 +54,7 @@ import {
   listLeadLocationsAction,
   listLeadRemarksAction,
 } from "@/app/dashboard/actions";
+import { useSelection } from "./selection";
 import Link from "next/link";
 
 type Lead = {
@@ -116,6 +117,8 @@ type Props = {
 };
 
 export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }: Props) {
+  const sel = useSelection();
+  const selected = sel?.has(lead.id) ?? false;
   const [menuOpen, setMenuOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -291,9 +294,21 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const canReassign = iOwnThisChannel || viewer.role === "MASTER";
 
   return (
-    <article className="card p-3 md:p-4 hover:shadow-lift transition-shadow group flex flex-col">
+    <article className={cn(
+      "card p-3 md:p-4 hover:shadow-lift transition-shadow group flex flex-col",
+      selected && "ring-2 ring-brand-500"
+    )}>
       <header className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-wrap relative">
+          {sel && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => sel.toggle(lead.id)}
+              aria-label={`Select lead ${lead.id}`}
+              className="h-4 w-4 shrink-0 cursor-pointer accent-brand-600"
+            />
+          )}
           {lead.status === "NEW" ? (
             <button
               onClick={() => setContactStateOpen((v) => !v)}

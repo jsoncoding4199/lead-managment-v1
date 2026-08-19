@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_STATUSES } from "@/lib/leadStatus";
 import { Sidebar } from "@/components/Sidebar";
+import { SelectionProvider } from "@/components/selection";
+import { BulkMoveBar } from "@/components/BulkMoveBar";
 import { Notifier } from "@/components/Notifier";
 import { PushEnableButton } from "@/components/PushEnableButton";
 import { PushNudgeBanner } from "@/components/PushNudgeBanner";
@@ -57,6 +59,23 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }),
   ]);
   const hasPush = pushSubCount > 0;
+
+  // Master's bulk-move targets: Public pool, Own, and every active user's
+  // pipeline. Only master gets the multi-select provider + move bar.
+  const moveTargets =
+    user.role === "MASTER"
+      ? [
+          { value: "public", label: "Public pool" },
+          { value: "own", label: "Own (master)" },
+          ...(
+            await prisma.user.findMany({
+              where: { active: true, role: "USER" },
+              select: { id: true, displayName: true },
+              orderBy: { displayName: "asc" },
+            })
+          ).map((u) => ({ value: String(u.id), label: u.displayName })),
+        ]
+      : [];
 
   const byStatus = new Map(publicByStatus.map((r) => [r.status, r._count._all]));
   const archivedByStatus = new Map(archivedCounts.map((r) => [r.status, r._count._all]));
@@ -117,7 +136,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </header>
         <main className="flex-1 px-3 py-2.5 md:p-5 lg:p-6">
           <PushNudgeBanner hasServerSubscription={hasPush} />
-          {children}
+          {user.role === "MASTER" ? (
+            <SelectionProvider>
+              {children}
+              <BulkMoveBar targets={moveTargets} />
+            </SelectionProvider>
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>

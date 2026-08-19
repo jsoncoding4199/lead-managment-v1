@@ -5,6 +5,8 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import type { LeadStatus } from "@prisma/client";
 import { STATUS_LABEL } from "@/lib/leadStatus";
+import { cn } from "@/lib/utils";
+import { useSelection } from "./selection";
 import {
   setLeadNameAction,
   setLeadPhoneAction,
@@ -90,6 +92,7 @@ export function LeadSheet({
     router.push(`${pathname}?${next.toString()}`);
   };
 
+  const sel = useSelection();
   const [, startTransition] = useTransition();
   const [state, setState] = useState<Record<number, { s: SaveState; msg?: string }>>({});
   // Rows deleted this session — hidden immediately so the grid reflects the
@@ -138,6 +141,7 @@ export function LeadSheet({
       <table className="w-full min-w-[880px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-ink-200 bg-ink-50 text-left text-[11px] uppercase tracking-wide text-ink-500">
+            {sel && <th className="px-2 py-2 font-semibold" />}
             <th className="sticky left-0 z-10 bg-ink-50 px-2 py-2 font-semibold">#</th>
             <th className="px-2 py-2 font-semibold">Name</th>
             <th className="px-2 py-2 font-semibold">Phone</th>
@@ -151,6 +155,7 @@ export function LeadSheet({
           </tr>
           {/* Per-column filter row — pick a value to narrow the grid. */}
           <tr className="border-b border-ink-200 bg-white">
+            {sel && <th className="px-2 py-1" />}
             <th className="sticky left-0 z-10 bg-white px-2 py-1" />
             <th className="px-1 py-1" />
             <th className="px-1 py-1" />
@@ -217,7 +222,7 @@ export function LeadSheet({
         <tbody>
           {rows.filter((r) => !removed.has(r.id)).length === 0 && (
             <tr>
-              <td colSpan={10} className="px-3 py-8 text-center text-sm text-ink-500">
+              <td colSpan={sel ? 11 : 10} className="px-3 py-8 text-center text-sm text-ink-500">
                 No leads match these filters.
               </td>
             </tr>
@@ -226,7 +231,18 @@ export function LeadSheet({
             if (removed.has(r.id)) return null;
             const st = state[r.id];
             return (
-              <tr key={r.id} className="border-b border-ink-100 last:border-0 align-top">
+              <tr key={r.id} className={cn("border-b border-ink-100 last:border-0 align-top", sel?.has(r.id) && "bg-brand-50")}>
+                {sel && (
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={sel.has(r.id)}
+                      onChange={() => sel.toggle(r.id)}
+                      aria-label={`Select lead ${r.id}`}
+                      className="h-4 w-4 cursor-pointer accent-brand-600"
+                    />
+                  </td>
+                )}
                 <td className="sticky left-0 z-10 bg-white px-2 py-1.5 tabular-nums text-ink-400">
                   {r.id}
                 </td>

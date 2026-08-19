@@ -1518,6 +1518,62 @@ const ReassignSchema = z.object({
   remark: z.string().trim().max(2000).optional().default(""),
 });
 
+/**
+ * Bulk-move many leads into one pipeline at once (master-only). Target is
+ * "public" (open pool), "own" (master's Own list), or a user id (that user's
+ * private pipeline). Moves silently — no push notifications and no 15-minute
+ * alarms — for re-org / cleanup. Stale assignments and reminders are cleared;
+ * a short audit remark is dropped on each lead.
+ */
+export async function bulkMovePipelineAction(
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean; count?: number }> {
+  const master = await requireMaster();
+  const ids = Array.from(
+    new Set(
+      formData
+        .getAll("leadId")
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    )
+  ).slice(0, 500);
+  if (ids.length === 0) return { error: "No leads selected." };
+
+  const target = String(formData.get("target") ?? "");
+  let data: { privateChannelUserId: number | null; isOwn: boolean };
+  let label: string;
+  if (target === "public") {
+    data = { privateChannelUserId: null, isOwn: false };
+    label = "Public pool";
+  } else if (target === "own") {
+    data = { privateChannelUserId: master.id, isOwn: true };
+    label = "Own";
+  } else {
+    const id = Number(target);
+    if (!Number.isFinite(id) || id <= 0) return { error: "Pick a pipeline." };
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, displayName: true, active: true, role: true },
+    });
+    if (!user || !user.active || user.role !== "USER") return { error: "Pick a valid pipeline." };
+    data = { privateChannelUserId: id, isOwn: false };
+    label = user.displayName;
+  }
+
+  await prisma.$transaction([
+    prisma.lead.updateMany({ where: { id: { in: ids } }, data }),
+    // Moving pipelines clears stale assignments and any pickup alarms.
+    prisma.leadAssignment.deleteMany({ where: { leadId: { in: ids } } }),
+    prisma.leadReminder.deleteMany({ where: { leadId: { in: ids } } }),
+    prisma.leadRemark.createMany({
+      data: ids.map((leadId) => ({ leadId, authorId: master.id, body: `[Moved to ${label}]` })),
+    }),
+  ]);
+
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, count: ids.length };
+}
+
 export async function reassignPrivateLeadAction(
   formData: FormData
 ): Promise<{ error?: string; ok?: boolean } | void> {
