@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Plus, ClipboardPaste, Loader2, Check, Tag, X, ScanSearch, MapPin, Trash2 } from "lucide-react";
+import { Plus, ClipboardPaste, Loader2, Check, Tag, X, MapPin, Trash2 } from "lucide-react";
 import {
   createLeadAction,
   addLeadSourceAction,
@@ -64,11 +64,10 @@ export function LeadComposer({
   const [pendingParse, setPendingParse] = useState<
     { parsedName?: string; parsedPhone?: string } | null
   >(null);
-  // Brief "nothing detected" notice after a manual Detect press finds
-  // no new name/phone — silence would read as a broken button.
-  const [detectEmpty, setDetectEmpty] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  // Debounce timer for live detection while typing in the notes box.
+  const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // The expanded form renders in a portal modal (floating window) rather
   // than pushing page content down. Lock body scroll + close on Escape.
@@ -698,34 +697,11 @@ export function LeadComposer({
         </label>
       </div>
       <div className="flex items-center justify-between gap-2 mb-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <label>
-            <span className="label">Notes / other details</span>
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              const text = ref.current?.value ?? "";
-              if (!text.trim()) return;
-              setDetectEmpty(false);
-              autofillFromText(text);
-              // autofillFromText sets pendingParse when it finds something;
-              // read the parse directly to know whether to flash "nothing".
-              const { parsedName, parsedPhone } = parseContactFromText(text);
-              const foundNew = (!!parsedName && !name) || (!!parsedPhone && !phone);
-              if (!foundNew) {
-                setDetectEmpty(true);
-                setTimeout(() => setDetectEmpty(false), 2500);
-              }
-            }}
-            className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700 hover:bg-brand-100"
-          >
-            <ScanSearch className="h-3 w-3" />
-            Detect
-          </button>
-        </div>
+        <label>
+          <span className="label">Notes / other details</span>
+        </label>
         <span className="hidden md:inline text-[10px] text-ink-400">
-          Paste a Gmail chunk — Name / Phone auto-fill.
+          Type or paste — Name / Phone detect automatically.
         </span>
       </div>
       <textarea
@@ -734,20 +710,21 @@ export function LeadComposer({
         rows={3}
         required
         placeholder={
-          "Paste the lead here (from Gmail, WhatsApp, etc.). Any Name / IC / Phone we spot fills the boxes above."
+          "Paste or type the lead here (Gmail, WhatsApp, etc.). Any Name / IC / Phone we spot shows below to apply."
         }
         onPaste={(e) => {
           const text = e.clipboardData.getData("text");
           if (text) autofillFromText(text);
         }}
+        onChange={(e) => {
+          // Live detection while typing — debounced so it doesn't fire on
+          // every keystroke or flicker mid-word.
+          const text = e.target.value;
+          if (detectTimer.current) clearTimeout(detectTimer.current);
+          detectTimer.current = setTimeout(() => autofillFromText(text), 300);
+        }}
         className="input resize-y font-mono text-sm leading-relaxed"
       />
-      {detectEmpty && (
-        <div className="mt-2 rounded-md border border-ink-200 bg-ink-50 px-3 py-1.5 text-[11px] text-ink-600">
-          No new name or phone found in the notes — fields already filled, or
-          nothing recognizable. Edit the boxes above manually if needed.
-        </div>
-      )}
       {pendingParse && (
         <div className="mt-2 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-[11px] text-ink-800">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-700">
