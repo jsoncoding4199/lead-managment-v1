@@ -407,8 +407,8 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   }
 
   // "Own" list flag — master-only. Own leads live under the master's own
-  // private channel (privateChannelUserId = master.id) plus this marker,
-  // and get an automatic 1-hour follow-up reminder.
+  // private channel (privateChannelUserId = master.id) plus this marker.
+  // No automatic alarm — master sets one per lead from the card if wanted.
   const isOwn = formData.get("isOwn") === "true" && user.role === "MASTER";
 
   let privateChannelUserId: number | null = parsed.data.privateChannelUserId ?? null;
@@ -484,16 +484,9 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         createdById: user.id,
       },
     });
-    // Own-list leads auto-get a 1-hour follow-up reminder for the master.
-    if (isOwn) {
-      await tx.leadReminder.create({
-        data: {
-          leadId: created.id,
-          userId: user.id,
-          remindAt: new Date(Date.now() + 60 * 60 * 1000),
-        },
-      });
-    } else if (privateChannelUserId !== null && privateChannelUserId !== user.id) {
+    // Own-list leads get NO automatic alarm — master sets one on the card
+    // ("Set a follow-up reminder") only if they want it.
+    if (!isOwn && privateChannelUserId !== null && privateChannelUserId !== user.id) {
       // Lead pumped into someone else's private channel: nudge that user
       // after 15 minutes if they haven't acted. Cancelled when they tap
       // OK/Pick (okPickLeadAction clears their reminder).

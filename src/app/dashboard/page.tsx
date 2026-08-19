@@ -280,9 +280,9 @@ export default async function DashboardPage({
           any tab: on a private tab the lead lands in that channel, on any
           static tab it goes into the public Fresh pipeline. */}
       {/* "Own" tab (master-only): composer drops leads into the master's
-          private Own list + triggers the default 1-hour reminder. Compose
-          and import share one row; items-start so expanding one doesn't
-          stretch the other to match its height. */}
+          private Own list (no auto alarm — master sets a reminder on the
+          card if wanted). Compose and import share one row; items-start so
+          expanding one doesn't stretch the other to match its height. */}
       {!q && tab.kind === "static" && tab.key === "own" && user.role === "MASTER" && (
         <div className="grid grid-cols-2 items-start gap-2">
           <LeadComposer
