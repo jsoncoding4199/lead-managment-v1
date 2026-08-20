@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { ArrowLeft, Bell, BellOff, Check, Trash2, Inbox, Hand, Activity } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, Trash2, Inbox, Hand, Activity } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime, cn } from "@/lib/utils";
 import {
-  markNotificationsReadAction,
-  markNotificationReadAction,
+  openNotificationAction,
   deleteNotificationAction,
   deleteAllNotificationsAction,
 } from "./actions";
@@ -72,7 +71,6 @@ export default async function NotificationsPage({
     if (!n.readAt) unread[c]++;
   }
   const shown = buckets[active];
-  const tabUnread = unread[active];
 
   return (
     <div className="max-w-2xl space-y-4 md:space-y-6">
@@ -89,20 +87,10 @@ export default async function NotificationsPage({
           <div className="min-w-0">
             <h1 className="text-base font-semibold text-ink-900">Notifications</h1>
             <p className="mt-0.5 text-xs text-ink-500">
-              Your last {HISTORY_LIMIT}. Reading one keeps it here — trash to remove.
+              Reading one removes it, revealing older ones. Up to {HISTORY_LIMIT} kept.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {tabUnread > 0 && (
-              <form action={markNotificationsReadAction}>
-                <button
-                  type="submit"
-                  className="btn btn-ghost h-9 text-xs px-3 text-ink-600 border border-ink-200"
-                >
-                  Mark all read
-                </button>
-              </form>
-            )}
             {all.length > 0 && (
               <form action={deleteAllNotificationsAction}>
                 <button
@@ -196,10 +184,10 @@ export default async function NotificationsPage({
                     </div>
 
                     {n.url ? (
-                      <form action={markNotificationReadAction} className="min-w-0 flex-1">
+                      <form action={openNotificationAction} className="min-w-0 flex-1">
                         <input type="hidden" name="id" value={n.id} />
                         <input type="hidden" name="url" value={n.url} />
-                        <button type="submit" className="block w-full text-left hover:opacity-80">
+                        <button type="submit" className="block w-full text-left hover:opacity-80" title="Open lead & remove">
                           <Body n={n} isUnread={isUnread} />
                         </button>
                       </form>
@@ -210,24 +198,12 @@ export default async function NotificationsPage({
                     )}
 
                     <div className="flex shrink-0 flex-col items-end gap-1">
-                      {isUnread && (
-                        <form action={markNotificationReadAction}>
-                          <input type="hidden" name="id" value={n.id} />
-                          <button
-                            type="submit"
-                            aria-label="Mark read"
-                            className="inline-flex items-center gap-1 rounded-lg border border-brand-300 bg-white px-2.5 h-8 text-[11px] font-semibold text-brand-700 hover:bg-brand-100"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            Read
-                          </button>
-                        </form>
-                      )}
                       <form action={deleteNotificationAction}>
                         <input type="hidden" name="id" value={n.id} />
                         <button
                           type="submit"
-                          aria-label="Delete notification"
+                          aria-label="Dismiss notification"
+                          title="Dismiss"
                           className="grid h-8 w-8 place-items-center rounded-lg border border-ink-200 bg-white text-ink-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
