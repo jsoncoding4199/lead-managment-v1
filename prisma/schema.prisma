@@ -143,6 +143,8 @@ model Lead {
   name         String?
   ic           String?
   phone        String?
+  // Optional WhatsApp username / handle — free text, editable on the card.
+  waUsername   String?
   // Where the lead came from (Ezy, FB, etc). Any user can add a new source
   // via the picker on a lead card — new sources persist for everyone.
   sourceId     Int?

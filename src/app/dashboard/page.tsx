@@ -527,6 +527,7 @@ type LeadView = {
   content: string;
   name: string | null;
   phone: string | null;
+  waUsername: string | null;
   source: { id: number; name: string } | null;
   location: { id: number; name: string } | null;
   remark: string | null;
@@ -1201,6 +1202,7 @@ const leadSelect = {
   content: true,
   name: true,
   phone: true,
+  waUsername: true,
   source: { select: { id: true, name: true } },
   location: { select: { id: true, name: true } },
   remark: true,
@@ -1224,6 +1226,7 @@ type RawLead = {
   content: string;
   name: string | null;
   phone: string | null;
+  waUsername: string | null;
   source: { id: number; name: string } | null;
   location: { id: number; name: string } | null;
   remark: string | null;
@@ -1245,6 +1248,7 @@ function toLeadView(l: RawLead, myReminderAt: Date | null = null): LeadView {
     content: l.content,
     name: l.name,
     phone: l.phone,
+    waUsername: l.waUsername,
     source: l.source,
     location: l.location,
     remark: l.remark,

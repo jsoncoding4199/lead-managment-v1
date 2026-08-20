@@ -388,6 +388,35 @@ export async function setLeadPhoneAction(
   revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
 }
 
+/** Inline edit of the WhatsApp username/handle. Any user with access can set
+ *  it; empty string clears the field. */
+const SetWaUsernameSchema = z.object({
+  leadId: z.coerce.number().int().positive(),
+  waUsername: z.string().trim().max(100),
+});
+
+export async function setLeadWaUsernameAction(
+  formData: FormData
+): Promise<{ error?: string } | void> {
+  const user = await requireUser();
+  const parsed = SetWaUsernameSchema.safeParse({
+    leadId: formData.get("leadId"),
+    waUsername: formData.get("waUsername") ?? "",
+  });
+  if (!parsed.success) return { error: "Invalid WhatsApp username." };
+
+  const meta = await loadAccessibleLeadMeta(parsed.data.leadId, user);
+  if (!meta) return { error: "Lead not found." };
+
+  await prisma.lead.update({
+    where: { id: parsed.data.leadId },
+    data: { waUsername: parsed.data.waUsername || null },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/leads/${parsed.data.leadId}`);
+}
+
 export async function createLeadAction(formData: FormData): Promise<{ error?: string } | void> {
   const user = await requireUser();
   const rawPrivate = formData.get("privateChannelUserId");

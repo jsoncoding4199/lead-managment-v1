@@ -44,6 +44,7 @@ import {
   setReminderAction,
   setLeadPhoneAction,
   setLeadNameAction,
+  setLeadWaUsernameAction,
   setLeadSourceAction,
   addLeadSourceAction,
   listLeadSourcesAction,
@@ -62,6 +63,7 @@ type Lead = {
   content: string;
   name?: string | null;
   phone?: string | null;
+  waUsername?: string | null;
   source?: { id: number; name: string } | null;
   location?: { id: number; name: string } | null;
   remark?: string | null;
@@ -395,14 +397,22 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           <ContactRow leadId={lead.id} label="Name" value={lead.name ?? ""} editable />
         </div>
         {(lead.phone || extractPhone(lead.content)) && (
-          <ContactRow
-            leadId={lead.id}
-            label="Phone"
-            value={lead.phone || extractPhone(lead.content) || ""}
-            phone
-            editable
-          />
+          <div className="border-b border-ink-100">
+            <ContactRow
+              leadId={lead.id}
+              label="Phone"
+              value={lead.phone || extractPhone(lead.content) || ""}
+              phone
+              editable
+            />
+          </div>
         )}
+        <ContactRow
+          leadId={lead.id}
+          label="WhatsApp"
+          value={lead.waUsername ?? ""}
+          editable
+        />
       </div>
 
       {/* "Details" opens the full lead in a floating window — the button
@@ -1281,12 +1291,15 @@ function ContactRow({
     setSaveError(null);
     const fd = new FormData();
     fd.set("leadId", String(leadId));
-    const isName = label === "Name";
-    fd.set(isName ? "name" : "phone", draft.trim());
+    const field = label === "Name" ? "name" : label === "WhatsApp" ? "waUsername" : "phone";
+    fd.set(field, draft.trim());
     startSave(async () => {
-      const res = isName
-        ? await setLeadNameAction(fd)
-        : await setLeadPhoneAction(fd);
+      const res =
+        field === "name"
+          ? await setLeadNameAction(fd)
+          : field === "waUsername"
+            ? await setLeadWaUsernameAction(fd)
+            : await setLeadPhoneAction(fd);
       if (res?.error) {
         setSaveError(res.error);
         return;
@@ -1316,7 +1329,7 @@ function ContactRow({
           }}
           disabled={saving}
           className="flex-1 min-w-0 rounded-md border border-ink-200 bg-white px-2 py-1 text-[12px] text-ink-800"
-          placeholder={label === "Phone" ? "+60 12-345 6789" : "Full name"}
+          placeholder={label === "Phone" ? "+60 12-345 6789" : label === "WhatsApp" ? "WhatsApp username / handle" : "Full name"}
         />
         <button
           type="button"
@@ -1553,6 +1566,7 @@ function LeadDetailsSheet({
                 </span>
               </Row>
             )}
+            {lead.waUsername && <Row label="WhatsApp">{lead.waUsername}</Row>}
             {lead.source && <Row label="Source">{lead.source.name}</Row>}
             {lead.location && <Row label="Location">{lead.location.name}</Row>}
             <Row label="Added by">{lead.createdBy?.displayName ?? "—"}</Row>
