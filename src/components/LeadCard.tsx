@@ -1311,7 +1311,7 @@ function ContactRow({
   if (editing) {
     return (
       <div className="flex flex-wrap items-center gap-2 px-2.5 py-1 md:py-1.5">
-        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+        <span className="w-16 shrink-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-500">
           {label}
         </span>
         <input
@@ -1422,7 +1422,7 @@ function ContactRow({
   if (phone) {
     return (
       <div className="flex items-center gap-1.5 px-2.5 py-1 md:py-1.5">
-        <span className="w-9 md:w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+        <span className="w-16 shrink-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-500">
           {label}
         </span>
         <span className="flex-1 min-w-0 break-words text-ink-800 font-medium">{value}</span>
