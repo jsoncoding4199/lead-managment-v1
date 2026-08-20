@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Bell, BellOff, Trash2, Inbox, Hand, Activity } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, Check, Trash2, Inbox, Hand, Activity } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime, cn } from "@/lib/utils";
@@ -198,6 +198,18 @@ export default async function NotificationsPage({
                     )}
 
                     <div className="flex shrink-0 flex-col items-end gap-1">
+                      {/* "Read" removes the notification without opening the lead. */}
+                      <form action={openNotificationAction}>
+                        <input type="hidden" name="id" value={n.id} />
+                        <button
+                          type="submit"
+                          aria-label="Mark read (remove)"
+                          className="inline-flex items-center gap-1 rounded-lg border border-brand-300 bg-white px-2.5 h-8 text-[11px] font-semibold text-brand-700 hover:bg-brand-100"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Read
+                        </button>
+                      </form>
                       <form action={deleteNotificationAction}>
                         <input type="hidden" name="id" value={n.id} />
                         <button
