@@ -130,6 +130,23 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const [reminderDays, setReminderDays] = useState(0);
   const [reminderHours, setReminderHours] = useState(1);
   const [reminderMinutes, setReminderMinutes] = useState(0);
+  // Follow-up reminder nudge: dismissable per lead, remembered on this device.
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(`remNudge:${lead.id}`)) setNudgeDismissed(true);
+    } catch {
+      /* localStorage unavailable — show the nudge */
+    }
+  }, [lead.id]);
+  const dismissNudge = () => {
+    setNudgeDismissed(true);
+    try {
+      localStorage.setItem(`remNudge:${lead.id}`, "1");
+    } catch {
+      /* ignore */
+    }
+  };
   // ponytail: per-mount only — a page refresh re-enables Ping/OK. Fine;
   // these are stateless notifications, not tracked acknowledgements.
   const [pinged, setPinged] = useState(false);
@@ -294,6 +311,9 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     lead.privateChannelUserId != null && lead.privateChannelUserId === viewer.id;
   // Master can reassign ANY lead — public or private — to any pipeline.
   const canReassign = iOwnThisChannel || viewer.role === "MASTER";
+  // Prompt the responsible person (assignee or channel owner) to opt into a
+  // follow-up alarm — only when they haven't set one and haven't dismissed.
+  const showFollowUpNudge = (iAmAssigned || iOwnThisChannel) && !lead.myReminderAt && !nudgeDismissed;
 
   return (
     <article className={cn(
@@ -455,6 +475,30 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           {lead.assignees.length}/{maxPickup}
         </span>
       </div>
+
+      {showFollowUpNudge && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
+          <BellRing className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+          <span className="min-w-0 flex-1 text-[11px] text-amber-900">
+            Follow up on this lead? Set a reminder.
+          </span>
+          <button
+            type="button"
+            onClick={() => setReminderOpen(true)}
+            className="shrink-0 rounded-md bg-amber-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-700"
+          >
+            Set alarm
+          </button>
+          <button
+            type="button"
+            onClick={dismissNudge}
+            aria-label="Dismiss reminder prompt"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-amber-700 hover:bg-amber-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       <footer className="mt-2 md:mt-3 space-y-1.5 md:space-y-2 text-[11px] text-ink-500">
         {/* Meta: one wrapping line on mobile (From · date · aging · updated);

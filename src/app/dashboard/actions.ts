@@ -513,20 +513,8 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         createdById: user.id,
       },
     });
-    // Own-list leads get NO automatic alarm — master sets one on the card
-    // ("Set a follow-up reminder") only if they want it.
-    if (!isOwn && privateChannelUserId !== null && privateChannelUserId !== user.id) {
-      // Lead pumped into someone else's private channel: nudge that user
-      // after 15 minutes if they haven't acted. Cancelled when they tap
-      // OK/Pick (okPickLeadAction clears their reminder).
-      await tx.leadReminder.create({
-        data: {
-          leadId: created.id,
-          userId: privateChannelUserId,
-          remindAt: new Date(Date.now() + 15 * 60 * 1000),
-        },
-      });
-    }
+    // No automatic follow-up alarm on any lead — the assignee/owner opts in
+    // via the "Set a follow-up reminder?" nudge on the lead card.
     if (validAssignees.length > 0) {
       await tx.leadAssignment.createMany({
         data: validAssignees.map((uid) => ({
@@ -1706,19 +1694,9 @@ export async function reassignPrivateLeadAction(
     }),
   ]);
 
-  // Handover resets the alarm: clear any prior owner's reminder on this
-  // lead, then give the new private-channel owner a fresh 15-minute nudge
-  // (cancelled when they tap OK/Pick). Public-pool sends leave no alarm.
+  // Handover clears any prior owner's reminder on this lead. No new alarm is
+  // set automatically — the new owner opts in via the card's reminder nudge.
   await prisma.leadReminder.deleteMany({ where: { leadId: lead.id } });
-  if (newOwnerId !== null && newOwnerId !== me.id) {
-    await prisma.leadReminder.create({
-      data: {
-        leadId: lead.id,
-        userId: newOwnerId,
-        remindAt: new Date(Date.now() + 15 * 60 * 1000),
-      },
-    });
-  }
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/leads/${lead.id}`);
