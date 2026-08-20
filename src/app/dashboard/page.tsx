@@ -1377,9 +1377,9 @@ function ChannelLeadList({
 
 /**
  * Master inbox ("AH") renderer: groups leads by who assigned them to the
- * master, so the master sees who gave each lead. One collapsible section
- * per sender, plus a trailing "Picked up / direct" bucket for leads the
- * master picked up themselves or that landed with no sender recorded.
+ * master, so the master sees who gave each lead. The master's own leads
+ * (picked up or added directly) show first, then one collapsible section
+ * per sender below.
  */
 function MasterInboxByAssigner({
   leads,
@@ -1422,6 +1422,30 @@ function MasterInboxByAssigner({
 
   return (
     <div className="space-y-4 md:space-y-6">
+      {/* Master's own leads first — picked up or added directly — so their
+          workload sits above leads handed over by other users. */}
+      {ownPickup.length > 0 && (
+        <CollapsibleSection
+          storageKey="ah:own-pickup"
+          count={ownPickup.length}
+          defaultOpen
+          header={
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+                ★
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-ink-900">My picked up / added</h3>
+                <p className="text-xs text-ink-500">
+                  {ownPickup.length} lead{ownPickup.length === 1 ? "" : "s"} you took or added yourself
+                </p>
+              </div>
+            </div>
+          }
+        >
+          {grid(ownPickup)}
+        </CollapsibleSection>
+      )}
       {entries.map(([id, bucket]) => (
         <CollapsibleSection
           key={id}
@@ -1445,28 +1469,6 @@ function MasterInboxByAssigner({
           {grid(bucket.items)}
         </CollapsibleSection>
       ))}
-      {ownPickup.length > 0 && (
-        <CollapsibleSection
-          storageKey="ah:own-pickup"
-          count={ownPickup.length}
-          defaultOpen
-          header={
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-ink-100 text-sm font-semibold text-ink-500">
-                —
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-ink-900">Picked up / direct</h3>
-                <p className="text-xs text-ink-500">
-                  {ownPickup.length} lead{ownPickup.length === 1 ? "" : "s"} not sent by a user
-                </p>
-              </div>
-            </div>
-          }
-        >
-          {grid(ownPickup)}
-        </CollapsibleSection>
-      )}
     </div>
   );
 }
