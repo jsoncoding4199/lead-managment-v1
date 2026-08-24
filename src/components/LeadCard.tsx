@@ -26,7 +26,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { STATUS_GROUPS } from "@/lib/leadStatus";
-import { timeAgo, daysAgo, formatDateTime, waNumber, cn } from "@/lib/utils";
+import { timeAgo, daysAgo, formatDateTime, waNumber, localPhone, cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { QualityBadge, QualityPicker } from "./QualityPicker";
 import { LeadRemarkThread } from "./LeadRemarkThread";
@@ -421,7 +421,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <ContactRow
               leadId={lead.id}
               label="Phone"
-              value={lead.phone || extractPhone(lead.content) || ""}
+              value={localPhone(lead.phone || extractPhone(lead.content) || "")}
               phone
               editable
             />
@@ -1531,7 +1531,7 @@ function LeadDetailsSheet({
 
   if (!portalNode) return null;
 
-  const phoneValue = lead.phone || extractPhone(lead.content) || "";
+  const phoneValue = localPhone(lead.phone || extractPhone(lead.content) || "");
   const digits = phoneValue.replace(/\D+/g, "");
   const wa = waNumber(phoneValue);
 

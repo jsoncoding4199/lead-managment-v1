@@ -9,6 +9,7 @@ import { requireUser, requireMaster } from "@/lib/auth";
 import { STATUS_LABEL } from "@/lib/leadStatus";
 import { sendPushToUsers, getAllUserIds, getMasterIds } from "@/lib/webPush";
 import { canAccessLead } from "@/lib/channels";
+import { localPhone } from "@/lib/utils";
 import { parseSheet, normalizeHeader, normalizePhone } from "@/lib/sheet";
 
 /**
@@ -381,7 +382,7 @@ export async function setLeadPhoneAction(
 
   await prisma.lead.update({
     where: { id: parsed.data.leadId },
-    data: { phone: parsed.data.phone || null },
+    data: { phone: localPhone(parsed.data.phone) || null },
   });
 
   revalidatePath("/dashboard");
@@ -503,7 +504,7 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
         content: parsed.data.content,
         name: parsed.data.name || null,
         ic: parsed.data.ic || null,
-        phone: parsed.data.phone || null,
+        phone: localPhone(parsed.data.phone) || null,
         sourceId,
         locationId,
         status: "NEW",

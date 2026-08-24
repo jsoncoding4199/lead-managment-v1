@@ -10,7 +10,7 @@ import {
   deleteLeadSourceAction,
   deleteLeadLocationAction,
 } from "@/app/dashboard/actions";
-import { cn } from "@/lib/utils";
+import { cn, localPhone } from "@/lib/utils";
 
 type SourceOption = { id: number; name: string };
 type LocationOption = { id: number; name: string };
@@ -173,11 +173,13 @@ export function LeadComposer({
 
     const parsedName =
       sameLine(NAME_LABELS) ?? nextLine(NAME_LABELS) ?? firstLineName ?? undefined;
-    const parsedPhone =
+    const rawPhone =
       sameLine(PHONE_LABELS) ??
       nextLine(PHONE_LABELS) ??
       text.match(/(?:\+?60|0)[\s-]?\d{1,2}[\s-]?\d{3,4}[\s-]?\d{4}/)?.[0] ??
       undefined;
+    // Drop a leading "+6" so the phone lands in local form (0…).
+    const parsedPhone = rawPhone ? localPhone(rawPhone) : undefined;
     return { parsedName, parsedPhone };
   };
 
@@ -689,9 +691,9 @@ export function LeadComposer({
             type="tel"
             name="phone"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(localPhone(e.target.value))}
             autoComplete="off"
-            placeholder="+60 12-345 6789"
+            placeholder="012-345 6789"
             className="input h-10"
           />
         </label>

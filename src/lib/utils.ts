@@ -62,6 +62,16 @@ export function waNumber(raw: string): string {
   return "60" + d;
 }
 
+/**
+ * Strip a leading Malaysian country code so a phone shows/stores in local
+ * form: "+60103990078" → "0103990078". Only touches a literal leading "+6"
+ * (optionally spaced); anything already local ("0…") is returned unchanged.
+ * wa.me links still work — waNumber() re-adds the 60 prefix on the fly.
+ */
+export function localPhone(raw: string | null | undefined): string {
+  return (raw ?? "").trim().replace(/^\+\s*6\s*/, "");
+}
+
 export function daysAgo(date: Date | string): number {
   const d = typeof date === "string" ? new Date(date) : date;
   const ms = Date.now() - d.getTime();
