@@ -4,6 +4,7 @@ import { Home } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_STATUSES } from "@/lib/leadStatus";
+import { privateChannelTabKey } from "@/lib/channels";
 import { Sidebar } from "@/components/Sidebar";
 import { SelectionProvider } from "@/components/selection";
 import { BulkMoveBar } from "@/components/BulkMoveBar";
@@ -106,7 +107,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <header className="sticky top-0 z-20 h-14 md:h-16 border-b border-ink-200/70 bg-white/80 backdrop-blur flex items-center justify-between gap-2 pl-16 md:pl-6 pr-3 md:pr-6">
           <div className="flex items-center gap-2 min-w-0">
             <Link
-              href="/dashboard?tab=fresh"
+              href={user.role === "MASTER" ? `/dashboard?tab=${privateChannelTabKey(user.id)}` : "/dashboard?tab=fresh"}
               aria-label="Home"
               title="Home"
               className="shrink-0 grid h-9 w-9 place-items-center rounded-lg text-ink-600 ring-1 ring-ink-200 bg-white hover:bg-ink-50 hover:text-ink-900"

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Lock } from "lucide-react";
 import type { LeadStatus, LeadQuality, Prisma } from "@prisma/client";
 import { requireUser, type CurrentUser } from "@/lib/auth";
@@ -173,15 +174,22 @@ export default async function DashboardPage({
 }) {
   const user = await requireUser();
   const sp = await searchParams;
+
+  // Master's default screen is their own AH inbox — on login / app open / Home
+  // (all of which hit /dashboard with no tab), send them there instead of
+  // Fresh. Explicit ?tab=fresh (e.g. the sidebar link) still works.
+  if (user.role === "MASTER" && sp.tab === undefined) {
+    redirect(`/dashboard?tab=${privateChannelTabKey(user.id)}`);
+  }
+
   const q = (sp.q ?? "").trim();
   const filterCreatorIds = parseIds(sp.fu);
   const filterSourceIds = parseIds(sp.fs);
   const filterLocationIds = parseIds(sp.fl);
   const filterAge = parseAge(sp.age);
 
-  // Everyone — master included — lands on Fresh by default (parseTab
-  // returns "fresh" when no tab param is present).
-
+  // Non-master lands on Fresh by default (parseTab returns "fresh" when no
+  // tab param is present).
   const tab: DashTab = parseTab(sp.tab);
 
   // All four lookups are independent — run them in one round-trip batch
