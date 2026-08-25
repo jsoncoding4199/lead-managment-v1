@@ -177,8 +177,10 @@ export default async function DashboardPage({
 
   // Master's default screen is their own AH inbox — on login / app open / Home
   // (all of which hit /dashboard with no tab), send them there instead of
-  // Fresh. Explicit ?tab=fresh (e.g. the sidebar link) still works.
-  if (user.role === "MASTER" && sp.tab === undefined) {
+  // Fresh. Skip when a search query is present so the cross-tab search still
+  // works (it also lands on /dashboard with no tab). Explicit ?tab=fresh
+  // (the sidebar link) still works.
+  if (user.role === "MASTER" && sp.tab === undefined && !(sp.q ?? "").trim()) {
     redirect(`/dashboard?tab=${privateChannelTabKey(user.id)}`);
   }
 
