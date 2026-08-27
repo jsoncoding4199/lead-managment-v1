@@ -127,6 +127,9 @@ const LEAD_PAGE_SIZE = 50;
  * side of it they landed on.
  */
 const STAGE_GROUPS = {
+  // Leads with no working status yet (still NEW) — the AH inbox buckets these
+  // under "Undefined"; once a status is set they move to a stage chip below.
+  unset: { label: "Undefined", short: "Undef", statuses: ["NEW"] },
   // Folded stages (Own tab): Able + Not able counted together.
   contact: { label: "Contact", short: "Contact", statuses: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"] },
   documents: { label: "Documents", short: "Docs", statuses: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"] },
@@ -399,6 +402,7 @@ async function StageRow({
   age,
   sort,
   groupKeys = FOLDED_STAGES,
+  showAll = true,
 }: {
   tabKey: string;
   /** The tab's unfiltered-by-stage predicate — what the counts run over. */
@@ -412,6 +416,8 @@ async function StageRow({
   sort: SortKey;
   /** Which stage chips to show — folded (default) or Able/Not-able split. */
   groupKeys?: StageGroup[];
+  /** Render the leading "All" chip. AH drops it in favour of "Undefined". */
+  showAll?: boolean;
 }) {
   const rows = await prisma.lead.groupBy({
     by: ["status"],
@@ -433,13 +439,15 @@ async function StageRow({
         split && "flex-wrap"
       )}
     >
-      <StageChip
-        label="All"
-        count={rows.reduce((n, r) => n + r._count._all, 0)}
-        href={link()}
-        active={active === null}
-        grow={!split}
-      />
+      {showAll && (
+        <StageChip
+          label="All"
+          count={rows.reduce((n, r) => n + r._count._all, 0)}
+          href={link()}
+          active={active === null}
+          grow={!split}
+        />
+      )}
       {groupKeys.map((g) => (
         <StageChip
           key={g}
@@ -832,6 +840,9 @@ async function LeadsSection({
         orderBy: { displayName: "asc" },
       }),
     ]);
+    // The master's own inbox (the "AH" tab) leads with an "Undefined" chip
+    // (leads still at NEW) instead of "All"; other channels keep "All".
+    const isMasterInbox = user.role === "MASTER" && tab.userId === user.id;
     const channelStageRow = (
       <StageRow
         tabKey={privateChannelTabKey(tab.userId)}
@@ -843,7 +854,8 @@ async function LeadsSection({
         locationId={locationId}
         age={age}
         sort={sort}
-        groupKeys={SPLIT_STAGES}
+        groupKeys={isMasterInbox ? ["unset", ...SPLIT_STAGES] : SPLIT_STAGES}
+        showAll={!isMasterInbox}
       />
     );
     if (channelLeads.length === 0) {
@@ -879,7 +891,6 @@ async function LeadsSection({
     // The master's own inbox (the "AH" tab) groups leads by who sent them,
     // so the master can see who handed over each lead. Other channels
     // (AHA / AHB) and a private user viewing their own stay a flat list.
-    const isMasterInbox = user.role === "MASTER" && tab.userId === user.id;
     if (isMasterInbox) {
       const assigns = await prisma.leadAssignment.findMany({
         where: { userId: user.id, leadId: { in: leads.map((l) => l.id) } },
