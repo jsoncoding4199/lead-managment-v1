@@ -127,12 +127,29 @@ const LEAD_PAGE_SIZE = 50;
  * side of it they landed on.
  */
 const STAGE_GROUPS = {
+  // Folded stages (Own tab): Able + Not able counted together.
   contact: { label: "Contact", short: "Contact", statuses: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"] },
   documents: { label: "Documents", short: "Docs", statuses: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"] },
   appointment: { label: "Appointment", short: "Appt", statuses: ["APPOINTMENT_ABLE", "APPOINTMENT_NOT_ABLE"] },
+  // Split stages (private pipelines): Able / Not able as separate chips.
+  contact_able: { label: "Contact · Able", short: "Cont ✓", statuses: ["CONTACT_ABLE"] },
+  contact_na: { label: "Contact · Not able", short: "Cont ✗", statuses: ["CONTACT_NOT_ABLE"] },
+  documents_able: { label: "Docs · Able", short: "Doc ✓", statuses: ["DOCUMENTS_ABLE"] },
+  documents_na: { label: "Docs · Not able", short: "Doc ✗", statuses: ["DOCUMENTS_NOT_ABLE"] },
+  appointment_able: { label: "Appt · Able", short: "Appt ✓", statuses: ["APPOINTMENT_ABLE"] },
+  appointment_na: { label: "Appt · Not able", short: "Appt ✗", statuses: ["APPOINTMENT_NOT_ABLE"] },
 } satisfies Record<string, { label: string; short: string; statuses: LeadStatus[] }>;
 
 type StageGroup = keyof typeof STAGE_GROUPS;
+
+/** Folded stage chips (Own). */
+const FOLDED_STAGES: StageGroup[] = ["contact", "documents", "appointment"];
+/** Able/Not-able split stage chips (private pipelines). */
+const SPLIT_STAGES: StageGroup[] = [
+  "contact_able", "contact_na",
+  "documents_able", "documents_na",
+  "appointment_able", "appointment_na",
+];
 
 function parseStageGroup(raw: string | undefined): StageGroup | null {
   return raw && raw in STAGE_GROUPS ? (raw as StageGroup) : null;
@@ -381,6 +398,7 @@ async function StageRow({
   locationId,
   age,
   sort,
+  groupKeys = FOLDED_STAGES,
 }: {
   tabKey: string;
   /** The tab's unfiltered-by-stage predicate — what the counts run over. */
@@ -392,6 +410,8 @@ async function StageRow({
   locationId: number[];
   age: AgeKey | null;
   sort: SortKey;
+  /** Which stage chips to show — folded (default) or Able/Not-able split. */
+  groupKeys?: StageGroup[];
 }) {
   const rows = await prisma.lead.groupBy({
     by: ["status"],
@@ -405,15 +425,22 @@ async function StageRow({
   const link = (sg?: StageGroup) =>
     tabHref(tabKey, { q, creatorId, sourceId, locationId, age, sg, sort });
 
+  const split = groupKeys.length > 3;
   return (
-    <div className="flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft">
+    <div
+      className={cn(
+        "flex gap-1 rounded-xl bg-white/95 p-1 ring-1 ring-ink-200 shadow-soft",
+        split && "flex-wrap"
+      )}
+    >
       <StageChip
         label="All"
         count={rows.reduce((n, r) => n + r._count._all, 0)}
         href={link()}
         active={active === null}
+        grow={!split}
       />
-      {(Object.keys(STAGE_GROUPS) as StageGroup[]).map((g) => (
+      {groupKeys.map((g) => (
         <StageChip
           key={g}
           label={STAGE_GROUPS[g].label}
@@ -421,6 +448,7 @@ async function StageRow({
           count={countOf(g)}
           href={link(g)}
           active={active === g}
+          grow={!split}
         />
       ))}
     </div>
@@ -492,6 +520,7 @@ function StageChip({
   count,
   href,
   active,
+  grow = true,
 }: {
   label: string;
   /** Abbreviation shown on phones, where the full word wouldn't fit. */
@@ -499,13 +528,16 @@ function StageChip({
   count: number;
   href: string;
   active: boolean;
+  /** Fill the row (folded chips) vs size to content so they can wrap (split). */
+  grow?: boolean;
 }) {
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "inline-flex h-9 flex-1 min-w-0 items-center justify-center gap-1 rounded-lg px-1.5",
+        "inline-flex h-9 items-center justify-center gap-1 rounded-lg px-1.5",
+        grow ? "flex-1 min-w-0" : "shrink-0",
         "text-[12px] font-medium whitespace-nowrap transition-colors",
         active
           ? "bg-ink-900 text-white shadow-sm"
@@ -811,6 +843,7 @@ async function LeadsSection({
         locationId={locationId}
         age={age}
         sort={sort}
+        groupKeys={SPLIT_STAGES}
       />
     );
     if (channelLeads.length === 0) {

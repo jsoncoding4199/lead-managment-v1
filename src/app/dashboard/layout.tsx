@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { ACTIVE_STATUSES } from "@/lib/leadStatus";
 import { privateChannelTabKey } from "@/lib/channels";
 import { Sidebar } from "@/components/Sidebar";
+import { RefreshButton } from "@/components/RefreshButton";
 import { SelectionProvider } from "@/components/selection";
 import { BulkMoveBar } from "@/components/BulkMoveBar";
 import { Notifier } from "@/components/Notifier";
@@ -114,6 +115,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             >
               <Home className="h-4 w-4" />
             </Link>
+            <RefreshButton />
             <span className="hidden md:inline text-sm text-ink-500">Signed in as</span>
             <span className="text-xs sm:text-sm font-medium text-ink-900 break-words">
               {user.displayName}
