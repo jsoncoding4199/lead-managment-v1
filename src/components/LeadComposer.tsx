@@ -390,14 +390,14 @@ export function LeadComposer({
       <div className="flex items-start justify-between gap-2 px-5 pt-3 pb-2 border-b border-ink-100">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-            <ClipboardPaste className="h-4 w-4 text-brand-600" />
-            {isPrivate ? `New private lead for ${privateChannelLabel}` : "New lead"}
+            <ClipboardPaste className="h-4 w-4 shrink-0 text-brand-600" />
+            New lead
           </div>
-          <span className="text-xs text-ink-400">
+          <span className="block truncate text-xs text-ink-400">
             {isPrivate ? (
-              <>Pipeline: <strong className="text-ink-700">{privateChannelLabel}</strong></>
+              <>To <strong className="text-ink-700">{privateChannelLabel}</strong></>
             ) : (
-              <>Status starts as <strong className="text-ink-700">New</strong></>
+              <>Starts as <strong className="text-ink-700">New</strong></>
             )}
           </span>
         </div>
