@@ -639,17 +639,21 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
     return { error: "A remark is required to recycle a lead." };
   }
 
-  // Status changes NEVER move a lead between pipelines. A private lead
-  // stays in its private pipeline through every status — EXCEPT RECYCLED,
-  // which is the explicit "send to Archive" action and clears the private
-  // channel + assignments so it surfaces in the shared Archive tab.
+  // Most status changes keep a lead in its current pipeline. The two
+  // terminal states relocate it to a shared tab so it leaves every private
+  // pipeline / Own list: RECYCLED → Recycle Bin, APPROVED → Approved. Both
+  // clear the private channel + Own flag; RECYCLED also drops assignments,
+  // while APPROVED keeps them (the Approved tab shows who closed the deal).
   const newStatus = parsed.data.status as LeadStatus;
   const isRecycle = newStatus === "RECYCLED";
+  const isApprove = newStatus === "APPROVED";
+  const movesToShared = isRecycle || isApprove;
   const leadUpdate: {
     status: LeadStatus;
     privateChannelUserId?: number | null;
-  } = isRecycle
-    ? { status: newStatus, privateChannelUserId: null }
+    isOwn?: boolean;
+  } = movesToShared
+    ? { status: newStatus, privateChannelUserId: null, isOwn: false }
     : { status: newStatus };
 
   await prisma.$transaction([
