@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -93,7 +93,7 @@ function contactStateLabel(state: string | undefined): string {
   return hit?.label ?? "New";
 }
 
-/** "45m", "2h", "3d 4h" — best-effort short label of time until remindAt. */
+/** "45m", "2h", "3d 4h" â€” best-effort short label of time until remindAt. */
 function remindersRemainingLabel(iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (ms <= 0) return "now";
@@ -114,7 +114,7 @@ type Props = {
   viewer: Viewer;
   teamUsers: { id: number; displayName: string }[];
   maxPickup: number;
-  /** Other active team users — handover targets for reassign. */
+  /** Other active team users â€” handover targets for reassign. */
   reassignTargets?: { id: number; displayName: string; isPrivateChannel?: boolean }[];
 };
 
@@ -136,7 +136,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     try {
       if (localStorage.getItem(`remNudge:${lead.id}`)) setNudgeDismissed(true);
     } catch {
-      /* localStorage unavailable — show the nudge */
+      /* localStorage unavailable â€” show the nudge */
     }
   }, [lead.id]);
   const dismissNudge = () => {
@@ -147,7 +147,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       /* ignore */
     }
   };
-  // ponytail: per-mount only — a page refresh re-enables Ping/OK. Fine;
+  // ponytail: per-mount only â€” a page refresh re-enables Ping/OK. Fine;
   // these are stateless notifications, not tracked acknowledgements.
   const [pinged, setPinged] = useState(false);
   const [acked, setAcked] = useState(false);
@@ -202,7 +202,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   };
 
   /**
-   * Combined "OK / Pick" — the old Pick up button folded into OK. In one
+   * Combined "OK / Pick" â€” the old Pick up button folded into OK. In one
    * tap it picks the lead up (when the viewer isn't already an assignee and
    * has capacity) and then sends the role-appropriate acknowledgement:
    * master notifies the lead's creator, everyone else notifies master.
@@ -246,7 +246,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
     startTransition(async () => {
       const res = await setLeadAssignmentsAction({ leadId: lead.id, userIds });
       if (res?.error) setError(res.error);
-      // Assignment now lives inside the combined Assign sheet — close it on
+      // Assignment now lives inside the combined Assign sheet â€” close it on
       // success so the save reads as done.
       else setReassignOpen(false);
     });
@@ -272,7 +272,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       const res = await pingLeadAction(fd);
       if (res?.error) setError(res.error);
       else {
-        // Flash "Pinged ✓" for a moment, then re-arm so master can ping again.
+        // Flash "Pinged âœ“" for a moment, then re-arm so master can ping again.
         setPinged(true);
         setTimeout(() => setPinged(false), 1500);
       }
@@ -309,10 +309,10 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
   const atCapacity = lead.assignees.length >= maxPickup;
   const iOwnThisChannel =
     lead.privateChannelUserId != null && lead.privateChannelUserId === viewer.id;
-  // Master can reassign ANY lead — public or private — to any pipeline.
+  // Master can reassign ANY lead â€” public or private â€” to any pipeline.
   const canReassign = iOwnThisChannel || viewer.role === "MASTER";
   // Prompt the responsible person (assignee or channel owner) to opt into a
-  // follow-up alarm — only when they haven't set one and haven't dismissed.
+  // follow-up alarm â€” only when they haven't set one and haven't dismissed.
   const showFollowUpNudge = (iAmAssigned || iOwnThisChannel) && !lead.myReminderAt && !nudgeDismissed;
 
   return (
@@ -335,7 +335,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             <button
               onClick={() => setContactStateOpen((v) => !v)}
               disabled={pending}
-              className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2 py-0.5 text-[11px] font-semibold text-ink-700 ring-1 ring-ink-200 hover:bg-ink-200"
+              className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-300 hover:bg-amber-200"
               aria-label="Change contact state"
             >
               {contactStateLabel(lead.contactState)}
@@ -435,7 +435,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
         />
       </div>
 
-      {/* "Details" opens the full lead in a floating window — the button
+      {/* "Details" opens the full lead in a floating window â€” the button
           lives in the header now, keeping the card short. */}
 
       {lead.remark && (
@@ -501,14 +501,14 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
       )}
 
       <footer className="mt-2 md:mt-3 space-y-1.5 md:space-y-2 text-[11px] text-ink-500">
-        {/* Meta: one wrapping line on mobile (From · date · aging · updated);
+        {/* Meta: one wrapping line on mobile (From Â· date Â· aging Â· updated);
             roomier on desktop. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="inline-flex items-center gap-1 min-w-0">
             <UserCircle2 className="h-3 w-3 shrink-0" />
-            <span className="break-words"><strong className="text-ink-700">{lead.createdBy?.displayName ?? "—"}</strong></span>
+            <span className="break-words"><strong className="text-ink-700">{lead.createdBy?.displayName ?? "â€”"}</strong></span>
           </span>
-          <span className="hidden md:inline text-ink-300">·</span>
+          <span className="hidden md:inline text-ink-300">Â·</span>
           {/* Full created date is desktop-only; the aging pill below already
               signals recency on a phone, saving a wrapped line. */}
           <span className="hidden md:inline-flex items-center gap-1">
@@ -532,11 +532,11 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
           <span className="ml-auto text-ink-400">Updated {timeAgo(lead.updatedAt)}</span>
         </div>
 
-        {/* Action bar — one row, equal-width buttons that share the space so
+        {/* Action bar â€” one row, equal-width buttons that share the space so
             every action stays visible without horizontal scrolling. Labels
-            never clip — every label reads in full. */}
+            never clip â€” every label reads in full. */}
         <div className="flex items-center gap-1 pt-1">
-          {/* OK / Pick — picks the lead up (if not already yours) and sends
+          {/* OK / Pick â€” picks the lead up (if not already yours) and sends
               the acknowledgement in one tap. */}
           <button
             onClick={okPick}
@@ -567,7 +567,7 @@ export function LeadCard({ lead, viewer, teamUsers, maxPickup, reassignTargets }
             </span>
           </button>
 
-          {/* No Drop button — releasing a lead happens via the Status menu
+          {/* No Drop button â€” releasing a lead happens via the Status menu
               ("Reset to Open Market" / "Recycle to Archive"), both of which
               clear every assignee so anyone can pick it up again. */}
 
@@ -750,7 +750,7 @@ function RejectReasonStep({
           onChange={(e) => onChange(e.target.value)}
           rows={5}
           maxLength={500}
-          placeholder={placeholder ?? "e.g. Customer not interested, doesn't qualify, wrong contact info…"}
+          placeholder={placeholder ?? "e.g. Customer not interested, doesn't qualify, wrong contact infoâ€¦"}
           className="input w-full resize-y text-sm"
         />
         <div className="flex items-center justify-between text-[10px] text-ink-400">
@@ -839,8 +839,8 @@ function StatusMenu({
             onConfirm={(text) => onChoose("RECYCLED", text)}
             onClose={onClose}
             title="Move to Recycle Bin"
-            description="Add a remark saying why — it's saved to the lead's remarks so anyone opening the details can see it."
-            placeholder="e.g. Duplicate, bad number, revisit next quarter…"
+            description="Add a remark saying why â€” it's saved to the lead's remarks so anyone opening the details can see it."
+            placeholder="e.g. Duplicate, bad number, revisit next quarterâ€¦"
             confirmLabel="Recycle lead"
           />
         ) : rejectReason !== null ? (
@@ -1021,7 +1021,7 @@ function ReassignSheet({
         </div>
 
         <div className="px-5 pb-4 space-y-3">
-          {/* Assign team members — folded in from the old separate Assign
+          {/* Assign team members â€” folded in from the old separate Assign
               button. Master override: bypasses the pickup cap. */}
           {viewerIsMaster && teamUsers.length > 0 && (
             <div className="rounded-lg border border-ink-200 p-3">
@@ -1053,7 +1053,7 @@ function ReassignSheet({
               </div>
               {selected.size > maxPickup && (
                 <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
-                  {selected.size} assignees — above the {maxPickup}-pickup limit. Saving still
+                  {selected.size} assignees â€” above the {maxPickup}-pickup limit. Saving still
                   works (master override).
                 </p>
               )}
@@ -1100,7 +1100,7 @@ function ReassignSheet({
               onChange={(e) => setRemark(e.target.value)}
               rows={5}
               maxLength={2000}
-              placeholder="What's the situation? Anything the next person needs to know…"
+              placeholder="What's the situation? Anything the next person needs to knowâ€¦"
               className="input w-full resize-y text-sm"
             />
             <div className="flex items-center justify-between text-[10px] text-ink-400 mt-1">
@@ -1189,7 +1189,7 @@ function ReminderSheet({
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <div>
             <h3 className="text-base font-semibold text-ink-900">
-              Remind me — lead #{leadId}
+              Remind me â€” lead #{leadId}
             </h3>
             <p className="text-xs text-ink-500 mt-0.5">
               You&apos;ll get a push when the time is up.
@@ -1324,7 +1324,7 @@ function ContactRow({
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
-      /* clipboard unavailable — ignore */
+      /* clipboard unavailable â€” ignore */
     }
   };
   // Digits-only for tel: (local form); wa.me needs the 60 country code.
@@ -1416,7 +1416,7 @@ function ContactRow({
           ? "border-emerald-300 bg-emerald-50 text-emerald-700"
           : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
       )}
-      title={copied ? "Copied ✓" : `Copy ${label.toLowerCase()}`}
+      title={copied ? "Copied âœ“" : `Copy ${label.toLowerCase()}`}
       aria-label={`Copy ${label}`}
     >
       {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -1487,7 +1487,7 @@ function ContactRow({
       {value ? (
         <span className="flex-1 min-w-0 break-words text-ink-800">{value}</span>
       ) : (
-        <span className="flex-1 min-w-0 text-[11px] italic text-ink-400">Tap to set…</span>
+        <span className="flex-1 min-w-0 text-[11px] italic text-ink-400">Tap to setâ€¦</span>
       )}
       <span className="flex shrink-0 items-center gap-1">
         {value && copyBtn}
@@ -1499,7 +1499,7 @@ function ContactRow({
 
 /**
  * Floating lead detail window. Replaces navigating to /dashboard/leads/[id]
- * for a quick look — shows every field we already have on the card plus the
+ * for a quick look â€” shows every field we already have on the card plus the
  * full (unclipped) content plus the remark thread, which is fetched on open
  * rather than shipped with every card. A link to the full page remains for
  * the status history.
@@ -1613,7 +1613,7 @@ function LeadDetailsSheet({
             {lead.waUsername && <Row label="WhatsApp">{lead.waUsername}</Row>}
             {lead.source && <Row label="Source">{lead.source.name}</Row>}
             {lead.location && <Row label="Location">{lead.location.name}</Row>}
-            <Row label="Added by">{lead.createdBy?.displayName ?? "—"}</Row>
+            <Row label="Added by">{lead.createdBy?.displayName ?? "â€”"}</Row>
             <Row label="Created">{formatDateTime(lead.createdAt)}</Row>
             <Row label="Updated">{timeAgo(lead.updatedAt)}</Row>
             <Row label="Assigned">
@@ -1643,7 +1643,7 @@ function LeadDetailsSheet({
 
           <div className="mt-4 border-t border-ink-100 pt-3">
             {remarks === null ? (
-              <p className="text-[12px] text-ink-400">Loading remarks…</p>
+              <p className="text-[12px] text-ink-400">Loading remarksâ€¦</p>
             ) : (
               <LeadRemarkThread
                 leadId={lead.id}
@@ -1702,7 +1702,7 @@ function SourceRow({
               <span className="break-words">{source.name}</span>
             </span>
           ) : (
-            <span className="text-[11px] italic text-ink-400">Tap…</span>
+            <span className="text-[11px] italic text-ink-400">Tapâ€¦</span>
           )}
         </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-400" />
@@ -1815,7 +1815,7 @@ function SourcePicker({
           <div>
             <h3 className="text-base font-semibold text-ink-900">Where is this lead from?</h3>
             <p className="text-xs text-ink-500 mt-0.5">
-              Pick a source or add a new one — it saves for everyone.
+              Pick a source or add a new one â€” it saves for everyone.
             </p>
           </div>
           <button
@@ -1830,7 +1830,7 @@ function SourcePicker({
         <div className="px-4 pb-4 space-y-2">
           {sources === null ? (
             <div className="flex items-center gap-2 text-xs text-ink-500 px-2 py-3">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loadingâ€¦
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -1898,7 +1898,7 @@ function SourcePicker({
                   }
                 }}
                 maxLength={30}
-                placeholder="e.g. Instagram, Referral…"
+                placeholder="e.g. Instagram, Referralâ€¦"
                 className="flex-1 rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800"
                 disabled={pending}
               />
@@ -1998,7 +1998,7 @@ function LocationRow({
               <span className="break-words">{location.name}</span>
             </span>
           ) : (
-            <span className="text-[11px] italic text-ink-400">Tap…</span>
+            <span className="text-[11px] italic text-ink-400">Tapâ€¦</span>
           )}
         </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-400" />
@@ -2110,7 +2110,7 @@ function LocationPicker({
           <div>
             <h3 className="text-base font-semibold text-ink-900">Where is this lead located?</h3>
             <p className="text-xs text-ink-500 mt-0.5">
-              Pick a location or add a new one — it saves for everyone.
+              Pick a location or add a new one â€” it saves for everyone.
             </p>
           </div>
           <button
@@ -2125,7 +2125,7 @@ function LocationPicker({
         <div className="px-4 pb-4 space-y-2">
           {locations === null ? (
             <div className="flex items-center gap-2 text-xs text-ink-500 px-2 py-3">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loadingâ€¦
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -2193,7 +2193,7 @@ function LocationPicker({
                   }
                 }}
                 maxLength={40}
-                placeholder="e.g. Ipoh, Kuantan…"
+                placeholder="e.g. Ipoh, Kuantanâ€¦"
                 className="flex-1 rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm text-ink-800"
                 disabled={pending}
               />
@@ -2264,3 +2264,4 @@ function LocationPicker({
     portalNode
   );
 }
+
