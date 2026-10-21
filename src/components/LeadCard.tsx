@@ -708,6 +708,7 @@ function RejectReasonStep({
   description,
   placeholder,
   confirmLabel,
+  optional,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -719,8 +720,10 @@ function RejectReasonStep({
   description?: React.ReactNode;
   placeholder?: string;
   confirmLabel?: string;
+  /** When true the reason is optional — confirm works with an empty box. */
+  optional?: boolean;
 }) {
-  const canSubmit = value.trim().length > 0;
+  const canSubmit = optional || value.trim().length > 0;
   return (
     <>
       <div className="flex items-center justify-between px-5 pt-4 pb-2">
@@ -754,7 +757,7 @@ function RejectReasonStep({
           className="input w-full resize-y text-sm"
         />
         <div className="flex items-center justify-between text-[10px] text-ink-400">
-          <span>{value.trim().length === 0 ? "Required" : "Looks good"}</span>
+          <span>{value.trim().length === 0 ? (optional ? "Optional" : "Required") : "Looks good"}</span>
           <span>{value.length}/500</span>
         </div>
         <div className="flex items-center justify-end gap-2 pt-1">
@@ -838,9 +841,10 @@ function StatusMenu({
             onBack={() => setRecycleReason(null)}
             onConfirm={(text) => onChoose("RECYCLED", text)}
             onClose={onClose}
+            optional
             title="Move to Recycle Bin"
-            description="Add a remark saying why â€” it's saved to the lead's remarks so anyone opening the details can see it."
-            placeholder="e.g. Duplicate, bad number, revisit next quarterâ€¦"
+            description="Optionally add a remark. Leave it blank to recycle without a reason."
+            placeholder="e.g. Duplicate, bad number, revisit next quarter (optional)"
             confirmLabel="Recycle lead"
           />
         ) : rejectReason !== null ? (

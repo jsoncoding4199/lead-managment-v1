@@ -633,11 +633,8 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
   if (parsed.data.status === "REJECTED" && !parsed.data.note?.trim()) {
     return { error: "A rejection reason is required." };
   }
-  // Recycling also requires a remark — it's saved to the lead's remark thread
-  // so anyone opening the details can see why it was binned.
-  if (parsed.data.status === "RECYCLED" && !parsed.data.note?.trim()) {
-    return { error: "A remark is required to recycle a lead." };
-  }
+  // Recycling may carry an optional remark (saved to the thread); it's not
+  // required — a lead can be binned without a reason.
 
   // Most status changes keep a lead in its current pipeline. The two
   // terminal states relocate it to a shared tab so it leaves every private
@@ -662,14 +659,16 @@ export async function changeStatusAction(formData: FormData): Promise<{ error?: 
       data: leadUpdate,
     }),
     ...(isRecycle
+      ? [prisma.leadAssignment.deleteMany({ where: { leadId: lead.id } })]
+      : []),
+    // Optional recycle reason — only recorded in the thread when one is given.
+    ...(isRecycle && parsed.data.note?.trim()
       ? [
-          prisma.leadAssignment.deleteMany({ where: { leadId: lead.id } }),
-          // Surface the recycle reason in the remark thread (details > remark).
           prisma.leadRemark.create({
             data: {
               leadId: lead.id,
               authorId: user.id,
-              body: `Recycled: ${parsed.data.note!.trim()}`,
+              body: `Recycled: ${parsed.data.note.trim()}`,
             },
           }),
         ]
