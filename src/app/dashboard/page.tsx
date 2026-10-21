@@ -65,12 +65,9 @@ type DashStaticTab =
   | "picks"
   | "approved"
   | "archive"
-  | "able_contact"
-  | "able_docs"
-  | "able_appt"
-  | "not_contact"
-  | "not_docs"
-  | "not_appt"
+  | "contact"
+  | "documents"
+  | "appointment"
   | "spam"
   | "reject";
 
@@ -84,29 +81,25 @@ const STATIC_TAB_TITLE: Record<string, string> = {
   picks: "My Pick Up",
   approved: "Approved",
   archive: "Recycle Bin",
-  able_contact: "Contact · Able",
-  able_docs: "Documents · Able",
-  able_appt: "Appointment · Able",
-  not_contact: "Contact · Not able",
-  not_docs: "Documents · Not able",
-  not_appt: "Appointment · Not able",
-  spam: "Spam / Missing",
+  contact: "Contact",
+  documents: "Documents",
+  appointment: "Appointment",
+  spam: "Missing",
   reject: "Rejected",
 };
 
-// One-status tabs → status enum they filter on. Order matches display order.
-const STATUS_TAB_TO_STATUS = {
-  able_contact: "CONTACT_ABLE",
-  able_docs: "DOCUMENTS_ABLE",
-  able_appt: "APPOINTMENT_ABLE",
-  not_contact: "CONTACT_NOT_ABLE",
-  not_docs: "DOCUMENTS_NOT_ABLE",
-  not_appt: "APPOINTMENT_NOT_ABLE",
-  spam: "SPAM_OR_MISSING",
-  reject: "REJECTED",
-} as const satisfies Record<string, LeadStatus>;
+// Status tabs → the status enum values they filter on. Contact/Documents/
+// Appointment each fold the legacy Able + Not-able values (pre-backfill
+// rows still appear). Order matches display order.
+const STATUS_TAB_TO_STATUSES = {
+  contact: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"],
+  documents: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"],
+  appointment: ["APPOINTMENT_ABLE", "APPOINTMENT_NOT_ABLE"],
+  spam: ["SPAM_OR_MISSING"],
+  reject: ["REJECTED"],
+} as const satisfies Record<string, LeadStatus[]>;
 
-type StatusTabKey = keyof typeof STATUS_TAB_TO_STATUS;
+type StatusTabKey = keyof typeof STATUS_TAB_TO_STATUSES;
 
 type DashTab =
   | { kind: "static"; key: DashStaticTab }
@@ -130,29 +123,15 @@ const STAGE_GROUPS = {
   // Leads with no working status yet (still NEW) — the AH inbox buckets these
   // under "Undefined"; once a status is set they move to a stage chip below.
   unset: { label: "Undefined", short: "Undef", statuses: ["NEW"] },
-  // Folded stages (Own tab): Able + Not able counted together.
+  // One chip per stage (Able + Not-able folded together).
   contact: { label: "Contact", short: "Contact", statuses: ["CONTACT_ABLE", "CONTACT_NOT_ABLE"] },
   documents: { label: "Documents", short: "Docs", statuses: ["DOCUMENTS_ABLE", "DOCUMENTS_NOT_ABLE"] },
   appointment: { label: "Appointment", short: "Appt", statuses: ["APPOINTMENT_ABLE", "APPOINTMENT_NOT_ABLE"] },
-  // Split stages (private pipelines): Able / Not able as separate chips.
-  contact_able: { label: "Contact · Able", short: "Cont ✓", statuses: ["CONTACT_ABLE"] },
-  contact_na: { label: "Contact · Not able", short: "Cont ✗", statuses: ["CONTACT_NOT_ABLE"] },
-  documents_able: { label: "Docs · Able", short: "Doc ✓", statuses: ["DOCUMENTS_ABLE"] },
-  documents_na: { label: "Docs · Not able", short: "Doc ✗", statuses: ["DOCUMENTS_NOT_ABLE"] },
-  appointment_able: { label: "Appt · Able", short: "Appt ✓", statuses: ["APPOINTMENT_ABLE"] },
-  appointment_na: { label: "Appt · Not able", short: "Appt ✗", statuses: ["APPOINTMENT_NOT_ABLE"] },
 } satisfies Record<string, { label: string; short: string; statuses: LeadStatus[] }>;
 
 type StageGroup = keyof typeof STAGE_GROUPS;
 
-/** Folded stage chips (Own). */
 const FOLDED_STAGES: StageGroup[] = ["contact", "documents", "appointment"];
-/** Able/Not-able split stage chips (private pipelines). */
-const SPLIT_STAGES: StageGroup[] = [
-  "contact_able", "contact_na",
-  "documents_able", "documents_na",
-  "appointment_able", "appointment_na",
-];
 
 function parseStageGroup(raw: string | undefined): StageGroup | null {
   return raw && raw in STAGE_GROUPS ? (raw as StageGroup) : null;
@@ -173,12 +152,9 @@ function parseTab(raw: string | undefined): DashTab {
     case "picks":
     case "approved":
     case "archive":
-    case "able_contact":
-    case "able_docs":
-    case "able_appt":
-    case "not_contact":
-    case "not_docs":
-    case "not_appt":
+    case "contact":
+    case "documents":
+    case "appointment":
     case "spam":
     case "reject":
       return { kind: "static", key: raw };
@@ -854,7 +830,7 @@ async function LeadsSection({
         locationId={locationId}
         age={age}
         sort={sort}
-        groupKeys={isMasterInbox ? ["unset", ...SPLIT_STAGES] : SPLIT_STAGES}
+        groupKeys={isMasterInbox ? ["unset", ...FOLDED_STAGES] : FOLDED_STAGES}
         showAll={!isMasterInbox}
       />
     );
@@ -1124,15 +1100,15 @@ async function LeadsSection({
   }
 
   /* ---------- Single-status tabs ---------- */
-  if (tab.key in STATUS_TAB_TO_STATUS) {
-    const status = STATUS_TAB_TO_STATUS[tab.key as StatusTabKey];
+  if (tab.key in STATUS_TAB_TO_STATUSES) {
+    const statuses = STATUS_TAB_TO_STATUSES[tab.key as StatusTabKey];
     const [statusLeads, teamUsers] = await Promise.all([
       prisma.lead.findMany({
         where: {
           AND: [
             { privateChannelUserId: null },
             notInMasterPipeline,
-            { status },
+            { status: { in: statuses as unknown as LeadStatus[] } },
             // The "Able" statuses are active work — visible only to the
             // assignee (or master). freshOrMarketVisibility encodes that and
             // is a no-op ({}) for master. Not-Able / Spam / Reject stay

@@ -16,18 +16,11 @@ import {
   X,
   Hand,
   Settings,
-  PhoneOff,
-  FileX,
-  CalendarX,
   Ban,
   XCircle,
-  PhoneCall,
-  FileCheck,
-  CalendarCheck,
   Phone,
   FileText,
   CalendarDays,
-  ChevronDown,
   Table,
   LogOut,
 } from "lucide-react";
@@ -35,7 +28,7 @@ import { logoutAction } from "@/app/login/actions";
 
 type Props = {
   user: { displayName: string; role: "MASTER" | "USER" };
-  /** Per-status lead counts keyed by tab key (able_contact, spam, archive…). */
+  /** Per-status lead counts keyed by tab key (contact, spam, archive…). */
   statusCounts?: Record<string, number>;
 };
 
@@ -185,88 +178,37 @@ function SidebarInner({
         >
           My Pick Up
         </NavLink>
-        <NavGroup
-          label="Contact"
+        <NavLink
+          href="/dashboard?tab=contact"
           icon={Phone}
-          count={n("able_contact") + n("not_contact")}
-          activeChild={
-            onDashboardRoot && (tab === "able_contact" || tab === "not_contact")
-          }
+          active={onDashboardRoot && tab === "contact"}
+          count={n("contact")}
         >
-          <NavLink
-            href="/dashboard?tab=able_contact"
-            icon={PhoneCall}
-            active={onDashboardRoot && tab === "able_contact"}
-            count={n("able_contact")}
-          >
-            Able
-          </NavLink>
-          <NavLink
-            href="/dashboard?tab=not_contact"
-            icon={PhoneOff}
-            active={onDashboardRoot && tab === "not_contact"}
-            count={n("not_contact")}
-          >
-            Not Able
-          </NavLink>
-        </NavGroup>
-        <NavGroup
-          label="Documents"
+          Contact
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=documents"
           icon={FileText}
-          count={n("able_docs") + n("not_docs")}
-          activeChild={
-            onDashboardRoot && (tab === "able_docs" || tab === "not_docs")
-          }
+          active={onDashboardRoot && tab === "documents"}
+          count={n("documents")}
         >
-          <NavLink
-            href="/dashboard?tab=able_docs"
-            icon={FileCheck}
-            active={onDashboardRoot && tab === "able_docs"}
-            count={n("able_docs")}
-          >
-            Able
-          </NavLink>
-          <NavLink
-            href="/dashboard?tab=not_docs"
-            icon={FileX}
-            active={onDashboardRoot && tab === "not_docs"}
-            count={n("not_docs")}
-          >
-            Not Able
-          </NavLink>
-        </NavGroup>
-        <NavGroup
-          label="Appointment"
+          Documents
+        </NavLink>
+        <NavLink
+          href="/dashboard?tab=appointment"
           icon={CalendarDays}
-          count={n("able_appt") + n("not_appt")}
-          activeChild={
-            onDashboardRoot && (tab === "able_appt" || tab === "not_appt")
-          }
+          active={onDashboardRoot && tab === "appointment"}
+          count={n("appointment")}
         >
-          <NavLink
-            href="/dashboard?tab=able_appt"
-            icon={CalendarCheck}
-            active={onDashboardRoot && tab === "able_appt"}
-            count={n("able_appt")}
-          >
-            Able
-          </NavLink>
-          <NavLink
-            href="/dashboard?tab=not_appt"
-            icon={CalendarX}
-            active={onDashboardRoot && tab === "not_appt"}
-            count={n("not_appt")}
-          >
-            Not Able
-          </NavLink>
-        </NavGroup>
+          Appointment
+        </NavLink>
         <NavLink
           href="/dashboard?tab=spam"
           icon={Ban}
           active={onDashboardRoot && tab === "spam"}
           count={n("spam")}
         >
-          Spam / Missing
+          Missing
         </NavLink>
         <NavLink
           href="/dashboard?tab=reject"
@@ -348,48 +290,6 @@ function SidebarInner({
         </p>
       </div>
     </>
-  );
-}
-
-function NavGroup({
-  label,
-  icon: Icon,
-  activeChild,
-  count,
-  children,
-}: {
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  activeChild: boolean;
-  count?: number;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(activeChild);
-  useEffect(() => {
-    if (activeChild) setOpen(true);
-  }, [activeChild]);
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors",
-          activeChild
-            ? "bg-white/10 text-white"
-            : "text-white/70 hover:bg-white/5 hover:text-white"
-        )}
-        aria-expanded={open}
-      >
-        <Icon className="h-4 w-4" />
-        <span className="flex-1 text-left">{label}</span>
-        <CountBadge count={count} />
-        <ChevronDown
-          className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
-        />
-      </button>
-      {open && <div className="mt-0.5 ml-4 space-y-0.5">{children}</div>}
-    </div>
   );
 }
 

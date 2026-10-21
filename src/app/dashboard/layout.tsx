@@ -87,12 +87,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     for (const r of myActiveByStatus) byStatus.set(r.status, r._count._all);
   }
   const statusCounts: Record<string, number> = {
-    able_contact: byStatus.get("CONTACT_ABLE") ?? 0,
-    able_docs: byStatus.get("DOCUMENTS_ABLE") ?? 0,
-    able_appt: byStatus.get("APPOINTMENT_ABLE") ?? 0,
-    not_contact: byStatus.get("CONTACT_NOT_ABLE") ?? 0,
-    not_docs: byStatus.get("DOCUMENTS_NOT_ABLE") ?? 0,
-    not_appt: byStatus.get("APPOINTMENT_NOT_ABLE") ?? 0,
+    // Each stage folds its legacy Able + Not-able counts into one.
+    contact: (byStatus.get("CONTACT_ABLE") ?? 0) + (byStatus.get("CONTACT_NOT_ABLE") ?? 0),
+    documents: (byStatus.get("DOCUMENTS_ABLE") ?? 0) + (byStatus.get("DOCUMENTS_NOT_ABLE") ?? 0),
+    appointment: (byStatus.get("APPOINTMENT_ABLE") ?? 0) + (byStatus.get("APPOINTMENT_NOT_ABLE") ?? 0),
     spam: byStatus.get("SPAM_OR_MISSING") ?? 0,
     reject: byStatus.get("REJECTED") ?? 0,
     approved: archivedByStatus.get("APPROVED") ?? 0,

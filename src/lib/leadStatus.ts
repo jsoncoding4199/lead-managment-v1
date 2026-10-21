@@ -1,14 +1,16 @@
 import type { LeadStatus } from "@prisma/client";
 
+// Able/Not-able folded into single stage statuses — both enum values map to
+// the same label so legacy rows (pre-backfill) still read cleanly.
 export const STATUS_LABEL: Record<LeadStatus, string> = {
   NEW: "New",
-  CONTACT_ABLE: "Contact · Able",
-  CONTACT_NOT_ABLE: "Contact · Not able",
-  DOCUMENTS_ABLE: "Documents · Able to get",
-  DOCUMENTS_NOT_ABLE: "Documents · Not able to get",
-  APPOINTMENT_ABLE: "Appointment · Able",
-  APPOINTMENT_NOT_ABLE: "Appointment · Not able",
-  SPAM_OR_MISSING: "Spam / Missing",
+  CONTACT_ABLE: "Contact",
+  CONTACT_NOT_ABLE: "Contact",
+  DOCUMENTS_ABLE: "Documents",
+  DOCUMENTS_NOT_ABLE: "Documents",
+  APPOINTMENT_ABLE: "Appointment",
+  APPOINTMENT_NOT_ABLE: "Appointment",
+  SPAM_OR_MISSING: "Missing",
   REJECTED: "Rejected",
   APPROVED: "Approved",
   RECYCLED: "Recycle Bin",
@@ -25,12 +27,7 @@ export const ACTIVE_STATUSES: LeadStatus[] = [
 // "Soft negative" outcomes — the team tried and couldn't progress the
 // lead, but it's not a hard close. Still visible in the shared views so
 // anyone can take another shot. These never auto-archive.
-export const SOFT_NEGATIVE_STATUSES: LeadStatus[] = [
-  "CONTACT_NOT_ABLE",
-  "DOCUMENTS_NOT_ABLE",
-  "APPOINTMENT_NOT_ABLE",
-  "SPAM_OR_MISSING",
-];
+export const SOFT_NEGATIVE_STATUSES: LeadStatus[] = ["SPAM_OR_MISSING"];
 
 // Terminal statuses that always land the lead in the master-only Archive
 // tab. Only APPROVED + RECYCLED qualify — everything else stays in place.
@@ -48,37 +45,23 @@ export type StatusGroup = {
   options: { value: LeadStatus; label: string; tone: "good" | "bad" | "terminal" }[];
 };
 
-// Grouped options for the status picker — matches the spec exactly.
+// Grouped options for the status picker — single status per stage (no
+// Able / Not able split).
 export const STATUS_GROUPS: StatusGroup[] = [
   {
-    key: "contact",
-    title: "Contact",
+    key: "stage",
+    title: "Progress",
     options: [
-      { value: "CONTACT_ABLE", label: "Able to contact", tone: "good" },
-      { value: "CONTACT_NOT_ABLE", label: "Not able to contact", tone: "bad" },
-    ],
-  },
-  {
-    key: "documents",
-    title: "Documents",
-    options: [
-      { value: "DOCUMENTS_ABLE", label: "Able to get", tone: "good" },
-      { value: "DOCUMENTS_NOT_ABLE", label: "Not able to get", tone: "bad" },
-    ],
-  },
-  {
-    key: "appointment",
-    title: "Appointment",
-    options: [
-      { value: "APPOINTMENT_ABLE", label: "Able", tone: "good" },
-      { value: "APPOINTMENT_NOT_ABLE", label: "Not able", tone: "bad" },
+      { value: "CONTACT_ABLE", label: "Contact", tone: "good" },
+      { value: "DOCUMENTS_ABLE", label: "Documents", tone: "good" },
+      { value: "APPOINTMENT_ABLE", label: "Appointment", tone: "good" },
     ],
   },
   {
     key: "terminal",
     title: "Resolve",
     options: [
-      { value: "SPAM_OR_MISSING", label: "Spam or Missing", tone: "terminal" },
+      { value: "SPAM_OR_MISSING", label: "Missing", tone: "terminal" },
       { value: "REJECTED", label: "Reject", tone: "terminal" },
       { value: "APPROVED", label: "Approve", tone: "terminal" },
     ],
