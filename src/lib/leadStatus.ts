@@ -52,6 +52,8 @@ export const STATUS_GROUPS: StatusGroup[] = [
     key: "stage",
     title: "Progress",
     options: [
+      // Revert a lead to the fresh/unworked state.
+      { value: "NEW", label: "Undefined", tone: "terminal" },
       { value: "CONTACT_ABLE", label: "Contact", tone: "good" },
       { value: "DOCUMENTS_ABLE", label: "Documents", tone: "good" },
       { value: "APPOINTMENT_ABLE", label: "Appointment", tone: "good" },
